@@ -219,10 +219,18 @@ export async function getFes(
 
 export async function getEnergy(
   sessionId: string,
-  terms?: string[]
+  force = false,
 ): Promise<{ data: Record<string, number[]>; available: boolean }> {
-  const params = terms ? terms.map((t) => `terms=${encodeURIComponent(t)}`).join("&") : "";
-  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/energy${params ? "?" + params : ""}`));
+  const qs = force ? "?force=true" : "";
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/energy${qs}`));
+}
+
+export async function updateResultCards(sessionId: string, resultCards: string[]): Promise<void> {
+  await fetch(`${BASE}/sessions/${sessionId}/result-cards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ result_cards: resultCards }),
+  });
 }
 
 export async function getProgress(

@@ -214,6 +214,7 @@ async def list_sessions_endpoint(username: str = ""):
                     "run_status": run_status,
                     "started_at": data.get("started_at"),
                     "finished_at": data.get("finished_at"),
+                    "result_cards": data.get("result_cards", []),
                 })
             except Exception:
                 continue
@@ -256,6 +257,30 @@ class NicknameRequest(BaseModel):
 
 class MoleculeSelectRequest(BaseModel):
     selected_molecule: str
+
+
+class ResultCardsRequest(BaseModel):
+    result_cards: list[str] = []
+
+
+@router.post("/sessions/{session_id}/result-cards")
+async def update_result_cards(session_id: str, req: ResultCardsRequest):
+    """Persist which result plot cards are open in session.json."""
+    from datetime import datetime
+    for sf in Path("outputs").glob("*/*/session.json"):
+        try:
+            data = json.loads(sf.read_text())
+            if data.get("session_id") != session_id:
+                continue
+            data.update({
+                "result_cards": req.result_cards,
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+            sf.write_text(json.dumps(data, indent=2))
+            break
+        except Exception:
+            continue
+    return {"session_id": session_id, "result_cards": req.result_cards}
 
 
 @router.patch("/sessions/{session_id}/molecule")

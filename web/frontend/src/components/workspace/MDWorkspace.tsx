@@ -32,14 +32,14 @@ import {
   Archive,
   RotateCcw,
   Lock,
+  Search,
 } from "lucide-react";
 
 import AgentModal from "@/components/agents/AgentModal";
 import type { AgentType } from "@/lib/agentStream";
 import { getUsername } from "@/lib/auth";
-import EnergyPlot from "@/components/viz/EnergyPlot";
-import ColvarPlot from "@/components/viz/ColvarPlot";
-import RamachandranPlot from "@/components/viz/RamachandranPlot";
+import dynamic from "next/dynamic";
+const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 import TrajectoryViewer from "@/components/viz/TrajectoryViewer";
 import FileUpload from "@/components/files/FileUpload";
 import MoleculeViewer from "@/components/viz/MoleculeViewer";
@@ -60,6 +60,8 @@ import {
   getSimulationStatus,
   getProgress,
   stopSimulation,
+  getEnergy,
+  updateResultCards,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -153,12 +155,12 @@ function Section({
 
   return (
     <div className={`rounded-xl border ${border} bg-gray-900/60 overflow-hidden`}>
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-800/60">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800/60">
         <span className={`p-1 rounded-md ${iconBg}`}>{icon}</span>
-        <span className="text-xs font-semibold text-gray-300 tracking-wide uppercase">{title}</span>
+        <span className="text-[11px] font-semibold text-gray-300 tracking-wide uppercase">{title}</span>
         {action && <span className="ml-auto">{action}</span>}
       </div>
-      <div className="p-4 space-y-3">{children}</div>
+      <div className="p-3 space-y-2.5">{children}</div>
     </div>
   );
 }
@@ -190,9 +192,9 @@ function Field({
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className="text-xs font-medium text-gray-400">{label}</label>
+        <label className="text-[13px] font-medium text-gray-400">{label}</label>
         {unit && (
-          <span className="text-[10px] font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">
+          <span className="text-[11px] font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">
             {unit}
           </span>
         )}
@@ -217,7 +219,7 @@ function Field({
           onBlur?.();
         }}
         step={step ?? (type === "number" ? "any" : undefined)}
-        className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+        className="w-full border border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
       />
       {hint && <p className="mt-1 text-[11px] text-gray-600">{hint}</p>}
     </div>
@@ -247,11 +249,11 @@ function SelectField({
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-400 mb-1">{label}</label>
+      <label className="block text-[13px] font-medium text-gray-400 mb-1">{label}</label>
       <select
         value={value}
         onChange={(e) => { onChange(e.target.value); onSave?.(); }}
-        className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+        className="w-full border border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -542,6 +544,506 @@ function DeleteConfirmPopup({
   );
 }
 
+// ── Results section sub-components ────────────────────────────────────
+
+type ResultCardType = "energy_potential" | "energy_kinetic" | "energy_total" | "energy_temperature" | "energy_pressure";
+interface ResultCardDef { id: string; type: ResultCardType }
+
+const ENERGY_TERM_CONFIG: Record<ResultCardType, { label: string; xvgPrefix: string; unit: string; color: string; fillColor: string }> = {
+  energy_potential:    { label: "Potential Energy", xvgPrefix: "potential",   unit: "kJ/mol", color: "#f59e0b", fillColor: "rgba(245,158,11,0.10)"  },
+  energy_kinetic:      { label: "Kinetic Energy",   xvgPrefix: "kinetic",     unit: "kJ/mol", color: "#38bdf8", fillColor: "rgba(56,189,248,0.10)"  },
+  energy_total:        { label: "Total Energy",     xvgPrefix: "total",       unit: "kJ/mol", color: "#a78bfa", fillColor: "rgba(167,139,250,0.10)" },
+  energy_temperature:  { label: "Temperature",      xvgPrefix: "temperature", unit: "K",      color: "#f87171", fillColor: "rgba(248,113,113,0.10)" },
+  energy_pressure:     { label: "Pressure",         xvgPrefix: "pressure",    unit: "bar",    color: "#34d399", fillColor: "rgba(52,211,153,0.10)"  },
+};
+
+const ENERGY_CARD_TYPES: ResultCardType[] = [
+  "energy_potential", "energy_kinetic", "energy_total", "energy_temperature", "energy_pressure",
+];
+
+const VALID_RESULT_CARD_TYPES = new Set<string>(ENERGY_CARD_TYPES);
+
+function EnergyCardContent({
+  sessionId,
+  type,
+  compact,
+  refreshKey = 0,
+}: {
+  sessionId: string;
+  type: ResultCardType;
+  compact: boolean;
+  refreshKey?: number;
+}) {
+  const [data, setData] = useState<Record<string, number[]> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const prevRefreshKeyRef = useRef(refreshKey);
+  const cfg = ENERGY_TERM_CONFIG[type];
+
+  useEffect(() => {
+    const isRefresh = refreshKey !== 0 && refreshKey !== prevRefreshKeyRef.current;
+    prevRefreshKeyRef.current = refreshKey;
+    let cancelled = false;
+    setLoading(true);
+    setData(null);
+    getEnergy(sessionId, isRefresh)
+      .then((r) => { if (!cancelled && r.available) setData(r.data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [sessionId, refreshKey]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
+        <Loader2 size={16} className="animate-spin" />
+        <span className="text-xs">Running gmx energy…</span>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
+        <span className="text-xs text-gray-600 px-3 text-center">No .edr file found.</span>
+      </div>
+    );
+  }
+
+  const xVals = data.time_ps ?? data.step ?? [];
+  // Fuzzy-match the XVG legend key by prefix (handles "Kinetic-En." vs "Kinetic")
+  const dataKey = Object.keys(data).find(
+    (k) => k.toLowerCase().replace(/[-.\s]/g, "").startsWith(cfg.xvgPrefix.replace(/[-.\s]/g, ""))
+  );
+
+  if (!dataKey || xVals.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
+        <span className="text-xs text-gray-600 px-3 text-center">Term not found in energy file.</span>
+      </div>
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const axisBase: any = {
+    zeroline: false,
+    color: "#4b5563",
+    tickfont: { size: 9, color: "#9ca3af" },
+    titlefont: { size: 10, color: cfg.color },
+    gridcolor: "#1a2030",
+    gridwidth: 1,
+    showgrid: true,
+  };
+
+  return (
+    <Plot
+      data={[{
+        type: "scatter",
+        mode: "lines",
+        x: xVals,
+        y: data[dataKey],
+        name: cfg.label,
+        fill: "tozeroy",
+        fillcolor: cfg.fillColor,
+        line: { color: cfg.color, width: 2, shape: "spline", smoothing: 0.3 },
+      }]}
+      layout={{
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        xaxis: { ...axisBase, title: "Time (ps)" as any },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        yaxis: { ...axisBase, title: cfg.unit as any },
+        showlegend: false,
+        hovermode: "x unified",
+        hoverlabel: { bgcolor: "#1f2937", bordercolor: cfg.color, font: { size: 11, color: "#e5e7eb" } },
+        margin: compact ? { t: 4, l: 52, r: 8, b: 44 } : { t: 8, l: 56, r: 20, b: 40 },
+        paper_bgcolor: "transparent",
+        plot_bgcolor: "transparent",
+        height: compact ? 185 : 332,
+      }}
+      config={{ responsive: true, displayModeBar: false }}
+      style={{ width: "100%" }}
+    />
+  );
+}
+
+function ResultCard({
+  card,
+  sessionId,
+  onDelete,
+}: {
+  card: ResultCardDef;
+  sessionId: string;
+  onDelete: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [spinning, setSpinning] = useState(false);
+  const termCfg = ENERGY_TERM_CONFIG[card.type];
+  const label = termCfg?.label ?? card.type;
+  const accentColor = termCfg?.color ?? "#6b7280";
+
+  const handleRefresh = () => {
+    setRefreshKey((k) => k + 1);
+    setSpinning(true);
+    setTimeout(() => setSpinning(false), 800);
+  };
+
+  return (
+    <>
+      <div
+        className="flex-shrink-0 w-56 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
+        style={{ height: "256px", borderColor: `${accentColor}30` }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0"
+          style={{ borderColor: `${accentColor}20` }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
+            <span className="text-xs font-medium text-gray-300">{label}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleRefresh}
+              title="Refresh"
+              className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
+            >
+              <RotateCcw size={11} className={spinning ? "animate-spin" : ""} />
+            </button>
+            <button
+              onClick={() => setExpanded(true)}
+              title="Expand"
+              className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
+            >
+              <Search size={11} />
+            </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              title="Remove"
+              className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700/60 transition-colors"
+            >
+              <Trash2 size={11} />
+            </button>
+          </div>
+        </div>
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <EnergyCardContent sessionId={sessionId} type={card.type} compact refreshKey={refreshKey} />
+        </div>
+      </div>
+
+      {/* Expanded modal */}
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+          onClick={() => setExpanded(false)}
+        >
+          <div
+            className="bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border"
+            style={{ width: "min(1080px, 95vw)", height: "380px", borderColor: `${accentColor}40` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2.5 bg-gray-800/80 border-b flex-shrink-0"
+              style={{ borderColor: `${accentColor}25` }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
+                <span className="text-xs font-semibold tracking-wide" style={{ color: accentColor }}>{label}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handleRefresh}
+                  title="Refresh"
+                  className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
+                >
+                  <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
+                </button>
+                <button
+                  onClick={() => setExpanded(false)}
+                  className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <EnergyCardContent sessionId={sessionId} type={card.type} compact={false} refreshKey={refreshKey} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+          onClick={() => setConfirmDelete(false)}
+        >
+          <div
+            className="bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl p-5 w-72"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-semibold text-gray-200 mb-1">Remove plot?</p>
+            <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-300">{label}</span> plot will be removed from the results panel.</p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="px-3 py-1.5 rounded-lg text-xs border border-gray-700 text-gray-400 hover:text-gray-200 hover:bg-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setConfirmDelete(false); onDelete(); }}
+                className="px-3 py-1.5 rounded-lg text-xs border border-red-800/60 bg-red-900/30 text-red-400 hover:bg-red-900/50 transition-colors"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function AddPlotModal({
+  onSelect,
+  onClose,
+  existingTypes,
+}: {
+  onSelect: (types: ResultCardType[]) => void;
+  onClose: () => void;
+  existingTypes: Set<ResultCardType>;
+}) {
+  const [checked, setChecked] = useState<Set<ResultCardType>>(new Set());
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  const toggle = (t: ResultCardType) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      next.has(t) ? next.delete(t) : next.add(t);
+      return next;
+    });
+  };
+
+  const handleRun = () => {
+    const newTypes = Array.from(checked).filter((t) => !existingTypes.has(t));
+    if (newTypes.length > 0) onSelect(newTypes);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl p-5 w-80"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-semibold text-gray-200 mb-4">Add Analysis</h3>
+
+        {/* Energy group */}
+        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Energy</p>
+        <div className="space-y-1 mb-4">
+          {ENERGY_CARD_TYPES.map((t) => {
+            const alreadyAdded = existingTypes.has(t);
+            const isChecked = checked.has(t) || alreadyAdded;
+            return (
+              <label
+                key={t}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                  alreadyAdded ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-800"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  disabled={alreadyAdded}
+                  onChange={() => !alreadyAdded && toggle(t)}
+                  className="accent-blue-500 w-3.5 h-3.5 flex-shrink-0"
+                />
+                <span className="text-xs text-gray-300">{ENERGY_TERM_CONFIG[t].label}</span>
+                <span className="ml-auto text-[10px] text-gray-600">{ENERGY_TERM_CONFIG[t].unit}</span>
+                {alreadyAdded && <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />}
+              </label>
+            );
+          })}
+        </div>
+
+        {/* Locked options */}
+        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Coming soon</p>
+        <div className="space-y-1 mb-5">
+          {[
+            { label: "Ramachandran", desc: "φ/ψ backbone dihedral map" },
+            { label: "Custom CV",    desc: "User-defined collective variable" },
+          ].map((opt) => (
+            <div key={opt.label} className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-35">
+              <Lock size={11} className="text-gray-600 flex-shrink-0" />
+              <span className="text-xs text-gray-400">{opt.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={handleRun}
+          disabled={checked.size === 0}
+          className="w-full py-2 rounded-xl text-xs font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          Run Analysis
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Simulation run confirmation modal ─────────────────────────────────
+
+interface SimFileRow {
+  label: string;
+  ext: string;
+  freq: number;
+  frames: number;
+  sizeLabel: string;
+}
+
+/** Estimate file size given approximate bytes-per-frame and total frames. */
+function _estimateSize(bytesPerFrame: number, frames: number): string {
+  const total = bytesPerFrame * frames;
+  if (total <= 0) return "—";
+  if (total < 1024) return `${total} B`;
+  if (total < 1024 ** 2) return `${(total / 1024).toFixed(1)} KB`;
+  if (total < 1024 ** 3) return `${(total / 1024 ** 2).toFixed(1)} MB`;
+  return `${(total / 1024 ** 3).toFixed(2)} GB`;
+}
+
+// Rough per-frame byte estimates (varies by system size; these are for small proteins ~1000 atoms)
+const BYTES_PER_FRAME: Record<string, number> = {
+  xtc: 3000,   // compressed coords ~3 KB / frame for ~1000 atoms
+  trr: 36000,  // full precision coords+vel+force ~36 KB / frame
+  edr: 2000,   // energy file ~2 KB / frame
+  log: 400,    // log line ~400 B / frame
+};
+
+function SimRunConfirmModal({
+  cfg,
+  onEdit,
+  onRun,
+  onClose,
+}: {
+  cfg: Record<string, unknown>;
+  onEdit: () => void;
+  onRun: () => void;
+  onClose: () => void;
+}) {
+  const method  = (cfg.method  ?? {}) as Record<string, unknown>;
+  const gromacs = (cfg.gromacs ?? {}) as Record<string, unknown>;
+
+  const nsteps = Number(method.nsteps ?? 0);
+  const dt     = Number(gromacs.dt    ?? 0.002); // ps per step
+
+  const freqXtc = Number(gromacs.nstxout_compressed ?? 10);
+  const freqTrr = Math.max(Number(gromacs.nstxout ?? 5000), Number(gromacs.nstvout ?? 5000));
+  const freqEdr = Number(gromacs.nstenergy ?? 1000);
+  const freqLog = Number(gromacs.nstlog    ?? 1000);
+
+  const rows: SimFileRow[] = [
+    { label: "XTC (compressed coords)", ext: "xtc", freq: freqXtc, frames: freqXtc > 0 ? Math.floor(nsteps / freqXtc) : 0, sizeLabel: "" },
+    { label: "TRR (full precision)",    ext: "trr", freq: freqTrr, frames: freqTrr > 0 ? Math.floor(nsteps / freqTrr) : 0, sizeLabel: "" },
+    { label: "EDR (energies)",          ext: "edr", freq: freqEdr, frames: freqEdr > 0 ? Math.floor(nsteps / freqEdr) : 0, sizeLabel: "" },
+    { label: "LOG (md.log)",            ext: "log", freq: freqLog, frames: freqLog > 0 ? Math.floor(nsteps / freqLog) : 0, sizeLabel: "" },
+  ].map((r) => ({ ...r, sizeLabel: _estimateSize(BYTES_PER_FRAME[r.ext], r.frames) }));
+
+  const totalPs  = nsteps * dt;
+  const totalNs  = totalPs / 1000;
+  const simLabel = nsteps > 0
+    ? totalNs >= 1 ? `${totalNs.toFixed(2)} ns` : `${totalPs.toFixed(1)} ps`
+    : "—";
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-100">Start Simulation</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Total: {simLabel} · {nsteps.toLocaleString()} steps</p>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Logging table */}
+        <div className="px-5 py-4">
+          <p className="text-xs font-medium text-gray-400 mb-3 uppercase tracking-wide">Output logging</p>
+          <div className="rounded-lg border border-gray-800 overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-800/60 text-gray-400">
+                  <th className="text-left px-3 py-2 font-medium">File</th>
+                  <th className="text-right px-3 py-2 font-medium">Every</th>
+                  <th className="text-right px-3 py-2 font-medium">Frames</th>
+                  <th className="text-right px-3 py-2 font-medium">Est. size</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/60">
+                {rows.map((row) => (
+                  <tr key={row.ext} className="text-gray-300">
+                    <td className="px-3 py-2">
+                      <span className="font-mono text-[11px] text-blue-400">.{row.ext}</span>
+                      <span className="ml-2 text-gray-500">{row.label.split("(")[1]?.replace(")", "") ?? ""}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-400">
+                      {row.freq > 0 ? `${row.freq.toLocaleString()} steps` : <span className="text-gray-600">off</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono">
+                      {row.frames > 0 ? row.frames.toLocaleString() : <span className="text-gray-600">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-400">{row.sizeLabel}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] text-gray-600 leading-relaxed">
+            Size estimates assume ~1 000 atoms. Actual sizes vary with system size.
+          </p>
+        </div>
+
+        {/* Footer buttons */}
+        <div className="flex gap-3 justify-end px-5 pb-5">
+          <button
+            onClick={onEdit}
+            className="px-4 py-2 text-xs text-gray-300 hover:text-gray-100 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors font-medium"
+          >
+            Edit Settings
+          </button>
+          <button
+            onClick={onRun}
+            className="px-5 py-2 text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-lg transition-all shadow-lg shadow-blue-900/30 flex items-center gap-1.5"
+          >
+            <Play size={12} fill="currentColor" />
+            Run
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Progress tab ───────────────────────────────────────────────────────
 
 function ProgressTab({
@@ -551,6 +1053,8 @@ function ProgressTab({
   totalSteps,
   runStartedAt,
   runFinishedAt,
+  resultCards,
+  setResultCards,
 }: {
   sessionId: string;
   runStatus: "standby" | "running" | "finished" | "failed";
@@ -558,6 +1062,8 @@ function ProgressTab({
   totalSteps: number;
   runStartedAt: number | null;
   runFinishedAt?: number | null;
+  resultCards: ResultCardDef[];
+  setResultCards: React.Dispatch<React.SetStateAction<ResultCardDef[]>>;
 }) {
   const [agentOpen, setAgentOpen] = useState(false);
   const [simFiles, setSimFiles] = useState<string[]>([]);
@@ -568,6 +1074,7 @@ function ProgressTab({
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const [trajectoryKey, setTrajectoryKey] = useState(0);
+  const [addPlotOpen, setAddPlotOpen] = useState(false);
 
   // Archive panel
   const [showArchive, setShowArchive] = useState(false);
@@ -713,12 +1220,19 @@ function ProgressTab({
     ? Math.max(0, Math.min(100, (liveProgress.step / targetSteps) * 100))
     : 0;
   const pct = runStatus === "finished" ? 100 : pctRaw;
-  const elapsedMs = runStartedAt
-    ? (runFinishedAt ? Math.max(0, runFinishedAt - runStartedAt) : Math.max(0, nowMs - runStartedAt))
-    : 0;
-  const elapsedLabel = runStartedAt ? formatElapsed(elapsedMs) : "0s";
+  // Only use the live `nowMs` ticker while the sim is actively running.
+  // If finished but `runFinishedAt` hasn't arrived yet, show "—" rather than
+  // currentTime − pastStartTime (which would display an inflated elapsed time).
+  const elapsedMs: number | null = !runStartedAt
+    ? null
+    : runFinishedAt
+      ? Math.max(0, runFinishedAt - runStartedAt)
+      : runStatus === "running"
+        ? Math.max(0, nowMs - runStartedAt)
+        : null;
+  const elapsedLabel = elapsedMs !== null ? formatElapsed(elapsedMs) : "—";
   const simNs = liveProgress ? liveProgress.time_ps / 1000 : 0;
-  const computedNsPerDay = elapsedMs > 0 && simNs > 0
+  const computedNsPerDay = elapsedMs != null && elapsedMs > 0 && simNs > 0
     ? (simNs * 86400000) / elapsedMs
     : null;
   const runStatusBadge = runStatus === "running"
@@ -749,26 +1263,26 @@ function ProgressTab({
         icon={<Activity size={13} />}
         title="Run Summary"
         accent="emerald"
-        action={<span className={`text-[11px] font-semibold ${runStatusBadge.className}`}>{runStatusBadge.label}</span>}
+        action={<span className={`text-xs font-semibold ${runStatusBadge.className}`}>{runStatusBadge.label}</span>}
       >
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-gray-900/70 border border-gray-800 rounded-lg p-2">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Wall Time</p>
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider">Wall Time</p>
             <p className="text-sm font-mono text-gray-200">{elapsedLabel}</p>
           </div>
           <div className="bg-gray-900/70 border border-gray-800 rounded-lg p-2">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Sim Time</p>
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider">Sim Time</p>
             <p className="text-sm font-mono text-gray-200">{simNs.toFixed(3)} ns</p>
           </div>
           <div className="bg-gray-900/70 border border-gray-800 rounded-lg p-2">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Performance</p>
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider">Performance</p>
             <p className="text-sm font-mono text-gray-200">
               {computedNsPerDay !== null ? `${computedNsPerDay.toFixed(2)} ns/day` : "—"}
             </p>
           </div>
         </div>
         <div className="space-y-1">
-          <div className="flex justify-between text-[11px] text-gray-500">
+          <div className="flex justify-between text-xs text-gray-500">
             <span>
               {runStatus === "finished"
                 ? `${targetSteps.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
@@ -809,16 +1323,50 @@ function ProgressTab({
         />
       </Section>
 
-      <div className="space-y-4 pt-2">
+      {/* Results section */}
+      <div className="space-y-3 pt-2">
         <div className="flex items-center gap-2">
           <div className="h-px flex-1 bg-gray-800" />
-          <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Results</span>
+          <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wider">Results</span>
           <div className="h-px flex-1 bg-gray-800" />
         </div>
-        <EnergyPlot sessionId={sessionId} />
-        <ColvarPlot sessionId={sessionId} />
-        <RamachandranPlot sessionId={sessionId} />
+
+        {/* Horizontal scrollable card row */}
+        <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
+          {/* Cards: newest first */}
+          {[...resultCards].reverse().map((card) => (
+            <ResultCard
+              key={card.id}
+              card={card}
+              sessionId={sessionId}
+              onDelete={() => setResultCards((prev) => prev.filter((c) => c.id !== card.id))}
+            />
+          ))}
+
+          {/* Add button */}
+          <button
+            onClick={() => setAddPlotOpen(true)}
+            className="flex-shrink-0 w-56 rounded-xl border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
+            style={{ height: "256px" }}
+          >
+            <Plus size={20} />
+            <span className="text-xs">Add plot</span>
+          </button>
+        </div>
       </div>
+
+      {addPlotOpen && (
+        <AddPlotModal
+          onSelect={(types) => {
+            setResultCards((prev) => [
+              ...prev,
+              ...types.map((type) => ({ id: crypto.randomUUID(), type })),
+            ]);
+          }}
+          onClose={() => setAddPlotOpen(false)}
+          existingTypes={new Set(resultCards.map((c) => c.type))}
+        />
+      )}
 
       {/* Files section */}
       <Section
@@ -867,7 +1415,7 @@ function ProgressTab({
                   {/* Filename — click to preview */}
                   <button
                     onClick={() => setPreviewPath(f)}
-                    className="flex-1 text-left text-xs font-mono text-gray-400 hover:text-gray-200 truncate transition-colors"
+                    className="flex-1 text-left text-[13px] font-mono text-gray-400 hover:text-gray-200 truncate transition-colors"
                     title={name}
                   >
                     {name}
@@ -941,7 +1489,7 @@ function ProgressTab({
                       className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-gray-800/60 group"
                     >
                       <span
-                        className="flex-1 text-xs font-mono text-gray-500 truncate"
+                        className="flex-1 text-[13px] font-mono text-gray-500 truncate"
                         title={name}
                       >
                         {name}
@@ -1996,8 +2544,10 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const [simStartedAt, setSimStartedAt] = useState<number | null>(null);
   const [simFinishedAt, setSimFinishedAt] = useState<number | null>(null);
   const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
+  const [showRunConfirm, setShowRunConfirm] = useState(false);
+  const [resultCards, setResultCards] = useState<ResultCardDef[]>([]);
   const [gromacsSaveState, setGromacsSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const { setSession, sessions, addSession, setSessionMolecule, setSessionRunStatus, appendSSEEvent } = useSessionStore();
+  const { setSession, sessions, addSession, setSessionMolecule, setSessionRunStatus, setSessionResultCards, appendSSEEvent } = useSessionStore();
   // Stable ref — lets the restore effect read latest sessions without re-running
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -2009,12 +2559,27 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setSimState("standby");
     setSimRunStatus(preserved);
     setSimExitCode(null);
-    // Restore wall-time timestamps persisted in session.json
     setSimStartedAt(stored?.started_at ? stored.started_at * 1000 : null);
     setSimFinishedAt(stored?.finished_at ? stored.finished_at * 1000 : null);
     setPauseConfirmOpen(false);
     setGromacsSaveState("idle");
+    // Restore result cards from persisted session data
+    const cards = (stored?.result_cards ?? []).filter((t): t is ResultCardType => VALID_RESULT_CARD_TYPES.has(t));
+    setResultCards(cards.map((type) => ({ id: crypto.randomUUID(), type })));
   }, [sessionId]);
+
+  // Fix wall-clock race: sessions list may load after the above effect runs (page refresh).
+  // When it arrives, fill in any missing timestamps without clobbering active state.
+  useEffect(() => {
+    if (!sessionId) return;
+    const stored = sessions.find((s) => s.session_id === sessionId);
+    if (!stored) return;
+    if (stored.started_at) setSimStartedAt((prev) => prev ?? stored.started_at! * 1000);
+    if (stored.finished_at) setSimFinishedAt((prev) => prev ?? stored.finished_at! * 1000);
+    if (stored.run_status === "finished" || stored.run_status === "failed") {
+      setSimRunStatus((prev) => (prev === "standby" ? stored.run_status! : prev));
+    }
+  }, [sessionId, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const gromacsSaveSeqRef = useRef(0);
   const gromacsSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2025,6 +2590,14 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   useEffect(() => {
     if (sessionId) setSessionRunStatus(sessionId, simRunStatus);
   }, [sessionId, simRunStatus, setSessionRunStatus]);
+
+  // Persist result cards to session.json whenever they change
+  useEffect(() => {
+    if (!sessionId) return;
+    const types = resultCards.map((c) => c.type);
+    setSessionResultCards(sessionId, types);
+    updateResultCards(sessionId, types).catch(() => {});
+  }, [sessionId, resultCards, setSessionResultCards]);
 
   useEffect(() => {
     return () => {
@@ -2280,6 +2853,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         totalSteps={Number(((cfg.method as Record<string, unknown> | undefined)?.nsteps ?? 0))}
         runStartedAt={simStartedAt}
         runFinishedAt={simFinishedAt}
+        resultCards={resultCards}
+        setResultCards={setResultCards}
       />
     ),
     molecule: (
@@ -2314,7 +2889,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       <div className="flex-shrink-0 p-4 border-t border-gray-800 bg-gray-900/50">
         {actionState === "standby" && (
           <button
-            onClick={handleStartMD}
+            onClick={() => setShowRunConfirm(true)}
             className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/30 text-sm"
           >
             <Play size={16} fill="currentColor" />
@@ -2340,6 +2915,16 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           </button>
         )}
       </div>
+
+      {/* Simulation run confirmation dialog */}
+      {showRunConfirm && (
+        <SimRunConfirmModal
+          cfg={cfg}
+          onEdit={() => { setShowRunConfirm(false); setActiveTab("gromacs"); }}
+          onRun={() => { setShowRunConfirm(false); handleStartMD(); }}
+          onClose={() => setShowRunConfirm(false)}
+        />
+      )}
 
       {/* Pause confirmation dialog */}
       {pauseConfirmOpen && (

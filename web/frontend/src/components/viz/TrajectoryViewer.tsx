@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Camera, Crosshair, Film, Loader2, Pause, Play } from "lucide-react";
+import { AlertCircle, Camera, Crosshair, Film, Loader2, Pause, Play, Settings, X } from "lucide-react";
 import { downloadUrl, getFileContent } from "@/lib/api";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 
@@ -95,6 +95,25 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const [totalFrames, setTotalFrames]   = useState<number | null>(null);
   const [structInfo, setStructInfo]     = useState<{ atoms: number; residues: number } | null>(null);
   const [gifGenerating, setGifGenerating] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef                     = useRef<HTMLDivElement>(null);
+
+  const [exportSettings, setExportSettings] = useState({
+    screenshot: { factor: 6, antialias: true,  trim: false, transparent: true  },
+    gif:        { factor: 1, antialias: false, trim: false, transparent: false, maxFrames: 60, frameDelay: 80 },
+  });
+
+  // Close settings panel on outside click
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [settingsOpen]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const applyRepresentations = (component: any, currentReps?: typeof reps) => {
@@ -306,7 +325,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const handleScreenshot = () => {
     if (!stageRef.current) return;
     stageRef.current
-      .makeImage({ factor: 6, antialias: true, trim: false, transparent: true })
+      .makeImage({ ...exportSettings.screenshot })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then((blob: any) => {
         const url  = URL.createObjectURL(blob);
@@ -367,8 +386,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
       });
 
       const n = totalFrames;
-      // Cap at 60 frames to keep GIF size reasonable
-      const maxFrames = Math.min(n, 60);
+      const maxFrames = Math.min(n, exportSettings.gif.maxFrames);
       const step = Math.max(1, Math.floor(n / maxFrames));
 
       for (let i = 0; i < n; i += step) {
@@ -392,12 +410,12 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
         });
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const blob: Blob = await stageRef.current!.makeImage({ factor: 1, antialias: false, trim: false, transparent: false }) as any;
+        const blob: Blob = await stageRef.current!.makeImage({ ...exportSettings.gif }) as any;
         const imgUrl = URL.createObjectURL(blob);
         await new Promise<void>((resolve) => {
           const img = new Image();
           img.onload = () => {
-            gif.addFrame(img, { delay: 80, copy: true });
+            gif.addFrame(img, { delay: exportSettings.gif.frameDelay, copy: true });
             URL.revokeObjectURL(imgUrl);
             resolve();
           };
@@ -449,7 +467,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                 <span className="text-xs">Loading trajectory…</span>
               </>
             ) : (
-              <span className="text-xs text-gray-600 px-4 text-center">No trajectory file found. Check simulation output.</span>
+              <span className="text-xs text-gray-600 px-4 text-center">No trajectory data yet.</span>
             )}
           </div>
         ) : loadingStage ? (
@@ -460,24 +478,15 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
         ) : null}
         <div ref={containerRef} className="w-full h-full" />
 
-        {/* Upper-left overlay: atom/residue counts + frame info */}
-        {(structInfo || totalFrames !== null) && (
-          <div className="absolute top-2 left-2 flex flex-col gap-1 pointer-events-none">
-            {structInfo && (
-              <div className="flex gap-1.5">
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
-                  {structInfo.atoms.toLocaleString()} atoms
-                </span>
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
-                  {structInfo.residues} residues
-                </span>
-              </div>
-            )}
-            {totalFrames !== null && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-400 w-fit">
-                frame {frame} / {Math.max(totalFrames - 1, 0)}
-              </span>
-            )}
+        {/* Upper-left overlay: atom/residue counts */}
+        {structInfo && (
+          <div className="absolute top-2 left-2 flex gap-1.5 pointer-events-none">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
+              {structInfo.atoms.toLocaleString()} atoms
+            </span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
+              {structInfo.residues} residues
+            </span>
           </div>
         )}
 
@@ -558,22 +567,163 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             }
             {gifGenerating ? "Exporting…" : "GIF"}
           </button>
+
+          {/* Settings */}
+          <div className="relative" ref={settingsRef}>
+            <button
+              onClick={() => setSettingsOpen((v) => !v)}
+              title="Export settings"
+              className={`flex items-center justify-center w-[30px] h-[26px] rounded-md text-xs border transition-colors ${
+                settingsOpen
+                  ? "border-indigo-600 bg-indigo-900/40 text-indigo-300"
+                  : "border-gray-700/60 bg-gray-800/60 text-gray-400 hover:text-gray-200 hover:bg-gray-700/60"
+              }`}
+            >
+              <Settings size={11} />
+            </button>
+
+            {settingsOpen && (
+              <div className="absolute right-0 bottom-full mb-2 z-50 w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-gray-700">
+                  <span className="font-semibold text-gray-200">Export Settings</span>
+                  <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
+                    <X size={12} />
+                  </button>
+                </div>
+
+                <div className="p-3 space-y-4">
+                  {/* ── Screenshot ── */}
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Screenshot</p>
+                    <div className="space-y-2">
+                      {/* Factor */}
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 text-gray-400 flex-shrink-0">Factor</span>
+                        <input
+                          type="range" min={1} max={8} step={1}
+                          value={exportSettings.screenshot.factor}
+                          onChange={(e) => setExportSettings((s) => ({ ...s, screenshot: { ...s.screenshot, factor: Number(e.target.value) } }))}
+                          className="flex-1 accent-indigo-500 h-1"
+                        />
+                        <span className="w-5 text-right text-gray-300 tabular-nums">{exportSettings.screenshot.factor}×</span>
+                      </div>
+                      {/* Booleans */}
+                      {(["antialias", "trim", "transparent"] as const).map((key) => (
+                        <div key={key} className="flex items-center justify-between">
+                          <span className="text-gray-400 capitalize">{key}</span>
+                          <button
+                            onClick={() => setExportSettings((s) => ({ ...s, screenshot: { ...s.screenshot, [key]: !s.screenshot[key] } }))}
+                            className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${exportSettings.screenshot[key] ? "bg-indigo-600" : "bg-gray-700"}`}
+                          >
+                            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${exportSettings.screenshot[key] ? "left-[18px]" : "left-0.5"}`} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-800" />
+
+                  {/* ── GIF ── */}
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">GIF Export</p>
+                    <div className="space-y-2">
+                      {/* Factor */}
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 text-gray-400 flex-shrink-0">Factor</span>
+                        <input
+                          type="range" min={1} max={3} step={1}
+                          value={exportSettings.gif.factor}
+                          onChange={(e) => setExportSettings((s) => ({ ...s, gif: { ...s.gif, factor: Number(e.target.value) } }))}
+                          className="flex-1 accent-indigo-500 h-1"
+                        />
+                        <span className="w-5 text-right text-gray-300 tabular-nums">{exportSettings.gif.factor}×</span>
+                      </div>
+                      {/* Max frames */}
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 text-gray-400 flex-shrink-0">Max frames</span>
+                        <input
+                          type="range" min={10} max={120} step={10}
+                          value={exportSettings.gif.maxFrames}
+                          onChange={(e) => setExportSettings((s) => ({ ...s, gif: { ...s.gif, maxFrames: Number(e.target.value) } }))}
+                          className="flex-1 accent-indigo-500 h-1"
+                        />
+                        <span className="w-8 text-right text-gray-300 tabular-nums">{exportSettings.gif.maxFrames}</span>
+                      </div>
+                      {/* Frame delay */}
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 text-gray-400 flex-shrink-0">Frame delay</span>
+                        <input
+                          type="range" min={40} max={200} step={10}
+                          value={exportSettings.gif.frameDelay}
+                          onChange={(e) => setExportSettings((s) => ({ ...s, gif: { ...s.gif, frameDelay: Number(e.target.value) } }))}
+                          className="flex-1 accent-indigo-500 h-1"
+                        />
+                        <span className="w-8 text-right text-gray-300 tabular-nums">{exportSettings.gif.frameDelay}ms</span>
+                      </div>
+                      {/* Booleans */}
+                      {(["antialias", "trim", "transparent"] as const).map((key) => (
+                        <div key={key} className="flex items-center justify-between">
+                          <span className="text-gray-400 capitalize">{key}</span>
+                          <button
+                            onClick={() => setExportSettings((s) => ({ ...s, gif: { ...s.gif, [key]: !s.gif[key as keyof typeof s.gif] } }))}
+                            className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${exportSettings.gif[key as keyof typeof exportSettings.gif] ? "bg-indigo-600" : "bg-gray-700"}`}
+                          >
+                            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${exportSettings.gif[key as keyof typeof exportSettings.gif] ? "left-[18px]" : "left-0.5"}`} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Scrubber */}
-      <div className="flex items-center gap-2">
-        <input
-          type="range"
-          min={0}
-          max={Math.max((totalFrames ?? 1) - 1, 0)}
-          step={1}
-          value={Math.min(frame, Math.max((totalFrames ?? 1) - 1, 0))}
-          onChange={(e) => handleSeek(Number(e.currentTarget.value))}
-          disabled={!ready || !totalFrames || totalFrames <= 1 || gifGenerating}
-          className="w-full accent-indigo-500 disabled:opacity-40"
-        />
-      </div>
+      {(() => {
+        const maxFrame = Math.max((totalFrames ?? 1) - 1, 0);
+        const clampedFrame = Math.min(frame, maxFrame);
+        const pct = maxFrame > 0 ? (clampedFrame / maxFrame) * 100 : 0;
+        const disabled = !ready || !totalFrames || totalFrames <= 1 || gifGenerating;
+        return (
+          <div className={`flex items-center gap-3 ${disabled ? "opacity-40 pointer-events-none" : ""}`}>
+            {/* Custom track */}
+            <div className="relative flex-1 h-5 flex items-center group">
+              {/* Background track */}
+              <div className="absolute inset-x-0 h-1 rounded-full bg-gray-800" />
+              {/* Filled portion */}
+              <div
+                className="absolute left-0 h-1 rounded-full bg-indigo-600/80"
+                style={{ width: `${pct}%` }}
+              />
+              {/* Thumb */}
+              <div
+                className="absolute w-3 h-3 rounded-full bg-indigo-400 border border-indigo-300/40 shadow shadow-indigo-900/60 transition-transform duration-75 group-hover:scale-125"
+                style={{ left: `calc(${pct}% - 6px)` }}
+              />
+              {/* Invisible native input for interaction */}
+              <input
+                type="range"
+                min={0}
+                max={maxFrame}
+                step={1}
+                value={clampedFrame}
+                onChange={(e) => handleSeek(Number(e.currentTarget.value))}
+                disabled={disabled}
+                className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
+              />
+            </div>
+            {/* Frame counter */}
+            <span className="text-[10px] font-mono text-gray-500 tabular-nums whitespace-nowrap flex-shrink-0">
+              {clampedFrame} / {maxFrame}
+            </span>
+          </div>
+        );
+      })()}
     </div>
   );
 }

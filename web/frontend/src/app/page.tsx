@@ -16,7 +16,7 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [autoSend, setAutoSend] = useState("");
   const [showNewSession, setShowNewSession] = useState(false);
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
   const { addSession, fetchSessions } = useSessionStore();
 

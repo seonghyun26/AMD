@@ -62,7 +62,7 @@ class GROMACSRunner:
         """Return the full command list, Docker-wrapped when image is configured."""
         if self._docker_image:
             docker_prefix = [
-                "docker", "run", "--rm",
+                "docker", "run", "--rm", "-i",
                 "-w", "/work",
                 "-v", f"{work_dir.resolve()}:/work",
             ]

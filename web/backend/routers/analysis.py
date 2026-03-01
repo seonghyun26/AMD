@@ -8,9 +8,9 @@ from fastapi import APIRouter, HTTPException, Query
 
 from web.backend.analysis_utils import (
     colvar_to_columns,
-    edr_to_timeseries,
     fes_dat_to_heatmap,
     get_log_progress,
+    run_gmx_energy,
 )
 from web.backend.session_manager import get_or_restore_session
 
@@ -45,13 +45,19 @@ async def get_fes(session_id: str, filename: str = "fes.dat"):
 @router.get("/sessions/{session_id}/analysis/energy")
 async def get_energy(
     session_id: str,
-    filename: str = "md.edr",
-    terms: list[str] = Query(default=["Potential Energy", "Temperature"]),
+    force: bool = Query(default=False),
 ):
-    """Parse .edr energy file → time series for Plotly."""
+    """Run 'gmx energy' on simulation/md.edr → time series for Plotly.
+
+    Results are cached as analysis/energy.xvg inside the session work_dir.
+    Pass force=true to regenerate from the latest .edr data.
+    """
     session = _require_session(session_id)
-    path = str(Path(session.work_dir) / filename)
-    data = edr_to_timeseries(path, terms)
+    try:
+        gmx = session.agent._gmx
+    except AttributeError:
+        return {"data": {}, "available": False}
+    data = run_gmx_energy(session.work_dir, gmx, force=force)
     return {"data": data, "available": bool(data)}
 
 

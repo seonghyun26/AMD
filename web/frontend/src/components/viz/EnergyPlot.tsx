@@ -18,7 +18,7 @@ export default function EnergyPlot({ sessionId }: Props) {
 
   const load = () => {
     setLoading(true);
-    getEnergy(sessionId, DEFAULT_TERMS)
+    getEnergy(sessionId)
       .then((r) => { if (r.available) setData(r.data); })
       .catch(() => {})
       .finally(() => setLoading(false));

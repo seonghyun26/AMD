@@ -18,6 +18,7 @@ export interface SessionSummary {
   run_status?: "standby" | "running" | "finished" | "failed";
   started_at?: number;
   finished_at?: number;
+  result_cards?: string[];
 }
 
 interface SessionState {
@@ -37,6 +38,7 @@ interface SessionState {
   updateSessionNickname: (sessionId: string, nickname: string) => void;
   setSessionMolecule: (sessionId: string, molecule: string) => void;
   setSessionRunStatus: (sessionId: string, runStatus: SessionSummary["run_status"]) => void;
+  setSessionResultCards: (sessionId: string, resultCards: string[]) => void;
   addUserMessage: (text: string) => void;
   appendSSEEvent: (event: SSEEvent) => void;
   updateProgress: (progress: SimProgress) => void;
@@ -111,6 +113,13 @@ export const useSessionStore = create<SessionState>((set) => ({
         if (s.run_status === "failed" && runStatus !== "running") return s;
         return { ...s, run_status: runStatus };
       }),
+    })),
+
+  setSessionResultCards: (sessionId, resultCards) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.session_id === sessionId ? { ...s, result_cards: resultCards } : s
+      ),
     })),
 
   addUserMessage: (text) =>
