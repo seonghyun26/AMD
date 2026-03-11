@@ -57,6 +57,17 @@ async def get_energy(
     Pass force=true to regenerate from the latest .edr data.
     """
     session = _require_session(session_id)
+    wd = Path(session.work_dir)
+    xvg_path = wd / "analysis" / "energy.xvg"
+
+    # Serve cached XVG without needing a gmx runner
+    if not force and xvg_path.exists() and xvg_path.stat().st_size > 0:
+        from web.backend.analysis_utils import _parse_xvg_with_header
+        data = _parse_xvg_with_header(str(xvg_path))
+        if data:
+            return {"data": data, "available": True}
+
+    # Fall back to gmx energy extraction
     try:
         gmx = session.agent._gmx
     except AttributeError:

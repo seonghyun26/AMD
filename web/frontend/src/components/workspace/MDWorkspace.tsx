@@ -779,8 +779,8 @@ function ResultCard({
   return (
     <>
       <div
-        className="flex-shrink-0 w-56 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
-        style={{ height: "272px", borderColor: `${accentColor}30` }}
+        className="flex-shrink-0 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
+        style={{ width: "360px", height: "448px", borderColor: `${accentColor}30` }}
       >
         {/* Header */}
         <div
@@ -1087,8 +1087,8 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
   return (
     <>
       <div
-        className="flex-shrink-0 w-56 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
-        style={{ height: "272px", borderColor: `${accentColor}30` }}
+        className="flex-shrink-0 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
+        style={{ width: "360px", height: "448px", borderColor: `${accentColor}30` }}
       >
         <div
           className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0"
@@ -1777,8 +1777,8 @@ function ProgressTab({
           {/* Add button */}
           <button
             onClick={() => setAddPlotOpen(true)}
-            className="flex-shrink-0 w-56 rounded-xl border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
-            style={{ height: "272px" }}
+            className="flex-shrink-0 rounded-xl border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
+            style={{ width: "360px", height: "448px" }}
           >
             <Plus size={20} />
             <span className="text-xs">Add plot</span>
