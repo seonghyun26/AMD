@@ -67,7 +67,7 @@ export const useSessionStore = create<SessionState>((set) => ({
     set({ sessionId: id, config, messages: [], simProgress: null }),
 
   switchSession: (id, workDir) =>
-    set({ sessionId: id, config: { method: "", system: "", gromacs: "", plumed_cvs: "", workDir }, messages: [], simProgress: null }),
+    set({ sessionId: id, config: { method: "", system: "", gromacs: "", plumed_cvs: "", workDir }, messages: [], simProgress: null, isStreaming: false }),
 
   fetchSessions: async () => {
     try {

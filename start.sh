@@ -3,8 +3,8 @@
 #
 # Usage:
 #   ./start.sh          Build frontend (if needed) + start FastAPI on :8000
-#   ./start.sh --dev    Dev mode: FastAPI :8000 (auto-reload) + frontend watcher
-#                       (edits to src/ trigger an auto-rebuild; single port)
+#   ./start.sh --dev    Dev mode: Next.js HMR on :3000 + FastAPI :8000 (auto-reload)
+#                       (instant hot-reload on frontend changes)
 #   ./start.sh --build  Force-rebuild the frontend even if out/ exists
 
 set -e
@@ -53,36 +53,30 @@ if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
   npm --prefix "$FRONTEND_DIR" install --silent
 fi
 
-# ── Dev mode: single port, auto-reload backend + auto-rebuild frontend ─
+# ── Dev mode: Next.js HMR on :3000 + FastAPI on :8000 ────────────────
 
 if [ "$DEV" -eq 1 ]; then
   cleanup() {
     echo -e "\nShutting down..."
-    kill "$BACKEND_PID" "$WATCHER_PID" 2>/dev/null
-    wait "$BACKEND_PID" "$WATCHER_PID" 2>/dev/null
+    kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null
+    wait "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null
   }
   trap cleanup INT TERM
 
-  # Initial build so the server has something to serve immediately
-  if [ ! -d "$OUT_DIR" ]; then
-    echo "Building frontend (first run)..."
-    npm --prefix "$FRONTEND_DIR" run build
-  fi
-
-  echo "Dev mode (auto-reload):"
-  echo "  Server  → http://localhost:8000"
-  echo "  Backend auto-reloads on Python changes"
-  echo "  Frontend auto-rebuilds on src/ changes (~5-10s)"
+  echo "Dev mode (HMR):"
+  echo "  Frontend → http://localhost:3000  (Next.js dev, instant HMR)"
+  echo "  Backend  → http://localhost:8000  (FastAPI, auto-reload)"
+  echo "  Open http://localhost:3000 in your browser."
   echo ""
 
   cd "$REPO_ROOT"
   python -m uvicorn web.backend.main:app --host 0.0.0.0 --port 8000 --reload &
   BACKEND_PID=$!
 
-  node "$FRONTEND_DIR/watch.mjs" &
-  WATCHER_PID=$!
+  NEXT_DEV=1 npm --prefix "$FRONTEND_DIR" run dev &
+  FRONTEND_PID=$!
 
-  wait "$BACKEND_PID" "$WATCHER_PID"
+  wait "$BACKEND_PID" "$FRONTEND_PID"
   exit 0
 fi
 

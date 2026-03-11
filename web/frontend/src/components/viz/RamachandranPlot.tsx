@@ -1,14 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { getRamachandranData } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { getRamachandranImageUrl } from "@/lib/api";
 import { RefreshCw } from "lucide-react";
-
-import dynamic from "next/dynamic";
-const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
-
-// Session-scoped cache — avoids redundant API calls when the card remounts
-const ramaCache = new Map<string, { phi: number[]; psi: number[] }>();
 
 interface Props {
   sessionId: string;
@@ -16,74 +10,61 @@ interface Props {
 }
 
 export default function RamachandranPlot({ sessionId, height = 260 }: Props) {
-  const [data, setData] = useState<{ phi: number[]; psi: number[] } | null>(
-    () => ramaCache.get(sessionId) ?? null
-  );
-  const [loading, setLoading] = useState(!ramaCache.has(sessionId));
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback((force = false) => {
-    if (!force && ramaCache.has(sessionId)) {
-      setData(ramaCache.get(sessionId)!);
-      return;
-    }
-    setLoading(true);
-    getRamachandranData(sessionId, force)
-      .then((r) => {
-        if (r.available) {
-          ramaCache.set(sessionId, r.data);
-          setData(r.data);
+  const load = (force: boolean) => {
+    setStatus("loading");
+    setError(null);
+    const cacheBust = force ? Date.now() : 0;
+    fetch(getRamachandranImageUrl(sessionId, force, cacheBust))
+      .then(async (res) => {
+        if (res.ok) {
+          setImgSrc(getRamachandranImageUrl(sessionId, false, cacheBust));
+          setStatus("ok");
+        } else {
+          const body = await res.json().catch(() => ({}));
+          setError(typeof body.detail === "string" ? body.detail : "Failed to generate plot");
+          setStatus("error");
         }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [sessionId]);
+      .catch(() => {
+        setError("Network error");
+        setStatus("error");
+      });
+  };
 
-  useEffect(() => { load(); }, [load]);
-
-  if (!data) {
-    return (
-      <div className="p-3 text-center text-xs text-gray-400">
-        <p>Ramachandran Plot</p>
-        <p className="mt-1">Run a simulation to generate trajectory data</p>
-        <button onClick={() => load(true)} className="mt-2 text-blue-500 hover:underline flex items-center gap-1 mx-auto">
-          <RefreshCw size={11} className={loading ? "animate-spin" : ""} /> Refresh
-        </button>
-      </div>
-    );
-  }
+  useEffect(() => { load(false); }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
       <div className="flex items-center justify-between px-2 pt-2">
         <p className="text-xs font-medium">Ramachandran Plot</p>
         <button onClick={() => load(true)} className="text-gray-400 hover:text-gray-600">
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          <RefreshCw size={12} className={status === "loading" ? "animate-spin" : ""} />
         </button>
       </div>
-      <Plot
-        data={[
-          {
-            type: "histogram2dcontour",
-            x: data.phi,
-            y: data.psi,
-            colorscale: "Blues",
-            reversescale: true,
-            showscale: false,
-            ncontours: 20,
-            contours: { coloring: "fill" },
-          } as Plotly.Data,
-        ]}
-        layout={{
-          xaxis: { title: { text: "φ (rad)", font: { size: 9 } } as any, range: [-Math.PI, Math.PI], zeroline: false, tickfont: { size: 8 } },
-          yaxis: { title: { text: "ψ (rad)", font: { size: 9 } } as any, range: [-Math.PI, Math.PI], zeroline: false, tickfont: { size: 8 } },
-          margin: { t: 10, l: 50, r: 20, b: 40 },
-          paper_bgcolor: "transparent",
-          plot_bgcolor: "transparent",
-          height,
-        }}
-        config={{ responsive: true, displayModeBar: false }}
-        style={{ width: "100%" }}
-      />
+      {status === "loading" && (
+        <div className="flex items-center justify-center" style={{ height }}>
+          <RefreshCw size={16} className="animate-spin text-gray-500" />
+        </div>
+      )}
+      {status === "error" && (
+        <div className="flex flex-col items-center justify-center gap-1 px-3 text-center" style={{ height }}>
+          <p className="text-xs text-red-400">{error}</p>
+          <button onClick={() => load(true)} className="text-xs text-blue-400 hover:underline">Retry</button>
+        </div>
+      )}
+      {status === "ok" && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imgSrc ?? ""}
+          alt="Ramachandran plot"
+          style={{ width: "100%", height }}
+          className="object-contain"
+        />
+      )}
     </div>
   );
 }

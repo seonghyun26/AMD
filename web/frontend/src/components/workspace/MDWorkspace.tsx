@@ -61,7 +61,7 @@ import {
   getProgress,
   stopSimulation,
   getEnergy,
-  getRamachandranData,
+  getRamachandranImageUrl,
   updateResultCards,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
@@ -566,8 +566,6 @@ const ENERGY_CARD_TYPES: EnergyCardType[] = [
 
 const VALID_RESULT_CARD_TYPES = new Set<string>([...ENERGY_CARD_TYPES, "ramachandran"]);
 
-// Module-level FES data cache keyed by sessionId — avoids re-fetching when the card remounts
-const ramaDataCache = new Map<string, { phi: number[]; psi: number[] }>();
 
 /** Write a 2-column float64 numpy array [time, value] and trigger a browser download. */
 function downloadNpy(times: number[], values: number[], filename: string) {
@@ -940,47 +938,151 @@ function ResultCard({
   );
 }
 
+// ── Ramachandran expanded modal ───────────────────────────────────────
+
+function RamachandranExpandedModal({
+  accentColor,
+  imgSrc,
+  status,
+  error,
+  spinning,
+  onClose,
+  onRefresh,
+  onDownload,
+}: {
+  accentColor: string;
+  imgSrc: string | null;
+  status: "loading" | "ok" | "error";
+  error: string | null;
+  spinning: boolean;
+  onClose: () => void;
+  onRefresh: () => void;
+  onDownload: () => void;
+}) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border"
+        style={{ width: "min(600px, 95vw)", height: "min(600px, 90vh)", borderColor: `${accentColor}40` }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between px-4 py-2.5 bg-gray-800/80 border-b flex-shrink-0"
+          style={{ borderColor: `${accentColor}25` }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
+            <span className="text-xs font-semibold tracking-wide" style={{ color: accentColor }}>Ramachandran</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={onRefresh}
+              title="Refresh"
+              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
+            >
+              <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
+            </button>
+            <button
+              onClick={onDownload}
+              disabled={status !== "ok"}
+              title="Download PNG"
+              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Download size={12} />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center p-4">
+          {status === "loading" && (
+            <div className="flex flex-col items-center justify-center gap-2 text-gray-500">
+              <Loader2 size={20} className="animate-spin" />
+              <span className="text-sm">Generating plot…</span>
+            </div>
+          )}
+          {status === "error" && (
+            <div className="flex flex-col items-center justify-center gap-2 px-3 text-center">
+              <span className="text-sm text-red-400">{error}</span>
+              <button onClick={onRefresh} className="text-sm text-blue-400 hover:underline">Retry</button>
+            </div>
+          )}
+          {status === "ok" && imgSrc && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imgSrc}
+              alt="Ramachandran plot"
+              className="max-w-full max-h-full object-contain"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Ramachandran result card ───────────────────────────────────────────
 
 function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: () => void }) {
-  const [data, setData] = useState<{ phi: number[]; psi: number[] } | null>(
-    () => ramaDataCache.get(sessionId) ?? null
-  );
-  const [loading, setLoading] = useState(!ramaDataCache.has(sessionId));
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [error, setError] = useState<string | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const graphDivRef = useRef<any>(null);
+  const [expanded, setExpanded] = useState(false);
   const accentColor = "#06b6d4";
 
-  const load = useCallback((force = false) => {
-    if (!force && ramaDataCache.has(sessionId)) {
-      setData(ramaDataCache.get(sessionId)!);
-      return;
-    }
-    setLoading(true);
-    getRamachandranData(sessionId, force)
-      .then((r) => {
-        if (r.available) { ramaDataCache.set(sessionId, r.data); setData(r.data); }
+  const load = (force: boolean) => {
+    setStatus("loading");
+    setError(null);
+    const cacheBust = force ? Date.now() : 0;
+    const fetchUrl = getRamachandranImageUrl(sessionId, force, cacheBust);
+    fetch(fetchUrl)
+      .then(async (res) => {
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          setImgSrc(url);
+          setStatus("ok");
+        } else {
+          const body = await res.json().catch(() => ({}));
+          setError(typeof body.detail === "string" ? body.detail : "Failed to generate plot");
+          setStatus("error");
+        }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [sessionId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleRefresh = () => { setSpinning(true); setTimeout(() => setSpinning(false), 800); load(true); };
-
-  const handleDownload = () => {
-    if (graphDivRef.current) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).Plotly?.downloadImage(graphDivRef.current, {
-        format: "png", filename: "ramachandran", height: 600, width: 600,
+      .catch(() => {
+        setError("Network error");
+        setStatus("error");
       });
-    }
   };
 
-  const PI = Math.PI;
+  useEffect(() => { load(false); }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRefresh = () => {
+    setSpinning(true);
+    setTimeout(() => setSpinning(false), 800);
+    load(true);
+  };
+
+  const handleDownload = () => {
+    const a = document.createElement("a");
+    a.href = getRamachandranImageUrl(sessionId);
+    a.download = "ramachandran.png";
+    a.click();
+  };
 
   return (
     <>
@@ -1000,51 +1102,54 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
             <button onClick={handleRefresh} title="Refresh" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors">
               <RotateCcw size={11} className={spinning ? "animate-spin" : ""} />
             </button>
-            <button onClick={handleDownload} disabled={!data} title="Download PNG" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+            <button onClick={handleDownload} disabled={status !== "ok"} title="Download PNG" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
               <Download size={11} />
+            </button>
+            <button onClick={() => setExpanded(true)} title="Expand" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors">
+              <Search size={11} />
             </button>
             <button onClick={() => setConfirmDelete(true)} title="Remove" className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700/60 transition-colors">
               <Trash2 size={11} />
             </button>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
+        <div className="flex-1 min-h-0 overflow-hidden relative">
+          {status === "loading" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-gray-500">
               <Loader2 size={16} className="animate-spin" />
-              <span className="text-xs">Computing angles…</span>
+              <span className="text-xs">Generating plot…</span>
             </div>
-          ) : !data ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 px-3 text-center">
-              <span className="text-xs text-gray-600">No trajectory data yet</span>
-            </div>
-          ) : (
-            <Plot
-              data={[{
-                type: "histogram2dcontour",
-                x: data.phi,
-                y: data.psi,
-                colorscale: "Blues",
-                reversescale: true,
-                showscale: false,
-                ncontours: 20,
-                contours: { coloring: "fill" },
-              } as Plotly.Data]}
-              layout={{
-                xaxis: { title: { text: "φ (rad)", font: { size: 9 } } as any, range: [-PI, PI], zeroline: false, tickfont: { size: 8, color: "#6b7280" } },
-                yaxis: { title: { text: "ψ (rad)", font: { size: 9 } } as any, range: [-PI, PI], zeroline: false, tickfont: { size: 8, color: "#6b7280" } },
-                margin: { t: 4, l: 42, r: 10, b: 30 },
-                paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-                height: 220,
-              }}
-              config={{ responsive: true, displayModeBar: false }}
-              style={{ width: "100%" }}
-              onInitialized={(_, graphDiv) => { graphDivRef.current = graphDiv; }}
-              onUpdate={(_, graphDiv) => { graphDivRef.current = graphDiv; }}
-            />
           )}
+          {status === "error" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-3 text-center">
+              <span className="text-xs text-red-400">{error}</span>
+              <button onClick={handleRefresh} className="text-xs text-blue-400 hover:underline">Retry</button>
+            </div>
+          )}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imgSrc ?? ""}
+            alt="Ramachandran plot"
+            className="w-full h-full object-contain"
+            style={{ display: status === "ok" ? "block" : "none" }}
+          />
         </div>
       </div>
+
+      {/* Expanded modal */}
+      {expanded && (
+        <RamachandranExpandedModal
+          accentColor={accentColor}
+          imgSrc={imgSrc}
+          status={status}
+          error={error}
+          spinning={spinning}
+          onClose={() => setExpanded(false)}
+          onRefresh={handleRefresh}
+          onDownload={handleDownload}
+        />
+      )}
+
       {confirmDelete && (
         <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
           <div className="bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
@@ -1225,13 +1330,30 @@ function _estimateSize(bytesPerFrame: number, frames: number): string {
   return `${(total / 1024 ** 3).toFixed(2)} GB`;
 }
 
-// Rough per-frame byte estimates (varies by system size; these are for small proteins ~1000 atoms)
-const BYTES_PER_FRAME: Record<string, number> = {
-  xtc: 3000,   // compressed coords ~3 KB / frame for ~1000 atoms
-  trr: 36000,  // full precision coords+vel+force ~36 KB / frame
-  edr: 2000,   // energy file ~2 KB / frame
-  log: 400,    // log line ~400 B / frame
+// Per-frame byte estimates calibrated per atom (from alanine dipeptide 22-atom benchmark).
+// xtc/trr scale linearly with atom count; edr/log are mostly atom-independent.
+const BYTES_PER_FRAME_PER_ATOM: Record<string, number> = {
+  xtc: 8,     // compressed coords: ~172 B / 22 atoms ≈ 8 B/atom/frame
+  trr: 30,    // full precision coords+vel+force: ~648 B / 22 atoms ≈ 30 B/atom/frame
 };
+const BYTES_PER_FRAME_FIXED: Record<string, number> = {
+  edr: 220,   // energy file — independent of atom count
+  log: 580,   // log lines — independent of atom count
+};
+
+// Rough atom counts per known system (vacuum / solvated)
+const SYSTEM_ATOMS: Record<string, number> = {
+  ala_dipeptide: 22,
+  chignolin: 6000,   // ~175 atoms + ~5800 solvent
+  protein: 5000,     // generic small protein estimate
+  membrane: 40000,
+};
+
+function _bytesPerFrame(ext: string, systemName: string): number {
+  const nAtoms = SYSTEM_ATOMS[systemName] ?? 1000;
+  if (ext in BYTES_PER_FRAME_PER_ATOM) return BYTES_PER_FRAME_PER_ATOM[ext] * nAtoms;
+  return BYTES_PER_FRAME_FIXED[ext] ?? 500;
+}
 
 function SimRunConfirmModal({
   cfg,
@@ -1246,6 +1368,8 @@ function SimRunConfirmModal({
 }) {
   const method  = (cfg.method  ?? {}) as Record<string, unknown>;
   const gromacs = (cfg.gromacs ?? {}) as Record<string, unknown>;
+  const systemCfg = (cfg.system ?? {}) as Record<string, unknown>;
+  const systemName = String(systemCfg.name ?? "");
 
   const nsteps = Number(method.nsteps ?? 0);
   const dt     = Number(gromacs.dt    ?? 0.002); // ps per step
@@ -1260,7 +1384,7 @@ function SimRunConfirmModal({
     { label: "TRR (full precision)",    ext: "trr", freq: freqTrr, frames: freqTrr > 0 ? Math.floor(nsteps / freqTrr) : 0, sizeLabel: "" },
     { label: "EDR (energies)",          ext: "edr", freq: freqEdr, frames: freqEdr > 0 ? Math.floor(nsteps / freqEdr) : 0, sizeLabel: "" },
     { label: "LOG (md.log)",            ext: "log", freq: freqLog, frames: freqLog > 0 ? Math.floor(nsteps / freqLog) : 0, sizeLabel: "" },
-  ].map((r) => ({ ...r, sizeLabel: _estimateSize(BYTES_PER_FRAME[r.ext], r.frames) }));
+  ].map((r) => ({ ...r, sizeLabel: _estimateSize(_bytesPerFrame(r.ext, systemName), r.frames) }));
 
   const totalPs  = nsteps * dt;
   const totalNs  = totalPs / 1000;
@@ -1324,7 +1448,7 @@ function SimRunConfirmModal({
             </table>
           </div>
           <p className="mt-2 text-[11px] text-gray-600 leading-relaxed">
-            Size estimates assume ~1 000 atoms. Actual sizes vary with system size.
+            Size estimates are approximate and may vary with solvent and settings.
           </p>
         </div>
 
@@ -2855,7 +2979,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [resultCards, setResultCards] = useState<ResultCardDef[]>([]);
   const [gromacsSaveState, setGromacsSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const { setSession, sessions, addSession, setSessionMolecule, setSessionRunStatus, setSessionResultCards, appendSSEEvent } = useSessionStore();
+  const { setSession, sessions, addSession, setSessionMolecule, setSessionRunStatus, setSessionResultCards, appendSSEEvent, clearMessages } = useSessionStore();
   // Stable ref — lets the restore effect read latest sessions without re-running
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -2864,6 +2988,11 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   useEffect(() => {
     const stored = sessionsRef.current.find((s) => s.session_id === sessionId);
     const preserved = stored?.run_status === "finished" || stored?.run_status === "failed" ? stored.run_status : "standby";
+    // Sync the ref immediately so the polling effect's first pollStatus() call sees the
+    // correct status for the new session, before setSimRunStatus triggers a re-render.
+    // Without this, a switch from a "running" session causes the next session to falsely
+    // map as "finished" (simRunStatusRef still "running" + backend returns not-running).
+    simRunStatusRef.current = preserved;
     setSimState("standby");
     setSimRunStatus(preserved);
     setSimExitCode(null);
@@ -2874,7 +3003,9 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     // Restore result cards from persisted session data
     const cards = (stored?.result_cards ?? []).filter((t): t is ResultCardType => VALID_RESULT_CARD_TYPES.has(t));
     setResultCards(cards.map((type) => ({ id: crypto.randomUUID(), type })));
-  }, [sessionId]);
+    // Clear chat messages so previous session's conversation doesn't bleed into the new session
+    clearMessages();
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fix wall-clock race: sessions list may load after the above effect runs (page refresh).
   // When it arrives, fill in any missing timestamps without clobbering active state.
@@ -2894,10 +3025,12 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const simRunStatusRef = useRef(simRunStatus);
   simRunStatusRef.current = simRunStatus;
 
-  // Keep the session list sidebar in sync with the current run status
+  // Keep the session list sidebar in sync with the current run status.
+  // Use simRunStatusRef.current (not the closure value) so that when sessionId changes,
+  // we write the already-reset preserved value rather than the stale previous-session status.
   useEffect(() => {
-    if (sessionId) setSessionRunStatus(sessionId, simRunStatus);
-  }, [sessionId, simRunStatus, setSessionRunStatus]);
+    if (sessionId) setSessionRunStatus(sessionId, simRunStatusRef.current);
+  }, [sessionId, simRunStatus, setSessionRunStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist result cards to session.json whenever they change
   useEffect(() => {

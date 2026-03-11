@@ -209,6 +209,7 @@ async def list_sessions_endpoint(username: str = ""):
                         import time as _time
                         run_status = inferred
                         data["run_status"] = inferred
+                        data.setdefault("started_at", _time.time())
                         data.setdefault("finished_at", _time.time())
                         sf.write_text(json.dumps(data, indent=2))
                 sessions.append({
@@ -247,6 +248,7 @@ async def get_session_run_status(session_id: str):
                     import time as _time
                     run_status = inferred
                     data["run_status"] = inferred
+                    data.setdefault("started_at", _time.time())
                     data.setdefault("finished_at", _time.time())
                     sf.write_text(json.dumps(data, indent=2))
             return {

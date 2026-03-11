@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from web.backend.analysis_utils import (
     colvar_to_columns,
-    extract_ramachandran,
     fes_dat_to_heatmap,
+    generate_ramachandran_png,
     get_log_progress,
     run_gmx_energy,
 )
@@ -64,14 +67,54 @@ async def get_energy(
 
 @router.get("/sessions/{session_id}/analysis/ramachandran")
 async def get_ramachandran(session_id: str, force: bool = Query(default=False)):
-    """Extract phi/psi angles from trajectory → {phi, psi} arrays for scatter plot."""
+    """Return phi/psi arrays loaded from cached .npy files (or trigger generation)."""
     session = _require_session(session_id)
-    data = extract_ramachandran(session.work_dir, force=force)
-    return {"data": data, "available": bool(data)}
+    wd = Path(session.work_dir)
+    phi_npy = wd / "analysis" / "phi.npy"
+    psi_npy = wd / "analysis" / "psi.npy"
+    if not force and phi_npy.exists() and psi_npy.exists():
+        try:
+            import numpy as np
+            return {
+                "data": {
+                    "phi": np.load(str(phi_npy)).tolist(),
+                    "psi": np.load(str(psi_npy)).tolist(),
+                },
+                "available": True,
+            }
+        except Exception:
+            pass
+    # Trigger full pipeline to extract + save .npy
+    _, error = generate_ramachandran_png(session.work_dir, force=force)
+    if error:
+        return {"data": {}, "available": False, "error": error}
+    try:
+        import numpy as np
+        return {
+            "data": {
+                "phi": np.load(str(phi_npy)).tolist(),
+                "psi": np.load(str(psi_npy)).tolist(),
+            },
+            "available": True,
+        }
+    except Exception:
+        return {"data": {}, "available": False}
+
+
+@router.get("/sessions/{session_id}/analysis/ramachandran.png")
+async def get_ramachandran_image(session_id: str, force: bool = Query(default=False)):
+    """Generate (or serve cached) Ramachandran plot PNG."""
+    session = _require_session(session_id)
+    png_path, error = generate_ramachandran_png(session.work_dir, force=force)
+    if error:
+        raise HTTPException(422, error)
+    if not png_path or not Path(png_path).exists():
+        raise HTTPException(404, "No trajectory data available to plot")
+    return FileResponse(png_path, media_type="image/png")
 
 
 @router.get("/sessions/{session_id}/analysis/progress")
-async def get_progress(session_id: str, filename: str = "md.log"):
+async def get_progress(session_id: str, filename: str = "simulation/md.log"):
     """Return latest simulation progress from GROMACS log."""
     session = _require_session(session_id)
     path = str(Path(session.work_dir) / filename)

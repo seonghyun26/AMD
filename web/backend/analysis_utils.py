@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from md_agent.utils.parsers import (
     parse_colvar_file,
@@ -216,81 +219,186 @@ def fes_dat_to_heatmap(fes_path: str) -> dict[str, Any]:
 
 
 
-def extract_ramachandran(work_dir: str, force: bool = False) -> dict[str, Any]:
-    """Extract phi/psi dihedral angles for a Ramachandran plot.
 
-    Strategy (fastest first):
-    1. COLVAR file — if it has phi/psi columns, return them directly.
-    2. mdtraj — compute from simulation/md.xtc + topology (.tpr or .gro).
-    3. Cache result to analysis/ramachandran.json.
+def generate_ramachandran_png(work_dir: str, force: bool = False) -> tuple[str | None, str | None]:
+    """Generate a Ramachandran plot PNG.
 
-    Returns {"phi": [...], "psi": [...]} in radians, or {} on failure.
+    Pipeline:
+      1. Return cached PNG if it exists (unless force=True).
+      2. Load cached phi/psi from analysis/phi.npy + psi.npy if available.
+      3. Extract from trajectory via mdtraj; save phi.npy/psi.npy.
+         Falls back to COLVAR phi/psi columns if mdtraj fails.
+      4. Render PNG with matplotlib.
+
+    Returns (png_path, error_message). Exactly one will be non-None.
     """
-    import json as _json
+    import numpy as np  # type: ignore[import]
 
     wd = Path(work_dir)
-    cache_path = wd / "analysis" / "ramachandran.json"
+    analysis_dir = wd / "analysis"
+    png_path = analysis_dir / "ramachandran.png"
+    phi_npy = analysis_dir / "phi.npy"
+    psi_npy = analysis_dir / "psi.npy"
 
-    if not force and cache_path.exists() and cache_path.stat().st_size > 0:
+    # ── Step 1: cached PNG ────────────────────────────────────────────
+    if not force and png_path.exists() and png_path.stat().st_size > 0:
+        log.info("ramachandran: serving cached PNG %s", png_path)
+        return str(png_path), None
+
+    # ── Step 2: cached .npy arrays (always use if available) ──────────
+    phi_arr = psi_arr = None
+    if phi_npy.exists() and psi_npy.exists():
         try:
-            return _json.loads(cache_path.read_text())
-        except Exception:
-            pass
+            phi_arr = np.load(str(phi_npy))
+            psi_arr = np.load(str(psi_npy))
+            log.info("ramachandran: loaded cached phi/psi arrays (%d frames)", len(phi_arr))
+        except Exception as e:
+            log.warning("ramachandran: could not load cached .npy files — %s", e)
+            phi_arr = psi_arr = None
 
-    # ── Strategy 1: COLVAR ────────────────────────────────────────────
-    colvar_path = wd / "COLVAR"
-    if colvar_path.exists():
-        cols = colvar_to_columns(str(colvar_path))
-        phi_key = next((k for k in cols if "phi" in k.lower()), None)
-        psi_key = next((k for k in cols if "psi" in k.lower()), None)
-        if phi_key and psi_key:
-            result = {"phi": cols[phi_key], "psi": cols[psi_key]}
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(_json.dumps(result))
-            return result
+    # ── Step 3a: extract from trajectory via mdtraj ───────────────────
+    if phi_arr is None:
+        xtc_path = wd / "simulation" / "md.xtc"
+        if xtc_path.exists():
+            top_candidates: list[Path] = []
+            tpr = wd / "md.tpr"
+            if tpr.exists():
+                top_candidates.append(tpr)
+            top_candidates.extend(wd.glob("*_system.gro"))
+            top_candidates.extend(p for p in wd.glob("*.gro") if p not in top_candidates)
 
-    # ── Strategy 2: mdtraj ────────────────────────────────────────────
-    xtc_path = wd / "simulation" / "md.xtc"
-    if not xtc_path.exists():
-        return {}
+            if not top_candidates:
+                log.warning("ramachandran: no topology (.tpr/.gro) found in %s", wd)
+            else:
+                try:
+                    import mdtraj  # type: ignore[import]
 
-    # Find topology: prefer .tpr, then *_system.gro, then any .gro in work_dir
-    top_path: Path | None = None
-    tpr = wd / "md.tpr"
-    if tpr.exists():
-        top_path = tpr
-    else:
-        gro_candidates = list(wd.glob("*_system.gro")) + list(wd.glob("*.gro"))
-        if gro_candidates:
-            top_path = gro_candidates[0]
+                    traj = None
+                    last_err: Exception | None = None
+                    for top in top_candidates:
+                        try:
+                            traj = mdtraj.load(str(xtc_path), top=str(top))
+                            log.info("ramachandran: loaded %d frames with topology %s",
+                                     traj.n_frames, top.name)
+                            break
+                        except Exception as e:
+                            last_err = e
+                            log.warning("ramachandran: failed with topology %s — %s", top.name, e)
 
-    if top_path is None:
-        return {}
+                    if traj is None:
+                        log.error("ramachandran: could not load trajectory — %s", last_err)
+                    else:
+                        _, phi_vals = mdtraj.compute_phi(traj)
+                        _, psi_vals = mdtraj.compute_psi(traj)
+                        log.info("ramachandran: phi shape=%s psi shape=%s",
+                                 phi_vals.shape, psi_vals.shape)
+                        if phi_vals.size > 0 and psi_vals.size > 0:
+                            phi_arr = phi_vals[:, 0]
+                            psi_arr = psi_vals[:, 0]
+                            analysis_dir.mkdir(parents=True, exist_ok=True)
+                            np.save(str(phi_npy), phi_arr)
+                            np.save(str(psi_npy), psi_arr)
+                            log.info("ramachandran: saved phi.npy/psi.npy (%d frames)", len(phi_arr))
+                        else:
+                            log.warning("ramachandran: compute_phi/psi returned empty arrays for %s", wd)
+
+                except ImportError:
+                    log.warning("ramachandran: mdtraj not installed, falling back to COLVAR")
+                except Exception as e:
+                    log.error("ramachandran: mdtraj extraction failed — %s", e)
+
+    # ── Step 3b: ramachandran.json fallback ─────────────────────────────
+    if phi_arr is None:
+        json_path = analysis_dir / "ramachandran.json"
+        if json_path.exists():
+            try:
+                import json
+                with open(json_path) as fh:
+                    jdata = json.load(fh)
+                phi_key = next((k for k in jdata if "phi" in k.lower()), None)
+                psi_key = next((k for k in jdata if "psi" in k.lower()), None)
+                if phi_key and psi_key:
+                    phi_arr = np.array(jdata[phi_key])
+                    psi_arr = np.array(jdata[psi_key])
+                    analysis_dir.mkdir(parents=True, exist_ok=True)
+                    np.save(str(phi_npy), phi_arr)
+                    np.save(str(psi_npy), psi_arr)
+                    log.info("ramachandran: loaded from ramachandran.json (%d frames)", len(phi_arr))
+            except Exception as e:
+                log.warning("ramachandran: failed to load ramachandran.json — %s", e)
+
+    # ── Step 3c: COLVAR fallback ──────────────────────────────────────
+    if phi_arr is None:
+        colvar_path = wd / "COLVAR"
+        if colvar_path.exists():
+            cols = colvar_to_columns(str(colvar_path))
+            phi_key = next((k for k in cols if "phi" in k.lower()), None)
+            psi_key = next((k for k in cols if "psi" in k.lower()), None)
+            if phi_key and psi_key:
+                phi_arr = np.array(cols[phi_key])
+                psi_arr = np.array(cols[psi_key])
+                analysis_dir.mkdir(parents=True, exist_ok=True)
+                np.save(str(phi_npy), phi_arr)
+                np.save(str(psi_npy), psi_arr)
+                log.info("ramachandran: using COLVAR '%s'/'%s' (%d frames)",
+                         phi_key, psi_key, len(phi_arr))
+            else:
+                log.warning("ramachandran: COLVAR has no phi/psi columns (found: %s)",
+                            list(cols.keys()))
+        else:
+            log.warning("ramachandran: COLVAR not found at %s", colvar_path)
+
+    if phi_arr is None or len(phi_arr) == 0:
+        xtc_path = wd / "simulation" / "md.xtc"
+        if not xtc_path.exists():
+            msg = "Trajectory not found: simulation/md.xtc"
+        else:
+            msg = "No phi/psi angles found — no protein residues or unsupported topology"
+        log.error("ramachandran: %s (work_dir=%s)", msg, wd)
+        return None, msg
+
+    # ── Step 4: render PNG ────────────────────────────────────────────
+    step = max(1, len(phi_arr) // 5000)
+    phi_plot = phi_arr[::step]
+    psi_plot = psi_arr[::step]
 
     try:
-        import mdtraj
-        traj = mdtraj.load(str(xtc_path), top=str(top_path))
+        import matplotlib  # type: ignore[import]
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt  # type: ignore[import]
 
-        _, phi_vals = mdtraj.compute_phi(traj)   # (n_frames, n_phi)
-        _, psi_vals = mdtraj.compute_psi(traj)   # (n_frames, n_psi)
-
-        if phi_vals.shape[1] == 0 or psi_vals.shape[1] == 0:
-            return {}
-
-        # Use the first (or only) phi/psi pair; downsample to ≤5000 frames
-        phi = phi_vals[:, 0].tolist()
-        psi = psi_vals[:, 0].tolist()
-        if len(phi) > 5000:
-            step = len(phi) // 5000
-            phi = phi[::step]
-            psi = psi[::step]
-
-        result = {"phi": phi, "psi": psi}
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(_json.dumps(result))
-        return result
-    except Exception:
-        return {}
+        fig, ax = plt.subplots(figsize=(4.5, 4.5), facecolor="#111827")
+        ax.set_facecolor("#111827")
+        bins = 60
+        h, xe, ye = np.histogram2d(phi_plot, psi_plot, bins=bins,
+                                   range=[[-np.pi, np.pi], [-np.pi, np.pi]])
+        xc = (xe[:-1] + xe[1:]) / 2
+        yc = (ye[:-1] + ye[1:]) / 2
+        # Log-scale density to reveal low-population regions
+        h_log = np.where(h > 0, np.log10(h), np.nan)
+        ax.contourf(xc, yc, h_log.T, levels=20, cmap="Blues")
+        # Mark start state with a white star with black outline
+        ax.plot(phi_arr[0], psi_arr[0], marker="*", markersize=14,
+                color="white", alpha=0.8, markeredgecolor="black",
+                markeredgewidth=0.8, zorder=10)
+        ax.set_xlabel("φ (rad)", color="#9ca3af", fontsize=12)
+        ax.set_ylabel("ψ (rad)", color="#9ca3af", fontsize=12)
+        ax.set_xlim(-np.pi, np.pi)
+        ax.set_ylim(-np.pi, np.pi)
+        ax.tick_params(colors="#6b7280", labelsize=10)
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#374151")
+        plt.tight_layout(pad=0.4)
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        plt.savefig(str(png_path), dpi=120, bbox_inches="tight",
+                    facecolor=fig.get_facecolor())
+        plt.close(fig)
+        log.info("ramachandran: PNG saved to %s", png_path)
+        return str(png_path), None
+    except Exception as e:
+        msg = f"Failed to render plot: {e}"
+        log.error("ramachandran: %s", msg)
+        return None, msg
 
 
 def get_log_progress(log_path: str) -> dict[str, Any]:

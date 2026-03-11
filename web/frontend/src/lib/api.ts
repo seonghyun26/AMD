@@ -218,6 +218,14 @@ export async function getRamachandranData(
   return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/ramachandran${qs}`));
 }
 
+export function getRamachandranImageUrl(sessionId: string, force = false, cacheBust = 0): string {
+  const params = new URLSearchParams();
+  if (force) params.set("force", "true");
+  if (cacheBust) params.set("_t", String(cacheBust));
+  const qs = params.size ? `?${params}` : "";
+  return `${BASE}/sessions/${sessionId}/analysis/ramachandran.png${qs}`;
+}
+
 export async function getFes(
   sessionId: string,
   filename = "fes.dat"
