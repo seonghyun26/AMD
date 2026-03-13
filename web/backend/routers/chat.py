@@ -10,15 +10,14 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from web.backend.analysis_utils import get_log_progress
 from web.backend.session_manager import (
     create_session,
     delete_session,
     get_session,
-    list_sessions,
     restore_session,
     stop_session_simulation,
 )
-from web.backend.analysis_utils import get_log_progress
 
 router = APIRouter()
 

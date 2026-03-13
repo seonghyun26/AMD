@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from omegaconf import OmegaConf
 from pydantic import BaseModel
 
-from web.backend.session_manager import _repo_conf_dir, get_session, get_or_restore_session
+from web.backend.session_manager import _repo_conf_dir, get_or_restore_session, get_session
 
 router = APIRouter()
 

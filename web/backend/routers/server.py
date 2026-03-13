@@ -110,6 +110,12 @@ def _cpu_info() -> dict:
         mem_total_mb = meminfo.get("MemTotal", 0) // 1024
         mem_avail_mb = meminfo.get("MemAvailable", meminfo.get("MemFree", 0)) // 1024
 
+        # Disk usage
+        import shutil
+        disk = shutil.disk_usage("/")
+        disk_total_gb = disk.total / (1024 ** 3)
+        disk_used_gb = disk.used / (1024 ** 3)
+
         return {
             "load_1m": float(loadavg[0]),
             "load_5m": float(loadavg[1]),
@@ -117,6 +123,8 @@ def _cpu_info() -> dict:
             "cpu_count": cpu_count,
             "mem_total_mb": mem_total_mb,
             "mem_used_mb": mem_total_mb - mem_avail_mb,
+            "disk_total_gb": round(disk_total_gb, 1),
+            "disk_used_gb": round(disk_used_gb, 1),
         }
     except Exception:
         return {}

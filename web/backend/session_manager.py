@@ -313,7 +313,7 @@ def delete_session(session_id: str) -> bool:
     return _sessions.pop(session_id, None) is not None
 
 
-def get_or_restore_session(session_id: str) -> "Session | None":
+def get_or_restore_session(session_id: str) -> Session | None:
     """Return in-memory session, or restore from session.json on disk."""
     session = _sessions.get(session_id)
     if session:

@@ -104,9 +104,16 @@ class GROMACSRunner:
             return
         try:
             if proc.poll() is None:
+                # Close the stdout pipe so the process doesn't block on writes
+                # while flushing output / writing checkpoint after SIGTERM.
+                if proc.stdout:
+                    try:
+                        proc.stdout.close()
+                    except Exception:
+                        pass
                 proc.terminate()
                 try:
-                    proc.wait(timeout=5)
+                    proc.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait(timeout=5)

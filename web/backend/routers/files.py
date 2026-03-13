@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, Body, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from md_agent.utils.file_utils import list_files
 from web.backend.session_manager import get_or_restore_session

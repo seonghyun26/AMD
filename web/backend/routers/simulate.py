@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import time
 from pathlib import Path
 
@@ -323,7 +322,11 @@ async def start_simulation(session_id: str):
         except Exception:
             pass
         gpu_id = OmegaConf.select(cfg, "gromacs.gpu_id") or None
-        mdrun = gmx.mdrun(tpr_file="md.tpr", output_prefix=output_prefix, gpu_id=gpu_id)
+        # Pass plumed.dat for enhanced-sampling methods
+        method_name = OmegaConf.select(cfg, "method._target_name") or "md"
+        plumed_methods = {"metadynamics", "metad", "opes", "umbrella", "umbrella_sampling", "steered", "steered_md"}
+        plumed_file = "plumed.dat" if method_name in plumed_methods and (work_dir / "plumed.dat").exists() else None
+        mdrun = gmx.mdrun(tpr_file="md.tpr", output_prefix=output_prefix, gpu_id=gpu_id, plumed_file=plumed_file)
         expected_nsteps = OmegaConf.select(cfg, "method.nsteps")
         session.sim_status = {
             "status": "running",

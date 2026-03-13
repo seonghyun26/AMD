@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Info, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor } from "lucide-react";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Info, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { logout, getUsername } from "@/lib/auth";
 import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, getSessionRunStatus, getServerStatus, type ServerStatus, type GpuInfo } from "@/lib/api";
@@ -391,6 +391,7 @@ function ServerStatusModal({ onClose }: { onClose: () => void }) {
   const cpu = status?.cpu;
   const gpus = status?.gpus ?? [];
   const memPct = cpu ? (cpu.mem_used_mb / cpu.mem_total_mb) * 100 : 0;
+  const diskPct = cpu?.disk_total_gb ? ((cpu.disk_used_gb ?? 0) / cpu.disk_total_gb) * 100 : 0;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -468,6 +469,20 @@ function ServerStatusModal({ onClose }: { onClose: () => void }) {
                         />
                       </div>
                     </div>
+                    {cpu.disk_total_gb != null && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span className="flex items-center gap-1"><HardDrive size={10} /> Storage</span>
+                          <span>{(cpu.disk_used_gb ?? 0).toFixed(1)} / {cpu.disk_total_gb.toFixed(1)} GB</span>
+                        </div>
+                        <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${diskPct > 90 ? "bg-red-500" : diskPct > 75 ? "bg-amber-500" : "bg-blue-500/60"}`}
+                            style={{ width: `${diskPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -534,7 +549,7 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
           {username}
         </span>
         {/* Dots */}
-        <Settings size={12} className="text-gray-600 group-hover:text-gray-400 flex-shrink-0 transition-colors" />
+        <Settings size={15} className="text-gray-600 group-hover:text-gray-400 flex-shrink-0 transition-colors" />
       </button>
 
       {/* Popover menu */}

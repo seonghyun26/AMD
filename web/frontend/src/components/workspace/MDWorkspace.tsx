@@ -2525,6 +2525,36 @@ function MoleculeTab({
         <FileUpload sessionId={sessionId} onUploaded={() => setFileRefresh((n) => n + 1)} />
       </Section>
 
+      {/* Molecule library recommendations */}
+      {molLibrary.length > 0 && (
+        <Section icon={<FlaskConical size={13} />} title="Molecule Library" accent="blue">
+          <div className="space-y-2">
+            {molLibrary.map((sys) => (
+              <div key={sys.id} className="flex items-center gap-3">
+                <span className="text-xs font-medium text-gray-400 w-28 truncate flex-shrink-0">{sys.label}</span>
+                <div className="flex flex-wrap gap-1.5 flex-1">
+                  {sys.states.map((st) => {
+                    const key = `${sys.id}/${st.name}`;
+                    const isLoading = molLibLoading === key;
+                    return (
+                      <button
+                        key={st.name}
+                        onClick={() => handleLoadFromLibrary(sys.id, st.name)}
+                        disabled={!!molLibLoading}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-gray-800/60 border border-gray-700/50 text-gray-300 hover:bg-indigo-900/30 hover:border-indigo-700/40 hover:text-indigo-300 transition-colors disabled:opacity-50 font-mono"
+                      >
+                        {isLoading ? <Loader2 size={9} className="animate-spin" /> : <FlaskConical size={9} />}
+                        {st.file}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {agentOpen && (
         <AgentModal sessionId={sessionId} agentType="paper" onClose={() => setAgentOpen(false)} />
       )}
@@ -2796,7 +2826,7 @@ function AdvancedSection({
 
       {open && (
         <fieldset disabled={isLocked} className={isLocked ? "space-y-3 opacity-70" : "space-y-3"}>
-        <div className="p-3 space-y-3 border-t border-gray-700/40 bg-gray-900/20">
+        <div className="p-3 space-y-5 border-t border-gray-700/40 bg-gray-900/20">
           {/* Non-bonded cutoffs */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Non-bonded Cutoffs</p>

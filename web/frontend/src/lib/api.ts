@@ -375,6 +375,8 @@ export interface ServerStatus {
     cpu_count: number;
     mem_total_mb: number;
     mem_used_mb: number;
+    disk_total_gb?: number;
+    disk_used_gb?: number;
   };
   gpus: GpuInfo[];
 }
