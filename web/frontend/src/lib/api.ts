@@ -67,7 +67,7 @@ export async function listSessions(username: string): Promise<{
 
 export async function getSessionRunStatus(
   sessionId: string
-): Promise<{ run_status: string }> {
+): Promise<{ run_status: string; started_at?: number; finished_at?: number }> {
   return json(await fetch(`${BASE}/sessions/${sessionId}/run-status`));
 }
 
@@ -269,6 +269,21 @@ export async function updateResultCards(sessionId: string, resultCards: string[]
   });
 }
 
+// ── PLUMED ───────────────────────────────────────────────────────────
+
+export async function getPlumedPreview(
+  sessionId: string
+): Promise<{ content: string | null; method: string; message?: string }> {
+  return json(await fetch(`${BASE}/sessions/${sessionId}/plumed-preview`));
+}
+
+export async function generatePlumedFile(
+  sessionId: string
+): Promise<{ generated: string; work_dir: string }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/plumed-generate`, { method: "POST" });
+  return json(res);
+}
+
 export async function getProgress(
   sessionId: string,
   filename = "simulation/md.log"
@@ -295,12 +310,24 @@ export async function startSimulation(
 
 export async function getSimulationStatus(
   sessionId: string
-): Promise<{ running: boolean; status?: "standby" | "running" | "finished" | "failed"; pid?: number; exit_code?: number }> {
+): Promise<{ running: boolean; status?: "standby" | "running" | "finished" | "failed"; pid?: number; exit_code?: number; started_at?: number; finished_at?: number }> {
   return json(await fetch(`${BASE}/sessions/${sessionId}/simulate/status`));
 }
 
 export async function stopSimulation(sessionId: string): Promise<{ stopped: boolean }> {
   const res = await fetch(`${BASE}/sessions/${sessionId}/simulate/stop`, { method: "POST" });
+  return json(res);
+}
+
+export async function terminateSimulation(sessionId: string): Promise<{ terminated: boolean }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/simulate/terminate`, { method: "POST" });
+  return json(res);
+}
+
+export async function resumeSimulation(
+  sessionId: string
+): Promise<{ status: string; pid: number; resumed: boolean; expected_files: Record<string, string> }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/simulate/resume`, { method: "POST" });
   return json(res);
 }
 
@@ -325,6 +352,42 @@ export async function setApiKey(
   );
   return json(res);
 }
+
+// ── Server status ────────────────────────────────────────────────────
+
+export interface GpuInfo {
+  index: number;
+  name: string;
+  memory_used_mb: number;
+  memory_total_mb: number;
+  utilization_pct: number;
+  temperature_c: number;
+  session_id: string | null;
+  session_nickname: string | null;
+  available: boolean;
+}
+
+export interface ServerStatus {
+  cpu: {
+    load_1m: number;
+    load_5m: number;
+    load_15m: number;
+    cpu_count: number;
+    mem_total_mb: number;
+    mem_used_mb: number;
+  };
+  gpus: GpuInfo[];
+}
+
+export async function getServerStatus(): Promise<ServerStatus> {
+  return json(await fetch(`${BASE}/server/status`));
+}
+
+export async function getAvailableGpu(): Promise<{ gpu_id: string | null; available: boolean }> {
+  return json(await fetch(`${BASE}/server/available-gpu`));
+}
+
+// ── Molecules ────────────────────────────────────────────────────────
 
 export async function loadMolecule(
   sessionId: string,

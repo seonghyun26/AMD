@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pathlib import Path
-
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from web.backend.analysis_utils import (
+    _load_energy_npy,
+    _parse_xvg_with_header,
     colvar_to_columns,
     fes_dat_to_heatmap,
     generate_ramachandran_png,
@@ -58,11 +58,17 @@ async def get_energy(
     """
     session = _require_session(session_id)
     wd = Path(session.work_dir)
-    xvg_path = wd / "analysis" / "energy.xvg"
+    analysis_dir = wd / "analysis"
 
-    # Serve cached XVG without needing a gmx runner
+    # Fast path: serve from cached .npy files (no gmx runner needed)
+    if not force:
+        npy_data = _load_energy_npy(analysis_dir)
+        if npy_data:
+            return {"data": npy_data, "available": True}
+
+    # Fallback: serve cached XVG without needing a gmx runner
+    xvg_path = analysis_dir / "energy.xvg"
     if not force and xvg_path.exists() and xvg_path.stat().st_size > 0:
-        from web.backend.analysis_utils import _parse_xvg_with_header
         data = _parse_xvg_with_header(str(xvg_path))
         if data:
             return {"data": data, "available": True}
@@ -130,7 +136,7 @@ async def get_ramachandran_image(
         raise HTTPException(422, error)
     if not png_path or not Path(png_path).exists():
         raise HTTPException(404, "No trajectory data available to plot")
-    return FileResponse(png_path, media_type="image/png")
+    return Response(content=Path(png_path).read_bytes(), media_type="image/png")
 
 
 @router.get("/sessions/{session_id}/analysis/progress")

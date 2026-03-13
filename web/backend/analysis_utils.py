@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -95,6 +97,42 @@ def _parse_xvg_with_header(xvg_path: str) -> dict[str, list]:
     return result
 
 
+def _save_energy_npy(data: dict[str, list], analysis_dir: Path) -> None:
+    """Save each energy term as a separate .npy file for fast cached loading."""
+    try:
+        import numpy as np
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        for key, values in data.items():
+            safe_name = key.lower().replace(" ", "_").replace("-", "_").replace(".", "")
+            np.save(str(analysis_dir / f"energy_{safe_name}.npy"), np.array(values, dtype=np.float64))
+        # Save column names so we can reconstruct the dict
+        (analysis_dir / "energy_columns.json").write_text(
+            json.dumps(list(data.keys()), indent=2)
+        )
+    except Exception as exc:
+        log.warning("Failed to save energy .npy cache: %s", exc)
+
+
+def _load_energy_npy(analysis_dir: Path) -> dict[str, list] | None:
+    """Load energy data from cached .npy files. Returns None if cache is missing."""
+    cols_path = analysis_dir / "energy_columns.json"
+    if not cols_path.exists():
+        return None
+    try:
+        import numpy as np
+        columns = json.loads(cols_path.read_text())
+        data: dict[str, list] = {}
+        for key in columns:
+            safe_name = key.lower().replace(" ", "_").replace("-", "_").replace(".", "")
+            npy_path = analysis_dir / f"energy_{safe_name}.npy"
+            if not npy_path.exists():
+                return None
+            data[key] = np.load(str(npy_path)).tolist()
+        return data if data else None
+    except Exception:
+        return None
+
+
 def run_gmx_energy(
     work_dir: str,
     gmx_runner: Any,
@@ -102,22 +140,30 @@ def run_gmx_energy(
     xvg_rel: str = "analysis/energy.xvg",
     force: bool = False,
 ) -> dict[str, list]:
-    """Run 'gmx energy' to extract timeseries from .edr, caching the result as .xvg.
+    """Run 'gmx energy' to extract timeseries from .edr, caching as .npy + .xvg.
 
     Returns parsed {time_ps, term_name, ...} dict or {} on failure.
-    Uses cached .xvg when available unless force=True.
+    Check order: .npy cache → .xvg cache → run gmx energy.
     """
     wd = Path(work_dir)
     edr_path = wd / edr_rel
     xvg_path = wd / xvg_rel
+    analysis_dir = wd / "analysis"
 
     if not edr_path.exists():
         return {}
 
-    # Return cached XVG when available
+    # Fast path: load from cached .npy files
+    if not force:
+        npy_data = _load_energy_npy(analysis_dir)
+        if npy_data:
+            return npy_data
+
+    # Fallback: return cached XVG when available
     if not force and xvg_path.exists() and xvg_path.stat().st_size > 0:
         data = _parse_xvg_with_header(str(xvg_path))
         if data:
+            _save_energy_npy(data, analysis_dir)
             return data
 
     # Create analysis dir on host before any Docker call (Docker bind-mounts the host dir)
@@ -152,7 +198,10 @@ def run_gmx_energy(
     if not xvg_path.exists() or xvg_path.stat().st_size == 0:
         return {}
 
-    return _parse_xvg_with_header(str(xvg_path))
+    data = _parse_xvg_with_header(str(xvg_path))
+    if data:
+        _save_energy_npy(data, analysis_dir)
+    return data
 
 
 def colvar_to_columns(colvar_path: str) -> dict[str, list[float]]:
@@ -207,7 +256,6 @@ def fes_dat_to_heatmap(fes_path: str) -> dict[str, Any]:
     # Build 2D z matrix: z[i_y][i_x]
     x_idx = {v: i for i, v in enumerate(unique_x)}
     y_idx = {v: i for i, v in enumerate(unique_y)}
-    import math
     z_matrix = [[math.nan] * len(unique_x) for _ in range(len(unique_y))]
     for xi, yi, zi in zip(x_vals, y_vals, z_vals):
         ix = x_idx.get(xi)
@@ -216,7 +264,6 @@ def fes_dat_to_heatmap(fes_path: str) -> dict[str, Any]:
             z_matrix[iy][ix] = zi
 
     return {"x": unique_x, "y": unique_y, "z": z_matrix}
-
 
 
 
@@ -321,7 +368,6 @@ def generate_ramachandran_png(
         json_path = analysis_dir / "ramachandran.json"
         if json_path.exists():
             try:
-                import json
                 with open(json_path) as fh:
                     jdata = json.load(fh)
                 phi_key = next((k for k in jdata if "phi" in k.lower()), None)

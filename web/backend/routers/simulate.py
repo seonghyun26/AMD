@@ -22,7 +22,8 @@ def _persist_run_status(session: object, status: str) -> None:
 
     Allowed transitions:
       standby  → running, failed
-      running  → finished, failed, standby (manual stop)
+      running  → finished, failed, paused
+      paused   → running (resume), standby (terminate)
       failed   → running
       finished → (terminal — no further transitions)
     """
@@ -41,12 +42,19 @@ def _persist_run_status(session: object, status: str) -> None:
         # "failed" can only transition to "running" (new simulation attempt)
         if current == "failed" and status != "running":
             return
+        # "paused" can transition to "running" (resume) or "standby" (terminate)
+        if current == "paused" and status not in ("running", "standby"):
+            return
 
         meta["run_status"] = status
         # Record wall-time timestamps
         if status == "running":
-            meta["started_at"] = time.time()
+            # Only set started_at on fresh start, not on resume
+            if current != "paused":
+                meta["started_at"] = time.time()
             meta.pop("finished_at", None)
+        elif status == "paused":
+            meta["paused_at"] = time.time()
         elif status in ("finished", "failed"):
             meta.setdefault("finished_at", time.time())
 
@@ -314,7 +322,8 @@ async def start_simulation(session_id: str):
             gmx._cleanup()
         except Exception:
             pass
-        mdrun = gmx.mdrun(tpr_file="md.tpr", output_prefix=output_prefix)
+        gpu_id = OmegaConf.select(cfg, "gromacs.gpu_id") or None
+        mdrun = gmx.mdrun(tpr_file="md.tpr", output_prefix=output_prefix, gpu_id=gpu_id)
         expected_nsteps = OmegaConf.select(cfg, "method.nsteps")
         session.sim_status = {
             "status": "running",
@@ -322,6 +331,7 @@ async def start_simulation(session_id: str):
             "output_prefix": output_prefix,
             "expected_nsteps": int(expected_nsteps) if expected_nsteps is not None else None,
             "pid": mdrun["pid"],
+            "gpu_id": gpu_id,
         }
         # Only persist "running" after mdrun has actually started
         _persist_run_status(session, "running")
@@ -353,10 +363,102 @@ async def simulation_status(session_id: str):
 
 @router.post("/sessions/{session_id}/simulate/stop")
 async def stop_simulation(session_id: str):
-    """Terminate a running mdrun process."""
+    """Terminate a running mdrun process (pause — checkpoint preserved for resume)."""
     from web.backend.session_manager import stop_session_simulation
     stopped = stop_session_simulation(session_id)
     session = get_session(session_id)
     if session:
-        _persist_run_status(session, "standby")
+        _persist_run_status(session, "paused")
     return {"stopped": stopped}
+
+
+@router.post("/sessions/{session_id}/simulate/terminate")
+async def terminate_simulation(session_id: str):
+    """Permanently stop a simulation — reset to standby, discard checkpoint intent."""
+    from web.backend.session_manager import stop_session_simulation
+    stop_session_simulation(session_id)
+    session = get_session(session_id)
+    if session:
+        session.sim_status = {}
+        _persist_run_status(session, "standby")
+    return {"terminated": True}
+
+
+@router.post("/sessions/{session_id}/simulate/resume")
+async def resume_simulation(session_id: str):
+    """Resume a paused simulation from the last checkpoint.
+
+    Uses ``gmx mdrun -s md.tpr -cpi simulation/md.cpt -deffnm simulation/md -append``.
+    The checkpoint file must exist from the previous run.
+    """
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    work_dir = Path(session.work_dir)
+    cfg = session.agent.cfg
+    gmx = session.agent._gmx
+
+    output_prefix = f"{_SIM_SUBDIR}/md"
+    cpt_file = work_dir / f"{output_prefix}.cpt"
+
+    if not cpt_file.exists():
+        raise HTTPException(
+            400,
+            "No checkpoint file found — cannot resume. Start a new simulation instead.",
+        )
+
+    tpr_file = "md.tpr"
+    if not (work_dir / tpr_file).exists():
+        raise HTTPException(400, "md.tpr not found — cannot resume.")
+
+    try:
+        # Clean up any stale process handle
+        try:
+            gmx._cleanup()
+        except Exception:
+            pass
+
+        gpu_id = OmegaConf.select(cfg, "gromacs.gpu_id") or None
+
+        # Generate plumed.dat if needed (same as initial launch)
+        method_name = OmegaConf.select(cfg, "method._target_name") or "plain_md"
+        plumed_methods = {"metadynamics", "metad", "opes", "umbrella", "umbrella_sampling", "steered", "steered_md"}
+        plumed_file = None
+        if method_name in plumed_methods and (work_dir / "plumed.dat").exists():
+            plumed_file = "plumed.dat"
+
+        mdrun = gmx.mdrun(
+            tpr_file=tpr_file,
+            output_prefix=output_prefix,
+            gpu_id=gpu_id,
+            append=True,
+            cpt_file=f"{output_prefix}.cpt",
+            plumed_file=plumed_file,
+        )
+
+        expected_nsteps = OmegaConf.select(cfg, "method.nsteps")
+        session.sim_status = {
+            "status": "running",
+            "started_at": session.sim_status.get("started_at", time.time()) if session.sim_status else time.time(),
+            "resumed_at": time.time(),
+            "output_prefix": output_prefix,
+            "expected_nsteps": int(expected_nsteps) if expected_nsteps is not None else None,
+            "pid": mdrun["pid"],
+            "gpu_id": gpu_id,
+        }
+        _persist_run_status(session, "running")
+
+        return {
+            "status": "running",
+            "pid": mdrun["pid"],
+            "resumed": True,
+            "expected_files": mdrun["expected_files"],
+        }
+
+    except HTTPException:
+        _persist_run_status(session, "failed")
+        raise
+    except Exception as exc:
+        _persist_run_status(session, "failed")
+        raise HTTPException(500, f"Resume failed: {exc}")

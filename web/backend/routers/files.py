@@ -96,7 +96,16 @@ async def download_file(session_id: str, path: str):
         raise HTTPException(403, "Path outside session work directory")
     if not target.exists():
         raise HTTPException(404, "File not found")
-    return FileResponse(str(target), filename=target.name)
+    # Read the file content as a snapshot to avoid Content-Length mismatch
+    # when GROMACS is actively writing to the file.
+    import mimetypes
+    content = target.read_bytes()
+    media_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    return StreamingResponse(
+        iter([content]),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{target.name}"', "Content-Length": str(len(content))},
+    )
 
 
 @router.delete("/sessions/{session_id}/files")

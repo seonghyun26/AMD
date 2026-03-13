@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from web.backend.routers import agents, analysis, auth, chat, config, files, keys, simulate, trajectory
+from web.backend.routers import agents, analysis, auth, chat, config, files, keys, server, simulate, trajectory
 
 app = FastAPI(title="AMD Web API", version="0.1.0")
 
@@ -37,6 +37,7 @@ app.include_router(files.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
 app.include_router(keys.router, prefix="/api")
+app.include_router(server.router, prefix="/api")
 app.include_router(simulate.router, prefix="/api")
 app.include_router(trajectory.router, prefix="/api")
 

@@ -17,7 +17,10 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
 /* Scrollbar styling — dark theme */
@@ -28,3 +31,8 @@ body {
 
 /* Firefox */
 * { scrollbar-width: thin; scrollbar-color: #374151 transparent; }
+
+/* Tabular numbers for data-heavy displays */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}

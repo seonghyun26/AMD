@@ -31,7 +31,9 @@ PRESET_CONFIGS: dict[str, dict[str, str]] = {
     "undefined": dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
     "md":        dict(method="plain_md",     system="protein", gromacs="default", plumed_cvs="default"),
     "metad":     dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
+    "opes":      dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
     "umbrella":  dict(method="umbrella",     system="protein", gromacs="default", plumed_cvs="default"),
+    "steered":   dict(method="steered",      system="protein", gromacs="default", plumed_cvs="default"),
 }
 
 # Maps molecule system id → subdirectory name under data/molecule/

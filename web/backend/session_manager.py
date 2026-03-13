@@ -218,6 +218,15 @@ def get_simulation_status(session_id: str) -> dict:
                     session.sim_status["expected_nsteps"] = int(nsteps)
             except Exception:
                 pass
+        # Helper to attach wall-clock timestamps from sim_status
+        def _with_timestamps(result: dict) -> dict:
+            sa = session.sim_status.get("started_at") if session.sim_status else None
+            fa = session.sim_status.get("finished_at") if session.sim_status else None
+            if sa is not None:
+                result["started_at"] = sa
+            if fa is not None:
+                result["finished_at"] = fa
+            return result
         if runner is not None:
             proc = getattr(runner, "_mdrun_proc", None)
             inferred = _infer_terminal_status_from_outputs(session)
@@ -235,24 +244,24 @@ def get_simulation_status(session_id: str) -> dict:
                 status = {"running": False, **inferred}
                 if proc is not None:
                     status["pid"] = proc.pid
-                return status
+                return _with_timestamps(status)
             if proc is None:
-                return {"running": False, "status": "standby"}
+                return _with_timestamps({"running": False, "status": "standby"})
             rc = proc.poll()
             if rc is None:
-                return {"running": True, "status": "running", "pid": proc.pid}
+                return _with_timestamps({"running": True, "status": "running", "pid": proc.pid})
             try:
                 runner._mdrun_proc = None
             except Exception:
                 pass
             # If process exited before step-based completion:
             # rc=0 → treat as finished (clean exit), rc!=0 → failed.
-            return {
+            return _with_timestamps({
                 "running": False,
                 "status": "finished" if rc == 0 else "failed",
                 "pid": proc.pid,
                 "exit_code": rc,
-            }
+            })
     except Exception:
         pass
     return {"running": False, "status": "standby"}

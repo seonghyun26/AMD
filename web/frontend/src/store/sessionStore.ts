@@ -15,7 +15,7 @@ export interface SessionSummary {
   work_dir: string;
   nickname: string;
   selected_molecule?: string;
-  run_status?: "standby" | "running" | "finished" | "failed";
+  run_status?: "standby" | "running" | "finished" | "failed" | "paused";
   started_at?: number;
   finished_at?: number;
   result_cards?: string[];
@@ -28,6 +28,7 @@ interface SessionState {
   simProgress: SimProgress | null;
   isStreaming: boolean;
   sessions: SessionSummary[];
+  sessionsLoading: boolean;
 
   // Actions
   setSession: (id: string, config: SessionConfig) => void;
@@ -62,6 +63,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   simProgress: null,
   isStreaming: false,
   sessions: [],
+  sessionsLoading: true,
 
   setSession: (id, config) =>
     set({ sessionId: id, config, messages: [], simProgress: null }),
@@ -71,10 +73,11 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   fetchSessions: async () => {
     try {
+      set({ sessionsLoading: true });
       const { sessions } = await listSessions(getUsername());
-      set({ sessions });
+      set({ sessions, sessionsLoading: false });
     } catch {
-      // ignore
+      set({ sessionsLoading: false });
     }
   },
 
@@ -111,6 +114,8 @@ export const useSessionStore = create<SessionState>((set) => ({
         if (s.run_status === "finished") return s;
         // "failed" can only transition to "running" (new simulation attempt)
         if (s.run_status === "failed" && runStatus !== "running") return s;
+        // "paused" can transition to "running" (resume) or "standby" (terminate)
+        if (s.run_status === "paused" && runStatus !== "running" && runStatus !== "standby") return s;
         return { ...s, run_status: runStatus };
       }),
     })),

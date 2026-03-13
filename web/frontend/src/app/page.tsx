@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { isAuthenticated } from "@/lib/auth";
 import { useSessionStore } from "@/store/sessionStore";
 import SessionSidebar from "@/components/sidebar/SessionSidebar";
 import MDWorkspace from "@/components/workspace/MDWorkspace";
-import ChatWindow from "@/components/chat/ChatWindow";
-import ChatInput from "@/components/chat/ChatInput";
+const ChatWindow = dynamic(() => import("@/components/chat/ChatWindow"), { ssr: false });
+const ChatInput = dynamic(() => import("@/components/chat/ChatInput"), { ssr: false });
 
 export default function App() {
   const router = useRouter();
@@ -76,7 +77,7 @@ export default function App() {
       >
         {rightPanelOpen ? (
           <>
-            <div className="px-4 py-3 border-b border-gray-800 flex-shrink-0 flex items-center justify-between">
+            <div className="px-4 py-3.5 border-b border-gray-800 flex-shrink-0 flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-gray-200">AI Assistant</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Claude Opus 4.6</p>

@@ -63,12 +63,12 @@ async def run_agent(session_id: str, agent_type: str, input: str = ""):
                     yield _fmt(ev)
 
         except (ImportError, AttributeError):
-            yield _fmt({"type": "error", "message": "Specialist agents are unavailable — the ANTHROPIC_API_KEY is not configured or the LangChain dependencies are not installed correctly."})
+            yield _fmt({"type": "error", "message": "API key is not set or agent dependencies are missing. Please add your Anthropic API key in Settings (top-right gear icon)."})
             yield _fmt({"type": "agent_done", "final_text": ""})
         except Exception as exc:
             msg = str(exc)
-            if "api_key" in msg.lower() or "authentication" in msg.lower() or "unauthorized" in msg.lower():
-                msg = "Authentication failed — check that ANTHROPIC_API_KEY is set correctly."
+            if "api_key" in msg.lower() or "auth_token" in msg.lower() or "authentication" in msg.lower() or "unauthorized" in msg.lower():
+                msg = "API key is not set. Please add your Anthropic API key in Settings (top-right gear icon)."
             yield _fmt({"type": "error", "message": msg})
             yield _fmt({"type": "agent_done", "final_text": ""})
 

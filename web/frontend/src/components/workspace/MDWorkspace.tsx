@@ -35,14 +35,15 @@ import {
   Search,
 } from "lucide-react";
 
-import AgentModal from "@/components/agents/AgentModal";
+const AgentModal = dynamic(() => import("@/components/agents/AgentModal"), { ssr: false });
 import type { AgentType } from "@/lib/agentStream";
 import { getUsername } from "@/lib/auth";
 import dynamic from "next/dynamic";
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
-import TrajectoryViewer from "@/components/viz/TrajectoryViewer";
+const TrajectoryViewer = dynamic(() => import("@/components/viz/TrajectoryViewer"), { ssr: false });
+const MoleculeViewer = dynamic(() => import("@/components/viz/MoleculeViewer"), { ssr: false });
+const MiniStructureViewer = dynamic(() => import("@/components/viz/MiniStructureViewer"), { ssr: false });
 import FileUpload from "@/components/files/FileUpload";
-import MoleculeViewer from "@/components/viz/MoleculeViewer";
 import {
   getSessionConfig,
   updateSessionConfig,
@@ -60,10 +61,18 @@ import {
   getSimulationStatus,
   getProgress,
   stopSimulation,
+  terminateSimulation,
+  resumeSimulation,
   getEnergy,
   getRamachandranImageUrl,
   type RamachandranPlotSettings,
   updateResultCards,
+  getSessionRunStatus,
+  getAvailableGpu,
+  getPlumedPreview,
+  generatePlumedFile,
+  getMolecules,
+  loadMolecule,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -94,9 +103,11 @@ function formatElapsed(ms: number): string {
 interface Preset { id: string; label: string; description: string; tag: string }
 
 const PRESETS: Preset[] = [
-  { id: "md",       label: "Molecular Dynamics", description: "Unbiased MD — no enhanced sampling",             tag: "MD"    },
-  { id: "metad",    label: "Metadynamics",        description: "Well-tempered metadynamics with PLUMED",        tag: "MetaD" },
-  { id: "umbrella", label: "Umbrella Sampling",   description: "Umbrella sampling along a reaction coordinate", tag: "US"    },
+  { id: "md",       label: "Molecular Dynamics", description: "Unbiased MD — no enhanced sampling",             tag: "MD"      },
+  { id: "metad",    label: "Metadynamics",        description: "Well-tempered metadynamics with PLUMED",        tag: "MetaD"   },
+  { id: "opes",     label: "OPES Metadynamics",   description: "On-the-fly probability enhanced sampling",      tag: "OPES"    },
+  { id: "umbrella", label: "Umbrella Sampling",   description: "Umbrella sampling along a reaction coordinate", tag: "US"      },
+  { id: "steered",  label: "Steered MD",           description: "Steered MD with moving restraint",              tag: "SMD"     },
 ];
 
 // ── System options ─────────────────────────────────────────────────────
@@ -158,12 +169,12 @@ function Section({
 
   return (
     <div className={`rounded-xl border ${border} bg-gray-900/60 overflow-hidden`}>
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800/60">
-        <span className={`p-1 rounded-md ${iconBg}`}>{icon}</span>
-        <span className="text-[11px] font-semibold text-gray-300 tracking-wide uppercase">{title}</span>
+      <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-800/60">
+        <span className={`p-1.5 rounded-md ${iconBg}`}>{icon}</span>
+        <span className="text-sm font-semibold text-gray-400 tracking-wider uppercase">{title}</span>
         {action && <span className="ml-auto">{action}</span>}
       </div>
-      <div className="p-3 space-y-2.5">{children}</div>
+      <div className="p-4 space-y-3">{children}</div>
     </div>
   );
 }
@@ -194,10 +205,10 @@ function Field({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
-        <label className="text-[13px] font-medium text-gray-400">{label}</label>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-sm font-medium text-gray-400">{label}</label>
         {unit && (
-          <span className="text-[11px] font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">
+          <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">
             {unit}
           </span>
         )}
@@ -222,9 +233,9 @@ function Field({
           onBlur?.();
         }}
         step={step ?? (type === "number" ? "any" : undefined)}
-        className="w-full border border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+        className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
       />
-      {hint && <p className="mt-1 text-[11px] text-gray-600">{hint}</p>}
+      {hint && <p className="mt-1.5 text-xs text-gray-600">{hint}</p>}
     </div>
   );
 }
@@ -252,17 +263,17 @@ function SelectField({
 }) {
   return (
     <div>
-      <label className="block text-[13px] font-medium text-gray-400 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-gray-400 mb-1.5">{label}</label>
       <select
         value={value}
         onChange={(e) => { onChange(e.target.value); onSave?.(); }}
-        className="w-full border border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+        className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
-      {hint && <p className="mt-1 text-[11px] text-gray-600">{hint}</p>}
+      {hint && <p className="mt-1.5 text-xs text-gray-600">{hint}</p>}
     </div>
   );
 }
@@ -271,10 +282,10 @@ function SelectField({
 // ── Pill tab bar ──────────────────────────────────────────────────────
 
 const TABS = [
-  { value: "progress", label: "Progress", icon: <Activity size={12} /> },
-  { value: "molecule", label: "Molecule", icon: <FlaskConical size={12} /> },
-  { value: "gromacs",  label: "GROMACS",  icon: <Cpu size={12} /> },
-  { value: "method",   label: "Method",   icon: <Zap size={12} /> },
+  { value: "progress", label: "Progress", icon: <Activity size={14} /> },
+  { value: "molecule", label: "Molecule", icon: <FlaskConical size={14} /> },
+  { value: "gromacs",  label: "GROMACS",  icon: <Cpu size={14} /> },
+  { value: "method",   label: "Method",   icon: <Zap size={14} /> },
 ];
 
 function PillTabs({
@@ -285,12 +296,12 @@ function PillTabs({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex gap-1 p-1.5 bg-gray-900 border-b border-gray-800">
+    <div className="flex gap-1 p-2 bg-gray-900 border-b border-gray-800">
       {TABS.map(({ value, label, icon }) => (
         <button
           key={value}
           onClick={() => onChange(value)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
             active === value
               ? "bg-gray-700 text-white shadow-sm"
               : "text-gray-500 hover:text-gray-300 hover:bg-gray-800/70"
@@ -685,9 +696,9 @@ function EnergyCardContent({
   const axisBase: any = {
     zeroline: false,
     color: "#374151",
-    tickfont: { size: compact ? 8 : 9, color: "#6b7280" },
-    titlefont: { size: 10, color: cfg.color },
-    gridcolor: "#111827",
+    tickfont: { size: compact ? 10 : 11, color: "#6b7280" },
+    titlefont: { size: 12, color: cfg.color },
+    gridcolor: "#1f2937",
     gridwidth: 1,
     showgrid: true,
   };
@@ -702,23 +713,22 @@ function EnergyCardContent({
         name: cfg.label,
         fill: "tozeroy",
         fillcolor: cfg.fillColor,
-        line: { color: cfg.color, width: compact ? 1.5 : 2, shape: "spline", smoothing: 0.3 },
+        line: { color: cfg.color, width: compact ? 2 : 2.5, shape: "spline", smoothing: 0.3 },
       }]}
       layout={{
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        xaxis: { ...axisBase, title: compact ? undefined : ("Time (ps)" as any), nticks: compact ? 4 : 8 },
+        xaxis: { ...axisBase, title: compact ? undefined : ("Time (ps)" as any), nticks: compact ? 5 : 8 },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        yaxis: { ...axisBase, title: cfg.unit as any, nticks: compact ? 4 : 6 },
+        yaxis: { ...axisBase, title: cfg.unit as any, nticks: compact ? 5 : 6 },
         showlegend: false,
         hovermode: "x unified",
-        hoverlabel: { bgcolor: "#111827", bordercolor: cfg.color, font: { size: 11, color: "#e5e7eb" } },
-        margin: compact ? { t: 2, l: 46, r: 4, b: 28 } : { t: 8, l: 56, r: 20, b: 40 },
+        hoverlabel: { bgcolor: "#111827", bordercolor: cfg.color, font: { size: 12, color: "#e5e7eb" } },
+        margin: compact ? { t: 4, l: 50, r: 6, b: 30 } : { t: 8, l: 56, r: 20, b: 40 },
         paper_bgcolor: "transparent",
         plot_bgcolor: "transparent",
-        height: compact ? 160 : 332,
       }}
       config={{ responsive: true, displayModeBar: false }}
-      style={{ width: "100%" }}
+      style={{ width: "100%", height: "100%" }}
     />
   );
 }
@@ -781,7 +791,7 @@ function ResultCard({
     <>
       <div
         className="flex-shrink-0 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
-        style={{ width: "576px", height: "717px", borderColor: `${accentColor}30` }}
+        style={{ width: "440px", height: "300px", borderColor: `${accentColor}30` }}
       >
         {/* Header */}
         <div
@@ -789,53 +799,45 @@ function ResultCard({
           style={{ borderColor: `${accentColor}20` }}
         >
           <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-            <span className="text-xs font-medium text-gray-300 truncate">{label}</span>
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
+            <span className="text-sm font-medium text-gray-200 truncate">{label}</span>
+            {stats && (
+              <span className="text-sm font-mono tabular-nums ml-1" style={{ color: accentColor }}>
+                {fmtVal(stats.last)} <span className="text-[10px] text-gray-500">{unit}</span>
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-0.5 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
             <button
               onClick={handleRefresh}
               title="Refresh"
               className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
             >
-              <RotateCcw size={11} className={spinning ? "animate-spin" : ""} />
+              <RotateCcw size={13} className={spinning ? "animate-spin" : ""} />
             </button>
             <button
               onClick={handleDownload}
               title="Download as .npy"
               className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
             >
-              <Download size={11} />
+              <Download size={13} />
             </button>
             <button
               onClick={() => setExpanded(true)}
               title="Expand"
               className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
             >
-              <Search size={11} />
+              <Search size={13} />
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
               title="Remove"
               className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700/60 transition-colors"
             >
-              <Trash2 size={11} />
+              <Trash2 size={13} />
             </button>
           </div>
         </div>
-
-        {/* Last value badge */}
-        {stats && (
-          <div
-            className="px-3 pt-2 pb-0.5 flex items-baseline gap-1.5 flex-shrink-0"
-          >
-            <span className="text-lg font-mono font-semibold leading-none tabular-nums" style={{ color: accentColor }}>
-              {fmtVal(stats.last)}
-            </span>
-            <span className="text-[10px] text-gray-500 font-medium">{unit}</span>
-            <span className="ml-auto text-[9px] text-gray-600 font-mono">last</span>
-          </div>
-        )}
 
         {/* Chart */}
         <div className="flex-1 min-h-0 overflow-hidden">
@@ -848,15 +850,15 @@ function ResultCard({
             className="flex justify-between px-3 py-1.5 border-t flex-shrink-0"
             style={{ borderColor: `${accentColor}15` }}
           >
-            <span className="text-[9px] text-gray-600">
+            <span className="text-[10px] text-gray-600">
               <span className="text-gray-500">min </span>
               <span className="font-mono text-gray-400">{fmtVal(stats.min)}</span>
             </span>
-            <span className="text-[9px] text-gray-600">
+            <span className="text-[10px] text-gray-600">
               <span className="text-gray-500">avg </span>
               <span className="font-mono text-gray-400">{fmtVal(stats.mean)}</span>
             </span>
-            <span className="text-[9px] text-gray-600">
+            <span className="text-[10px] text-gray-600">
               <span className="text-gray-500">max </span>
               <span className="font-mono text-gray-400">{fmtVal(stats.max)}</span>
             </span>
@@ -872,7 +874,7 @@ function ResultCard({
         >
           <div
             className="bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border"
-            style={{ width: "min(1080px, 95vw)", height: "380px", borderColor: `${accentColor}40` }}
+            style={{ width: "min(1080px, 95vw)", height: "420px", borderColor: `${accentColor}40` }}
             onClick={(e) => e.stopPropagation()}
           >
             <div
@@ -881,7 +883,7 @@ function ResultCard({
             >
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-                <span className="text-xs font-semibold tracking-wide" style={{ color: accentColor }}>{label}</span>
+                <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>{label}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -947,24 +949,40 @@ function RamachandranExpandedModal({
   status,
   error,
   spinning,
+  plotSettings,
   onClose,
   onRefresh,
   onDownload,
+  onUpdateSetting,
 }: {
   accentColor: string;
   imgSrc: string | null;
   status: "loading" | "ok" | "error";
   error: string | null;
   spinning: boolean;
+  plotSettings: Required<RamachandranPlotSettings>;
   onClose: () => void;
   onRefresh: () => void;
   onDownload: () => void;
+  onUpdateSetting: <K extends keyof RamachandranPlotSettings>(key: K, value: Required<RamachandranPlotSettings>[K]) => void;
 }) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) setSettingsOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [settingsOpen]);
 
   return (
     <div
@@ -982,7 +1000,7 @@ function RamachandranExpandedModal({
         >
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-            <span className="text-xs font-semibold tracking-wide" style={{ color: accentColor }}>Ramachandran</span>
+            <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>Ramachandran</span>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -990,16 +1008,78 @@ function RamachandranExpandedModal({
               title="Refresh"
               className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
             >
-              <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
+              <RotateCcw size={13} className={spinning ? "animate-spin" : ""} />
             </button>
             <button
               onClick={onDownload}
               disabled={status !== "ok"}
               title="Download PNG"
-              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Download size={12} />
+              <Download size={13} />
             </button>
+            {/* Settings gear */}
+            <div className="relative" ref={settingsRef}>
+              <button
+                onClick={() => setSettingsOpen((v) => !v)}
+                title="Plot settings"
+                className={`p-1.5 rounded-lg transition-colors ${
+                  settingsOpen
+                    ? "text-cyan-400 bg-cyan-900/30"
+                    : "text-gray-500 hover:text-white hover:bg-gray-700"
+                }`}
+              >
+                <Settings size={13} />
+              </button>
+              {settingsOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-gray-700">
+                    <span className="font-semibold text-gray-200">Plot Settings</span>
+                    <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <div className="p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-20 text-gray-400 flex-shrink-0">DPI</span>
+                      <input type="range" min={72} max={300} step={12} value={plotSettings.dpi}
+                        onChange={(e) => onUpdateSetting("dpi", Number(e.target.value))}
+                        className="flex-1 accent-cyan-500 h-1" />
+                      <span className="w-8 text-right text-gray-300 tabular-nums">{plotSettings.dpi}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-20 text-gray-400 flex-shrink-0">Bins</span>
+                      <input type="range" min={20} max={150} step={10} value={plotSettings.bins}
+                        onChange={(e) => onUpdateSetting("bins", Number(e.target.value))}
+                        className="flex-1 accent-cyan-500 h-1" />
+                      <span className="w-8 text-right text-gray-300 tabular-nums">{plotSettings.bins}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-20 text-gray-400 flex-shrink-0">Colormap</span>
+                      <select value={plotSettings.cmap} onChange={(e) => onUpdateSetting("cmap", e.target.value)}
+                        className="flex-1 bg-gray-800 border border-gray-700 rounded-md px-2 py-1 text-gray-200 text-xs focus:outline-none focus:border-cyan-600">
+                        {RAMACHANDRAN_CMAPS.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="border-t border-gray-800" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">Log scale</span>
+                      <button onClick={() => onUpdateSetting("log_scale", !plotSettings.log_scale)}
+                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.log_scale ? "bg-cyan-600" : "bg-gray-700"}`}>
+                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.log_scale ? "left-[18px]" : "left-0.5"}`} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">Show start</span>
+                      <button onClick={() => onUpdateSetting("show_start", !plotSettings.show_start)}
+                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.show_start ? "bg-cyan-600" : "bg-gray-700"}`}>
+                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.show_start ? "left-[18px]" : "left-0.5"}`} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
@@ -1082,7 +1162,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
         if (res.ok) {
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
-          setImgSrc(url);
+          setImgSrc((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
           setStatus("ok");
         } else {
           const body = await res.json().catch(() => ({}));
@@ -1121,25 +1201,25 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
     <>
       <div
         className="flex-shrink-0 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
-        style={{ width: "576px", height: "717px", borderColor: `${accentColor}30` }}
+        style={{ width: "300px", height: "300px", borderColor: `${accentColor}30` }}
       >
         <div
           className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0"
           style={{ borderColor: `${accentColor}20` }}
         >
           <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-            <span className="text-xs font-medium text-gray-300 truncate">Ramachandran</span>
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
+            <span className="text-sm font-medium text-gray-200 truncate">Ramachandran</span>
           </div>
-          <div className="flex items-center gap-0.5 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
             <button onClick={handleRefresh} title="Refresh" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors">
-              <RotateCcw size={11} className={spinning ? "animate-spin" : ""} />
+              <RotateCcw size={13} className={spinning ? "animate-spin" : ""} />
             </button>
-            <button onClick={handleDownload} disabled={status !== "ok"} title="Download PNG" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
-              <Download size={11} />
+            <button onClick={handleDownload} disabled={status !== "ok"} title="Download PNG" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <Download size={13} />
             </button>
             <button onClick={() => setExpanded(true)} title="Expand" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors">
-              <Search size={11} />
+              <Search size={13} />
             </button>
             {/* Settings gear */}
             <div className="relative" ref={settingsRef}>
@@ -1152,7 +1232,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                     : "text-gray-500 hover:text-gray-200 hover:bg-gray-700/60"
                 }`}
               >
-                <Settings size={11} />
+                <Settings size={13} />
               </button>
 
               {settingsOpen && (
@@ -1225,7 +1305,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
               )}
             </div>
             <button onClick={() => setConfirmDelete(true)} title="Remove" className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700/60 transition-colors">
-              <Trash2 size={11} />
+              <Trash2 size={13} />
             </button>
           </div>
         </div>
@@ -1246,7 +1326,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
           <img
             src={imgSrc ?? ""}
             alt="Ramachandran plot"
-            className="w-full h-full object-contain"
+            className="w-full h-full object-contain p-1"
             style={{ display: status === "ok" ? "block" : "none" }}
           />
         </div>
@@ -1260,9 +1340,11 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
           status={status}
           error={error}
           spinning={spinning}
+          plotSettings={plotSettings}
           onClose={() => setExpanded(false)}
           onRefresh={handleRefresh}
           onDownload={handleDownload}
+          onUpdateSetting={updateSetting}
         />
       )}
 
@@ -1340,7 +1422,7 @@ function AddPlotModal({
 
         {/* Energy group */}
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Energy</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider leading-none">Energy</p>
           <label className={`flex items-center gap-1.5 cursor-pointer ${availableTypes.length === 0 ? "opacity-30 cursor-not-allowed" : "hover:text-gray-200"}`}>
             <input
               type="checkbox"
@@ -1380,7 +1462,7 @@ function AddPlotModal({
         </div>
 
         {/* Structural group */}
-        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Structural</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Structural</p>
         <div className="space-y-1 mb-5">
           {ramachandranAvailable ? (
             <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-800 transition-colors">
@@ -1401,13 +1483,13 @@ function AddPlotModal({
               <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />
             </div>
           ) : (
-            <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-35">
+            <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
               <Lock size={11} className="text-gray-600 flex-shrink-0" />
               <span className="text-xs text-gray-400">Ramachandran</span>
               <span className="ml-auto text-[10px] text-gray-500">ala dipeptide only</span>
             </div>
           )}
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-35">
+          <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
             <Lock size={11} className="text-gray-600 flex-shrink-0" />
             <span className="text-xs text-gray-400">Custom CV</span>
             <span className="ml-auto text-[10px] text-gray-500">coming soon</span>
@@ -1417,7 +1499,7 @@ function AddPlotModal({
         <button
           onClick={handleRun}
           disabled={checked.size === 0}
-          className="w-full py-2 rounded-xl text-xs font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full py-2 rounded-xl text-xs font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Run Analysis
         </button>
@@ -1495,12 +1577,39 @@ function SimRunConfirmModal({
   const freqEdr = Number(gromacs.nstenergy ?? 1000);
   const freqLog = Number(gromacs.nstlog    ?? 1000);
 
-  const rows: SimFileRow[] = [
+  const plumedCfg = (cfg.plumed ?? {}) as Record<string, unknown>;
+  const cvsCfg = (plumedCfg.collective_variables ?? {}) as Record<string, unknown>;
+  const methodName = String(method._target_name ?? "md");
+  const needsPlumed = ["metad", "metadynamics", "opes", "umbrella", "umbrella_sampling", "steered", "steered_md"].includes(methodName);
+  const colvarStride = Number(cvsCfg.colvar_stride ?? 100);
+  const hillsPace = Number((method.hills as Record<string, unknown> | undefined)?.pace ?? Number(method.pace ?? 500));
+  const nCvs = Array.isArray(cvsCfg.cvs) ? cvsCfg.cvs.length : 0;
+
+  const baseRows: SimFileRow[] = [
     { label: "XTC (compressed coords)", ext: "xtc", freq: freqXtc, frames: freqXtc > 0 ? Math.floor(nsteps / freqXtc) : 0, sizeLabel: "" },
     { label: "TRR (full precision)",    ext: "trr", freq: freqTrr, frames: freqTrr > 0 ? Math.floor(nsteps / freqTrr) : 0, sizeLabel: "" },
     { label: "EDR (energies)",          ext: "edr", freq: freqEdr, frames: freqEdr > 0 ? Math.floor(nsteps / freqEdr) : 0, sizeLabel: "" },
     { label: "LOG (md.log)",            ext: "log", freq: freqLog, frames: freqLog > 0 ? Math.floor(nsteps / freqLog) : 0, sizeLabel: "" },
-  ].map((r) => ({ ...r, sizeLabel: _estimateSize(_bytesPerFrame(r.ext, systemName), r.frames) }));
+  ];
+  if (needsPlumed && nCvs > 0) {
+    // COLVAR: ~20 bytes per CV per line (time + CV values + bias)
+    const colvarFrames = colvarStride > 0 ? Math.floor(nsteps / colvarStride) : 0;
+    const colvarBytesPerFrame = 20 * (nCvs + 2); // time + CVs + bias
+    baseRows.push({ label: "COLVAR", ext: "colvar", freq: colvarStride, frames: colvarFrames, sizeLabel: _estimateSize(colvarBytesPerFrame, colvarFrames) });
+    if (["metad", "metadynamics"].includes(methodName)) {
+      const hillsFrames = hillsPace > 0 ? Math.floor(nsteps / hillsPace) : 0;
+      const hillsBytesPerFrame = 20 * (nCvs + 3); // time + CVs + sigma + height
+      baseRows.push({ label: "HILLS", ext: "hills", freq: hillsPace, frames: hillsFrames, sizeLabel: _estimateSize(hillsBytesPerFrame, hillsFrames) });
+    }
+    if (methodName === "opes") {
+      const kernelFrames = hillsPace > 0 ? Math.floor(nsteps / hillsPace) : 0;
+      baseRows.push({ label: "KERNELS", ext: "kernels", freq: hillsPace, frames: kernelFrames, sizeLabel: _estimateSize(40 * (nCvs + 2), kernelFrames) });
+    }
+  }
+  const rows: SimFileRow[] = baseRows.map((r) => ({
+    ...r,
+    sizeLabel: r.sizeLabel || _estimateSize(_bytesPerFrame(r.ext, systemName), r.frames),
+  }));
 
   const totalPs  = nsteps * dt;
   const totalNs  = totalPs / 1000;
@@ -1517,7 +1626,7 @@ function SimRunConfirmModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
       <div
-        className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-md"
+        className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -1533,7 +1642,7 @@ function SimRunConfirmModal({
 
         {/* Logging table */}
         <div className="px-5 py-4">
-          <p className="text-xs font-medium text-gray-400 mb-3 uppercase tracking-wide">Output logging</p>
+          <p className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wider">Output logging</p>
           <div className="rounded-lg border border-gray-800 overflow-hidden">
             <table className="w-full text-xs">
               <thead>
@@ -1548,7 +1657,7 @@ function SimRunConfirmModal({
                 {rows.map((row) => (
                   <tr key={row.ext} className="text-gray-300">
                     <td className="px-3 py-2">
-                      <span className="font-mono text-[11px] text-blue-400">.{row.ext}</span>
+                      <span className="font-mono text-[11px] text-blue-400">{["colvar","hills","kernels"].includes(row.ext) ? row.ext.toUpperCase() : `.${row.ext}`}</span>
                       <span className="ml-2 text-gray-500">{row.label.split("(")[1]?.replace(")", "") ?? ""}</span>
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-gray-400">
@@ -1563,7 +1672,7 @@ function SimRunConfirmModal({
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[11px] text-gray-600 leading-relaxed">
+          <p className="mt-2 text-xs text-gray-600 leading-relaxed">
             Size estimates are approximate and may vary with solvent and settings.
           </p>
         </div>
@@ -1596,6 +1705,7 @@ function ProgressTab({
   runStatus,
   exitCode,
   totalSteps,
+  timestepPs,
   runStartedAt,
   runFinishedAt,
   resultCards,
@@ -1603,9 +1713,10 @@ function ProgressTab({
   systemName,
 }: {
   sessionId: string;
-  runStatus: "standby" | "running" | "finished" | "failed";
+  runStatus: "standby" | "running" | "finished" | "failed" | "paused";
   exitCode: number | null;
   totalSteps: number;
+  timestepPs: number;
   runStartedAt: number | null;
   runFinishedAt?: number | null;
   resultCards: ResultCardDef[];
@@ -1774,21 +1885,25 @@ function ProgressTab({
     ? null
     : runFinishedAt
       ? Math.max(0, runFinishedAt - runStartedAt)
-      : runStatus === "running"
+      : (runStatus === "running" || runStatus === "paused")
         ? Math.max(0, nowMs - runStartedAt)
         : null;
   const elapsedLabel = elapsedMs !== null ? formatElapsed(elapsedMs) : "—";
   const simNs = liveProgress ? liveProgress.time_ps / 1000 : 0;
+  const totalSimPs = totalSteps * timestepPs;
+  const totalSimNs = totalSimPs / 1000;
   const computedNsPerDay = elapsedMs != null && elapsedMs > 0 && simNs > 0
     ? (simNs * 86400000) / elapsedMs
     : null;
   const runStatusBadge = runStatus === "running"
     ? { label: "Running",  className: "text-green-400" }
-    : runStatus === "finished"
-      ? { label: "Finished", className: "text-blue-400" }
-      : runStatus === "failed"
-        ? { label: `Failed${exitCode !== null ? ` (exit ${exitCode})` : ""}`, className: "text-red-400" }
-        : { label: "Standby", className: "text-gray-400" };
+    : runStatus === "paused"
+      ? { label: "Paused", className: "text-amber-400" }
+      : runStatus === "finished"
+        ? { label: "Finished", className: "text-blue-400" }
+        : runStatus === "failed"
+          ? { label: `Failed${exitCode !== null ? ` (exit ${exitCode})` : ""}`, className: "text-red-400" }
+          : { label: "Standby", className: "text-gray-400" };
 
   return (
     <div className="p-4 space-y-4">
@@ -1814,15 +1929,17 @@ function ProgressTab({
       >
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-gray-900/70 border border-gray-800 rounded-lg p-2">
-            <p className="text-[11px] text-gray-500 uppercase tracking-wider">Wall Time</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Wall Time</p>
             <p className="text-sm font-mono text-gray-200">{elapsedLabel}</p>
           </div>
           <div className="bg-gray-900/70 border border-gray-800 rounded-lg p-2">
-            <p className="text-[11px] text-gray-500 uppercase tracking-wider">Sim Time</p>
-            <p className="text-sm font-mono text-gray-200">{simNs.toFixed(3)} ns</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Sim Time</p>
+            <p className="text-sm font-mono text-gray-200">
+              {simNs.toFixed(3)}{totalSimNs > 0 ? ` / ${totalSimNs.toFixed(1)} ns` : " ns"}
+            </p>
           </div>
           <div className="bg-gray-900/70 border border-gray-800 rounded-lg p-2">
-            <p className="text-[11px] text-gray-500 uppercase tracking-wider">Performance</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Performance</p>
             <p className="text-sm font-mono text-gray-200">
               {computedNsPerDay !== null ? `${computedNsPerDay.toFixed(2)} ns/day` : "—"}
             </p>
@@ -1839,7 +1956,7 @@ function ProgressTab({
             </span>
             <span>{(runStatus === "finished" || (liveProgress && targetSteps > 0)) ? `${pct.toFixed(1)}%` : "0.0%"}</span>
           </div>
-          <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+          <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
             <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
           </div>
         </div>
@@ -1871,36 +1988,54 @@ function ProgressTab({
       </Section>
 
       {/* Results section */}
-      <div className="space-y-3 pt-2">
-        <div className="flex items-center gap-2">
-          <div className="h-px flex-1 bg-gray-800" />
-          <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wider">Results</span>
-          <div className="h-px flex-1 bg-gray-800" />
-        </div>
-
-        {/* Horizontal scrollable card row */}
-        <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
-          {/* Cards: newest first */}
-          {[...resultCards].reverse().map((card) => (
-            <ResultCard
-              key={card.id}
-              card={card}
-              sessionId={sessionId}
-              onDelete={() => setResultCards((prev) => prev.filter((c) => c.id !== card.id))}
-            />
-          ))}
-
-          {/* Add button */}
+      <Section
+        icon={<Layers size={13} />}
+        title={`Results${resultCards.length > 0 ? ` (${resultCards.length})` : ""}`}
+        accent="indigo"
+        action={
           <button
             onClick={() => setAddPlotOpen(true)}
-            className="flex-shrink-0 rounded-xl border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
-            style={{ width: "576px", height: "717px" }}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-indigo-400 hover:bg-indigo-900/30 transition-colors font-medium"
           >
-            <Plus size={20} />
-            <span className="text-xs">Add plot</span>
+            <Plus size={12} />
+            Add
           </button>
+        }
+      >
+        {/* Horizontal scrollable card row */}
+        <div className="flex gap-3 overflow-x-auto pb-1 -mx-3 px-3" style={{ scrollbarWidth: "thin" }}>
+          {resultCards.length === 0 ? (
+            <button
+              onClick={() => setAddPlotOpen(true)}
+              className="w-full rounded-lg border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
+              style={{ height: "300px" }}
+            >
+              <Plus size={16} />
+              <span className="text-xs">Add analysis plot</span>
+            </button>
+          ) : (
+            <>
+              {[...resultCards].reverse().map((card) => (
+                <ResultCard
+                  key={card.id}
+                  card={card}
+                  sessionId={sessionId}
+                  onDelete={() => setResultCards((prev) => prev.filter((c) => c.id !== card.id))}
+                />
+              ))}
+              {/* Add button */}
+              <button
+                onClick={() => setAddPlotOpen(true)}
+                className="flex-shrink-0 rounded-xl border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
+                style={{ width: "120px", height: "300px" }}
+              >
+                <Plus size={18} />
+                <span className="text-xs">Add</span>
+              </button>
+            </>
+          )}
         </div>
-      </div>
+      </Section>
 
       {addPlotOpen && (
         <AddPlotModal
@@ -1990,7 +2125,7 @@ function ProgressTab({
                       onClick={() => setDeleteTarget(f)}
                       disabled={isDeleting}
                       title="Move to archive"
-                      className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700 transition-colors disabled:opacity-40"
+                      className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700 transition-colors disabled:opacity-50"
                     >
                       {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                     </button>
@@ -2046,7 +2181,7 @@ function ProgressTab({
                         onClick={() => handleRestore(f)}
                         disabled={isRestoring}
                         title="Restore to working directory"
-                        className="p-1 rounded text-gray-600 hover:text-emerald-400 hover:bg-gray-700 transition-colors disabled:opacity-40 opacity-0 group-hover:opacity-100"
+                        className="p-1 rounded text-gray-600 hover:text-emerald-400 hover:bg-gray-700 transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100"
                       >
                         {isRestoring ? (
                           <Loader2 size={12} className="animate-spin" />
@@ -2113,6 +2248,13 @@ function MoleculeTab({
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [expandedRoots, setExpandedRoots] = useState<Record<string, boolean>>({});
+  const [molLibrary, setMolLibrary] = useState<{ id: string; label: string; states: { name: string; file: string }[] }[]>([]);
+  const [molLibLoading, setMolLibLoading] = useState<string | null>(null);
+
+  // Fetch molecule library for suggestions
+  useEffect(() => {
+    getMolecules().then((r) => setMolLibrary(r.systems)).catch(() => {});
+  }, []);
 
   const refreshFiles = useCallback(() => {
     setLoading(true);
@@ -2146,6 +2288,19 @@ function MoleculeTab({
     } finally {
       setDeleteLoading(null);
     }
+  };
+
+  const handleLoadFromLibrary = async (systemId: string, stateName: string) => {
+    const key = `${systemId}/${stateName}`;
+    setMolLibLoading(key);
+    try {
+      const { loaded } = await loadMolecule(sessionId, systemId, stateName);
+      setFileRefresh((n) => n + 1);
+      // Load the file content into the viewer
+      const content = await getFileContent(sessionId, loaded);
+      onSelectMolecule({ content, name: loaded });
+    } catch { /* ignore */ }
+    finally { setMolLibLoading(null); }
   };
 
   const handleSelect = async (filePath: string) => {
@@ -2222,6 +2377,37 @@ function MoleculeTab({
           <div className="flex items-center gap-2 text-gray-400">
             <Loader2 size={20} className="animate-spin" />
             <span className="text-sm">Loading molecule…</span>
+          </div>
+        </div>
+      ) : molLibrary.length > 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-700/60 bg-gray-900/40 p-5">
+          <div className="text-center mb-4">
+            <FlaskConical size={24} className="mx-auto text-gray-600 mb-2" />
+            <p className="text-xs text-gray-500">No molecule selected. Load one from the library:</p>
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            {molLibrary.map((sys) => (
+              <div key={sys.id} className="rounded-lg border border-gray-700/50 bg-gray-800/40 p-3">
+                <p className="text-xs font-semibold text-gray-300 mb-2">{sys.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {sys.states.map((st) => {
+                    const key = `${sys.id}/${st.name}`;
+                    const isLoading = molLibLoading === key;
+                    return (
+                      <button
+                        key={st.name}
+                        onClick={() => handleLoadFromLibrary(sys.id, st.name)}
+                        disabled={!!molLibLoading}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs bg-indigo-900/30 border border-indigo-800/40 text-indigo-300 hover:bg-indigo-800/40 hover:text-indigo-200 transition-colors disabled:opacity-50 font-mono"
+                      >
+                        {isLoading ? <Loader2 size={10} className="animate-spin" /> : <FlaskConical size={10} />}
+                        {st.file}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}
@@ -2319,7 +2505,7 @@ function MoleculeTab({
                         <button
                           onClick={() => handleDelete(f)}
                           disabled={isDeleting || isLoading}
-                          className="flex items-center justify-center p-1.5 rounded-md text-gray-400 hover:text-red-400 hover:bg-red-900/20 border border-gray-700/50 hover:border-red-800/40 transition-colors disabled:opacity-40 flex-shrink-0"
+                          className="flex items-center justify-center p-1.5 rounded-md text-gray-400 hover:text-red-400 hover:bg-red-900/20 border border-gray-700/50 hover:border-red-800/40 transition-colors disabled:opacity-50 flex-shrink-0"
                           title="Delete file"
                         >
                           {isDeleting
@@ -2351,6 +2537,71 @@ function MoleculeTab({
 
 // ── GROMACS tab ────────────────────────────────────────────────────────
 
+function GpuCpuToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const isGpu = value !== "" && value !== "cpu";
+  const [gpuLabel, setGpuLabel] = useState(isGpu ? `GPU ${value}` : "GPU (auto)");
+  const [checking, setChecking] = useState(false);
+
+  const selectGpu = () => {
+    setChecking(true);
+    getAvailableGpu()
+      .then((r) => {
+        if (r.available && r.gpu_id) {
+          onChange(r.gpu_id);
+          setGpuLabel(`GPU ${r.gpu_id}`);
+        } else {
+          setGpuLabel("No GPU free");
+          // Stay on CPU if no GPU available
+        }
+      })
+      .catch(() => { setGpuLabel("GPU (error)"); })
+      .finally(() => setChecking(false));
+  };
+
+  const selectCpu = () => {
+    onChange("");
+    setGpuLabel("GPU (auto)");
+  };
+
+  // On mount, if GPU is selected, verify it
+  useEffect(() => {
+    if (isGpu) setGpuLabel(`GPU ${value}`);
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div>
+      <label className="text-sm font-medium text-gray-400 mb-1.5 block">Compute</label>
+      <div className="flex rounded-lg border border-gray-700 overflow-hidden h-[38px]">
+        <button
+          type="button"
+          onClick={selectGpu}
+          disabled={checking}
+          className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors ${
+            isGpu
+              ? "bg-emerald-900/40 text-emerald-400 border-r border-gray-700"
+              : "bg-gray-800/40 text-gray-500 hover:text-gray-300 hover:bg-gray-800 border-r border-gray-700"
+          }`}
+        >
+          {checking ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+          {isGpu ? gpuLabel : "GPU"}
+        </button>
+        <button
+          type="button"
+          onClick={selectCpu}
+          className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors ${
+            !isGpu
+              ? "bg-blue-900/40 text-blue-400"
+              : "bg-gray-800/40 text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+          }`}
+        >
+          <Cpu size={12} />
+          CPU
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function GromacsTab({
   cfg,
   onChange,
@@ -2362,7 +2613,7 @@ function GromacsTab({
   onChange: (k: string, v: unknown) => void;
   onSave: () => void;
   saveState: "idle" | "saving" | "saved";
-  runStatus: "standby" | "running" | "finished" | "failed";
+  runStatus: "standby" | "running" | "finished" | "failed" | "paused";
 }) {
   const gromacs = (cfg.gromacs ?? {}) as Record<string, unknown>;
   const method  = (cfg.method  ?? {}) as Record<string, unknown>;
@@ -2428,8 +2679,12 @@ function GromacsTab({
               onBlur={onSave}
               unit="nm"
             />
+            <GpuCpuToggle
+              value={String(gromacs.gpu_id ?? "")}
+              onChange={(v) => { onChange("gromacs.gpu_id", v); onSave(); }}
+            />
           </FieldGrid>
-          <p className="text-[11px] text-gray-600">
+          <p className="text-xs text-gray-600">
             Minimum distance from the molecule to the box edge (editconf <code className="font-mono">-d</code>).
             Must satisfy: clearance × √3/2 &gt; max cutoff ({String((gromacs.rcoulomb as number | undefined) ?? 1.0)} nm).
           </p>
@@ -2534,7 +2789,7 @@ function AdvancedSection({
       >
         <div className="flex items-center gap-2">
           {open ? <ChevronDown size={12} className="text-gray-500" /> : <ChevronRight size={12} className="text-gray-500" />}
-          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Advanced Parameters</span>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Advanced Parameters</span>
         </div>
         <span className="text-[10px] text-gray-600">Cutoffs, electrostatics, constraints, output…</span>
       </button>
@@ -2544,7 +2799,7 @@ function AdvancedSection({
         <div className="p-3 space-y-3 border-t border-gray-700/40 bg-gray-900/20">
           {/* Non-bonded cutoffs */}
           <div>
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Non-bonded Cutoffs</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Non-bonded Cutoffs</p>
             <FieldGrid>
               <Field
                 label="Coulomb cutoff"
@@ -2567,7 +2822,7 @@ function AdvancedSection({
 
           {/* Electrostatics */}
           <div>
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Electrostatics</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Electrostatics</p>
             <FieldGrid>
               <SelectField
                 label="Coulomb type"
@@ -2600,7 +2855,7 @@ function AdvancedSection({
 
           {/* Neighbor list */}
           <div>
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Neighbor List</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Neighbor List</p>
             <FieldGrid>
               <SelectField
                 label="Cutoff scheme"
@@ -2625,7 +2880,7 @@ function AdvancedSection({
 
           {/* Constraints */}
           <div>
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Constraints</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Constraints</p>
             <FieldGrid>
               <SelectField
                 label="Constraints"
@@ -2653,7 +2908,7 @@ function AdvancedSection({
 
           {/* Output frequencies */}
           <div>
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Output Frequencies (steps)</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Output Frequencies (steps)</p>
             <FieldGrid>
               <Field
                 label="nstxout"
@@ -2708,7 +2963,7 @@ function AdvancedSection({
 
           {/* Pressure */}
           <div>
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Pressure Coupling</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Pressure Coupling</p>
             <FieldGrid>
               <SelectField
                 label="Barostat"
@@ -2747,12 +3002,113 @@ function AdvancedSection({
   );
 }
 
+// ── CV type options ──────────────────────────────────────────────────
+const CV_TYPES = [
+  { value: "DISTANCE", label: "Distance" },
+  { value: "TORSION", label: "Torsion" },
+  { value: "ANGLE", label: "Angle" },
+  { value: "RMSD", label: "RMSD" },
+  { value: "COORDINATION", label: "Coordination" },
+];
+
+interface CVDefinition {
+  name: string;
+  type: string;
+  atoms?: number[];
+  reference?: string;
+  rmsd_type?: string;
+  groupa?: number[];
+  groupb?: number[];
+  r0?: number;
+}
+
+function CVEditor({
+  cv,
+  index,
+  onChange,
+  onRemove,
+}: {
+  cv: CVDefinition;
+  index: number;
+  onChange: (updated: CVDefinition) => void;
+  onRemove: () => void;
+}) {
+  const needsAtoms = ["DISTANCE", "TORSION", "ANGLE"].includes(cv.type);
+  const atomCount = cv.type === "DISTANCE" ? 2 : cv.type === "TORSION" ? 4 : cv.type === "ANGLE" ? 3 : 0;
+
+  return (
+    <div className="rounded-lg border border-gray-700/50 bg-gray-800/30 p-2.5 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">CV {index + 1}</span>
+          <span className="text-[10px] font-mono text-gray-600">{cv.type}</span>
+        </div>
+        <button onClick={onRemove} className="p-0.5 rounded text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition-colors">
+          <Trash2 size={11} />
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="text-xs font-medium text-gray-500 mb-1 block">Name</label>
+          <input
+            value={cv.name}
+            onChange={(e) => onChange({ ...cv, name: e.target.value })}
+            className="w-full border border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="d1"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-500 mb-1 block">Type</label>
+          <select
+            value={cv.type}
+            onChange={(e) => {
+              const v = e.target.value;
+              onChange({ ...cv, type: v, atoms: v === "DISTANCE" ? [1, 2] : v === "TORSION" ? [1, 2, 3, 4] : v === "ANGLE" ? [1, 2, 3] : cv.atoms });
+            }}
+            className="w-full border border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {CV_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+        {needsAtoms && (
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Atoms ({atomCount})</label>
+            <input
+              value={(cv.atoms ?? []).join(",")}
+              onChange={(e) => {
+                const parsed = e.target.value.split(/[,\s]+/).map(Number).filter((n) => !isNaN(n));
+                onChange({ ...cv, atoms: parsed });
+              }}
+              className="w-full border border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-800 text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder={cv.type === "TORSION" ? "5,7,9,15" : "1,100"}
+            />
+          </div>
+        )}
+        {cv.type === "RMSD" && (
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Reference</label>
+            <input
+              value={cv.reference ?? ""}
+              onChange={(e) => onChange({ ...cv, reference: e.target.value })}
+              className="w-full border border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="reference.pdb"
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 // ── Method tab (includes PLUMED) ────────────────────────────────────────
 
 const METHOD_OPTIONS = [
-  { id: "md",       label: "Molecular Dynamics", tag: "MD" },
-  { id: "metad",    label: "Metadynamics",        tag: "MetaD" },
-  { id: "umbrella", label: "Umbrella Sampling",   tag: "US" },
+  { id: "md",       label: "MD",         long: "Molecular Dynamics" },
+  { id: "metad",    label: "MetaD",      long: "Well-tempered Metadynamics" },
+  { id: "opes",     label: "OPES",       long: "On-the-fly Probability Enhanced Sampling" },
+  { id: "umbrella", label: "Umbrella",   long: "Umbrella Sampling" },
+  { id: "steered",  label: "Steered",    long: "Steered MD" },
 ];
 
 function MethodTab({
@@ -2760,149 +3116,430 @@ function MethodTab({
   cfg,
   onChange,
   onSave,
+  runStatus,
 }: {
   sessionId: string;
   cfg: Record<string, unknown>;
   onChange: (k: string, v: unknown) => void;
   onSave: () => void;
+  runStatus: "standby" | "running" | "finished" | "failed" | "paused";
 }) {
   const method = (cfg.method ?? {}) as Record<string, unknown>;
   const hills = (method.hills ?? {}) as Record<string, unknown>;
+  const plumedCfg = (cfg.plumed ?? {}) as Record<string, unknown>;
+  const cvsCfg = (plumedCfg.collective_variables ?? {}) as Record<string, unknown>;
   const [agentOpen, setAgentOpen] = useState(false);
-  const [methodOpen, setMethodOpen] = useState(false);
+  const [plumedPreview, setPlumedPreview] = useState<string | null>(null);
+  const [plumedLoading, setPlumedLoading] = useState(false);
+  const [plumedMessage, setPlumedMessage] = useState<string | null>(null);
+  const [pdbFiles, setPdbFiles] = useState<string[]>([]);
+  const [initialContent, setInitialContent] = useState<string | null>(null);
+  const [targetContent, setTargetContent] = useState<string | null>(null);
+  const [plumedRevision, setPlumedRevision] = useState(0);
+  const isLocked = runStatus === "running" || runStatus === "finished";
+
+  // Load PDB/structure files for steered MD initial/target selection
+  useEffect(() => {
+    listFiles(sessionId).then(({ files }) => {
+      const structs = files.filter((f) => {
+        const ext = f.split(".").pop()?.toLowerCase() ?? "";
+        return ["pdb", "gro", "mol2", "xyz", "sdf"].includes(ext);
+      }).map((f) => f.split("/").pop() ?? f);
+      setPdbFiles(structs);
+    }).catch(() => {});
+  }, [sessionId]);
+
+  // Load structure content for steered MD viewers
+  const initialPdb = String(method.initial_pdb ?? "");
+  const targetPdb = String(method.target_pdb ?? "");
+  useEffect(() => {
+    if (!initialPdb) { setInitialContent(null); return; }
+    getFileContent(sessionId, initialPdb).then(setInitialContent).catch(() => setInitialContent(null));
+  }, [sessionId, initialPdb]);
+  useEffect(() => {
+    if (!targetPdb) { setTargetContent(null); return; }
+    getFileContent(sessionId, targetPdb).then(setTargetContent).catch(() => setTargetContent(null));
+  }, [sessionId, targetPdb]);
 
   const currentMethodId = (method._target_name as string) ?? "md";
   const currentMethod = METHOD_OPTIONS.find((m) => m.id === currentMethodId) ?? METHOD_OPTIONS[0];
   const isMetaD = currentMethodId === "metad" || currentMethodId === "metadynamics";
+  const isOpes = currentMethodId === "opes";
+  const isUmbrella = currentMethodId === "umbrella" || currentMethodId === "umbrella_sampling";
+  const isSteered = currentMethodId === "steered" || currentMethodId === "steered_md";
+  const needsPlumed = isMetaD || isOpes || isUmbrella || isSteered;
+
+  // Auto-load PLUMED preview — refreshes on method/session change and after config saves
+  useEffect(() => {
+    if (!needsPlumed) { setPlumedPreview(null); return; }
+    // Debounce to avoid spamming API on rapid saves
+    const timer = setTimeout(() => {
+      setPlumedLoading(true);
+      getPlumedPreview(sessionId)
+        .then((res) => { setPlumedPreview(res.content ?? null); setPlumedMessage(res.content ? null : (res.message ?? null)); })
+        .catch(() => { setPlumedPreview(null); })
+        .finally(() => setPlumedLoading(false));
+    }, plumedRevision === 0 ? 0 : 400);
+    return () => clearTimeout(timer);
+  }, [sessionId, needsPlumed, plumedRevision]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Wrap onSave to also trigger PLUMED preview refresh
+  const saveAndRefreshPlumed = () => {
+    onSave();
+    if (needsPlumed) setPlumedRevision((r) => r + 1);
+  };
+
+  // Parse CVs from config — always available regardless of method
+  const rawCvs = (cvsCfg.cvs ?? []) as CVDefinition[];
+  const cvs: CVDefinition[] = Array.isArray(rawCvs) ? rawCvs : [];
 
   const handleMethodChange = (id: string) => {
+    if (isLocked) return;
     onChange("method._target_name", id);
-    setMethodOpen(false);
-    onSave();
+    saveAndRefreshPlumed();
+  };
+
+  const handleCVChange = (index: number, updated: CVDefinition) => {
+    const newCvs = [...cvs];
+    newCvs[index] = updated;
+    onChange("plumed.collective_variables.cvs", newCvs);
+  };
+
+  const handleCVRemove = (index: number) => {
+    const newCvs = cvs.filter((_, i) => i !== index);
+    onChange("plumed.collective_variables.cvs", newCvs);
+    saveAndRefreshPlumed();
+  };
+
+  const handleCVAdd = () => {
+    const newCv: CVDefinition = { name: `d${cvs.length + 1}`, type: "DISTANCE", atoms: [1, 2] };
+    onChange("plumed.collective_variables.cvs", [...cvs, newCv]);
+    saveAndRefreshPlumed();
+  };
+
+  const handlePreviewPlumed = async () => {
+    setPlumedLoading(true);
+    setPlumedMessage(null);
+    try {
+      const res = await getPlumedPreview(sessionId);
+      if (res.content) {
+        setPlumedPreview(res.content);
+      } else {
+        setPlumedPreview(null);
+        setPlumedMessage(res.message ?? "Could not generate preview.");
+      }
+    } catch (err: unknown) {
+      setPlumedMessage(err instanceof Error ? err.message : "Preview failed.");
+    } finally {
+      setPlumedLoading(false);
+    }
+  };
+
+  const handleGeneratePlumed = async () => {
+    setPlumedLoading(true);
+    setPlumedMessage(null);
+    try {
+      await generatePlumedFile(sessionId);
+      setPlumedMessage("plumed.dat written to session directory.");
+    } catch (err: unknown) {
+      setPlumedMessage(err instanceof Error ? err.message : "Generation failed.");
+    } finally {
+      setPlumedLoading(false);
+    }
   };
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-2 bg-gray-950/95 backdrop-blur border-b border-gray-800/80">
-        <h3 className="text-sm font-semibold text-gray-200">Simulation Method</h3>
-      </div>
-
-      {/* Current method + toggle */}
-      <div className="rounded-xl border border-gray-700/60 bg-gray-900/60 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Zap size={14} className="text-indigo-400" />
-            <span className="text-sm font-medium text-gray-100">{currentMethod.label}</span>
-            {currentMethod.tag && (
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-800/50 text-indigo-300">
-                {currentMethod.tag}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={() => setMethodOpen((o) => !o)}
-            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            {methodOpen ? "Cancel" : "Change"}
-          </button>
+    <div className="p-3 space-y-3">
+      <div className="sticky top-0 z-20 -mx-3 px-3 py-1.5 bg-gray-950/95 backdrop-blur border-b border-gray-800/80">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-200 truncate">
+            <span className="text-gray-400 font-normal">{currentMethod.long}</span> — {currentMethod.label}
+          </h3>
+          {isLocked && (
+            <span className="inline-flex items-center gap-1 text-xs text-amber-400">
+              <Lock size={11} />
+              Locked
+            </span>
+          )}
         </div>
-
-        {methodOpen && (
-          <div className="border-t border-gray-800 p-3 space-y-1.5 bg-gray-950/40">
-            {METHOD_OPTIONS.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => handleMethodChange(m.id)}
-                className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-all ${
-                  m.id === currentMethodId
-                    ? "border-indigo-600 bg-indigo-950/40 text-white"
-                    : "border-gray-700/60 bg-gray-800/40 text-gray-400 hover:border-gray-600 hover:text-gray-200"
-                }`}
-              >
-                <span className="font-medium">{m.label}</span>
-                {m.tag && (
-                  <span className={`ml-2 text-[10px] font-mono px-1 py-0.5 rounded ${
-                    m.id === currentMethodId ? "bg-indigo-700/60 text-indigo-200" : "bg-gray-700 text-gray-500"
-                  }`}>{m.tag}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Metadynamics / PLUMED bias — only shown when method is metad */}
-      {isMetaD && (
-        <Section icon={<Mountain size={13} />} title="PLUMED / Metadynamics Bias" accent="indigo">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] text-gray-500">Well-tempered metadynamics parameters</p>
+      {/* Method toggle — horizontal buttons */}
+      <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
+        <div className="flex rounded-lg border border-gray-700 overflow-hidden h-[32px]">
+          {METHOD_OPTIONS.map((m, i) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => handleMethodChange(m.id)}
+              title={m.long}
+              className={`flex-1 flex items-center justify-center text-xs font-medium transition-colors ${
+                m.id === currentMethodId
+                  ? "bg-indigo-900/50 text-indigo-300"
+                  : "bg-gray-800/40 text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+              } ${i < METHOD_OPTIONS.length - 1 ? "border-r border-gray-700" : ""}`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      {/* COLVAR output settings — always shown for PLUMED methods, persisted across switches */}
+      {needsPlumed && (
+        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
+        <Section icon={<FileText size={11} />} title="COLVAR Output" accent="blue">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Stride <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(cvsCfg.colvar_stride ?? 100)} onChange={(e) => onChange("plumed.collective_variables.colvar_stride", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Filename</label>
+              <input value={String(cvsCfg.colvar_file ?? "COLVAR")} onChange={(e) => onChange("plumed.collective_variables.colvar_file", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+        </Section>
+        </fieldset>
+      )}
+
+      {/* Collective Variables — always shown for PLUMED methods */}
+      {needsPlumed && (
+        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
+        <Section icon={<Search size={11} />} title={`Collective Variables (${cvs.length})`} accent="emerald"
+          action={!isLocked ? (
             <button
               onClick={() => setAgentOpen(true)}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] bg-indigo-900/30 border border-indigo-800/50 text-indigo-400 hover:bg-indigo-800/40 transition-colors"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-indigo-900/30 border border-indigo-800/50 text-indigo-400 hover:bg-indigo-800/40 transition-colors"
             >
               <Bot size={10} />
-              Suggest CVs
+              Suggest
             </button>
+          ) : undefined}
+        >
+          {/* Scrollable CV list */}
+          <div className={`space-y-2 ${cvs.length > 2 ? "max-h-48 overflow-y-auto pr-1 [scrollbar-gutter:stable]" : ""}`}>
+            {cvs.map((cv, i) => (
+              <CVEditor key={i} cv={cv} index={i} onChange={(u) => handleCVChange(i, u)} onRemove={() => handleCVRemove(i)} />
+            ))}
           </div>
-          <FieldGrid>
-            <Field
-              label="Hills height"
-              type="number"
-              value={String(hills.height ?? "")}
-              onChange={(v) => onChange("method.hills.height", Number(v))}
-              onBlur={onSave}
-              unit="kJ/mol"
-              hint="Gaussian bias height."
-            />
-            <Field
-              label="Hills pace"
-              type="number"
-              value={String(hills.pace ?? "")}
-              onChange={(v) => onChange("method.hills.pace", Number(v))}
-              onBlur={onSave}
-              unit="steps"
-              hint="Deposition frequency."
-            />
-          </FieldGrid>
-          <FieldGrid>
-            <Field
-              label="Sigma"
-              type="number"
-              value={String(Array.isArray(hills.sigma) ? hills.sigma[0] : hills.sigma ?? "")}
-              onChange={(v) => onChange("method.hills.sigma", [Number(v)])}
-              onBlur={onSave}
-              hint="Gaussian width (CV units)."
-            />
-            <Field
-              label="Bias factor γ"
-              type="number"
-              value={String(hills.biasfactor ?? "")}
-              onChange={(v) => onChange("method.hills.biasfactor", Number(v))}
-              onBlur={onSave}
-              hint="Well-tempered factor (5–15)."
-            />
-          </FieldGrid>
-          <Section icon={<MessageSquare size={11} />} title="Example CV instructions" accent="blue">
-            <div className="space-y-1.5">
-              {[
-                "Set up phi/psi dihedrals for alanine dipeptide",
-                "Use sigma 0.3 rad, height 0.5 kJ/mol",
-                "Add an upper wall at phi = 2.0 rad",
-              ].map((ex) => (
-                <div key={ex} className="px-2.5 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/50 text-[10px] text-gray-400 font-mono">
-                  &ldquo;{ex}&rdquo;
-                </div>
-              ))}
+          {!isLocked && (
+            <button
+              onClick={handleCVAdd}
+              className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg border border-dashed border-gray-700 text-xs text-gray-500 hover:text-emerald-400 hover:border-emerald-700 transition-colors"
+            >
+              <Plus size={10} />
+              Add CV
+            </button>
+          )}
+        </Section>
+        </fieldset>
+      )}
+
+      {/* Method-specific parameters */}
+      {isMetaD && (
+        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
+        <Section icon={<Mountain size={11} />} title="Metadynamics Bias" accent="indigo">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Height <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol</span></label>
+              <input type="number" step="any" value={String(hills.height ?? "")} onChange={(e) => onChange("method.hills.height", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
-          </Section>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Pace <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(hills.pace ?? "")} onChange={(e) => onChange("method.hills.pace", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Sigma <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">CV units</span></label>
+              <input type="number" step="any" value={String(Array.isArray(hills.sigma) ? hills.sigma[0] : hills.sigma ?? "")} onChange={(e) => onChange("method.hills.sigma", [Number(e.target.value)])} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Bias factor <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">γ</span></label>
+              <input type="number" step="any" value={String(hills.biasfactor ?? "")} onChange={(e) => onChange("method.hills.biasfactor", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+          <p className="text-xs text-gray-600 mt-1">Well-tempered: γ 5–15. Leave empty for standard MetaD.</p>
+        </Section>
+        </fieldset>
+      )}
+
+      {isOpes && (
+        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
+        <Section icon={<Mountain size={11} />} title="OPES Parameters" accent="indigo">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Pace <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(method.pace ?? 500)} onChange={(e) => onChange("method.pace", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Sigma</label>
+              <input type="number" step="any" value={String(method.sigma ?? 0.05)} onChange={(e) => onChange("method.sigma", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Barrier <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol</span></label>
+              <input type="number" step="any" value={String(method.barrier ?? 30)} onChange={(e) => onChange("method.barrier", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Temperature <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">K</span></label>
+              <input type="number" step="any" value={String(method.temperature ?? 340)} onChange={(e) => onChange("method.temperature", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+          <p className="text-xs text-gray-600 mt-1">OPES_METAD: adaptive kernel-based enhanced sampling.</p>
+        </Section>
+        </fieldset>
+      )}
+
+      {isUmbrella && (
+        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
+        <Section icon={<Mountain size={11} />} title="Umbrella Sampling" accent="indigo">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Window start <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">nm</span></label>
+              <input type="number" step="any" value={String(method.window_start ?? 0)} onChange={(e) => onChange("method.window_start", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Window end <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">nm</span></label>
+              <input type="number" step="any" value={String(method.window_end ?? 4.0)} onChange={(e) => onChange("method.window_end", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Spacing <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">nm</span></label>
+              <input type="number" step="any" value={String(method.window_spacing ?? 0.2)} onChange={(e) => onChange("method.window_spacing", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Force κ <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol/nm²</span></label>
+              <input type="number" step="any" value={String(method.force_constant ?? 1000)} onChange={(e) => onChange("method.force_constant", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+        </Section>
+        </fieldset>
+      )}
+
+      {isSteered && (
+        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
+        <Section icon={<Mountain size={11} />} title="Steered MD" accent="indigo">
+          {/* Initial & Target state — viewers + selectors side by side */}
+          <div className="flex items-stretch gap-2 mb-3">
+            {/* Initial State */}
+            <div className="flex-1 min-w-0 rounded-lg border border-gray-700/60 bg-gray-800/30 p-2.5 space-y-2">
+              <label className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider block">Initial State (A)</label>
+              {initialContent ? (
+                <MiniStructureViewer fileContent={initialContent} fileName={initialPdb} height={160} />
+              ) : (
+                <div className="h-[160px] rounded-lg border border-dashed border-gray-700/60 bg-gray-900/40 flex items-center justify-center">
+                  <span className="text-[10px] text-gray-600">No structure selected</span>
+                </div>
+              )}
+              <select
+                value={initialPdb}
+                onChange={(e) => { onChange("method.initial_pdb", e.target.value); saveAndRefreshPlumed(); }}
+                className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">Select structure…</option>
+                {pdbFiles.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </div>
+            {/* Arrow between states */}
+            <div className="flex flex-col items-center justify-center flex-shrink-0 w-6">
+              <div className="h-8 w-px bg-gradient-to-b from-indigo-600 to-amber-600" />
+              <ChevronRight size={14} className="text-amber-500 my-0.5" />
+              <div className="h-8 w-px bg-gradient-to-b from-amber-600/40 to-transparent" />
+            </div>
+            {/* Target State */}
+            <div className="flex-1 min-w-0 rounded-lg border border-gray-700/60 bg-gray-800/30 p-2.5 space-y-2">
+              <label className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider block">Target State (B)</label>
+              {targetContent ? (
+                <MiniStructureViewer fileContent={targetContent} fileName={targetPdb} height={160} />
+              ) : (
+                <div className="h-[160px] rounded-lg border border-dashed border-gray-700/60 bg-gray-900/40 flex items-center justify-center">
+                  <span className="text-[10px] text-gray-600">No structure selected</span>
+                </div>
+              )}
+              <select
+                value={targetPdb}
+                onChange={(e) => { onChange("method.target_pdb", e.target.value); saveAndRefreshPlumed(); }}
+                className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              >
+                <option value="">Select structure…</option>
+                {pdbFiles.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {/* Steered MD parameters */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Initial value</label>
+              <input type="number" step="any" value={String(method.initial_value ?? 0)} onChange={(e) => onChange("method.initial_value", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Final value</label>
+              <input type="number" step="any" value={String(method.final_value ?? 4.0)} onChange={(e) => onChange("method.final_value", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Force κ <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol/nm²</span></label>
+              <input type="number" step="any" value={String(method.force_constant ?? 500)} onChange={(e) => onChange("method.force_constant", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Pull rate <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">nm/ps</span></label>
+              <input type="number" step="any" value={String(method.pull_rate ?? 0.005)} onChange={(e) => onChange("method.pull_rate", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+        </Section>
+        </fieldset>
+      )}
+
+      {/* PLUMED file — shown directly with refresh/download */}
+      {needsPlumed && (
+        <Section
+          icon={<FileText size={11} />}
+          title="PLUMED Input File"
+          accent="amber"
+          action={
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handlePreviewPlumed}
+                disabled={plumedLoading}
+                title="Refresh preview"
+                className="p-1 rounded text-gray-500 hover:text-amber-400 hover:bg-gray-800 transition-colors disabled:opacity-50"
+              >
+                {plumedLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+              </button>
+              <button
+                onClick={handleGeneratePlumed}
+                disabled={plumedLoading || isLocked}
+                title="Generate plumed.dat"
+                className="p-1 rounded text-gray-500 hover:text-emerald-400 hover:bg-gray-800 transition-colors disabled:opacity-50"
+              >
+                <Download size={11} />
+              </button>
+            </div>
+          }
+        >
+          {plumedLoading ? (
+            <div className="flex items-center justify-center py-6 text-gray-600">
+              <Loader2 size={14} className="animate-spin mr-2" />
+              <span className="text-xs">Loading…</span>
+            </div>
+          ) : plumedPreview ? (
+            <pre className="text-[10px] leading-relaxed text-gray-300 bg-gray-950 border border-gray-700/50 rounded-lg p-2.5 overflow-x-auto max-h-56 font-mono whitespace-pre">
+              {plumedPreview}
+            </pre>
+          ) : (
+            <div className="py-4 text-center">
+              <p className="text-xs text-gray-600">{plumedMessage || "No PLUMED file generated yet."}</p>
+            </div>
+          )}
         </Section>
       )}
 
-      {/* Placeholder for non-metaD methods */}
-      {!isMetaD && (
-        <div className="rounded-xl border border-gray-700/40 bg-gray-900/30 p-4 text-center">
+      {/* Plain MD note */}
+      {!needsPlumed && (
+        <div className="rounded-xl border border-gray-700/40 bg-gray-900/30 p-3 text-center">
           <p className="text-xs text-gray-600">
-            No additional parameters for <span className="text-gray-400">{currentMethod.label}</span>.
+            No enhanced sampling for <span className="text-gray-400">{currentMethod.long}</span>. Standard unbiased MD will run.
           </p>
         </div>
       )}
@@ -2983,7 +3620,7 @@ function NewSessionForm({
 
             {/* Molecule system */}
             <div className="rounded-xl border border-gray-700/60 bg-gray-900/60 p-3 flex flex-col gap-1.5">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Molecule System</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Molecule System</p>
               {SYSTEMS.map((s) => (
                 <button
                   key={s.id}
@@ -3003,7 +3640,7 @@ function NewSessionForm({
 
             {/* Simulation method */}
             <div className="rounded-xl border border-gray-700/60 bg-gray-900/60 p-3 flex flex-col gap-1.5">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Simulation Method</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Simulation Method</p>
               {PRESETS.map((p) => (
                 <button
                   key={p.id}
@@ -3018,7 +3655,7 @@ function NewSessionForm({
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-xs font-medium leading-snug">{p.label}</span>
                     {p.tag && (
-                      <span className={`text-[9px] font-mono px-1 py-0.5 rounded flex-shrink-0 ${
+                      <span className={`text-[10px] font-mono px-1 py-0.5 rounded flex-shrink-0 ${
                         preset === p.id ? "bg-blue-700/60 text-blue-200" : "bg-gray-700 text-gray-500"
                       }`}>{p.tag}</span>
                     )}
@@ -3030,7 +3667,7 @@ function NewSessionForm({
 
             {/* GROMACS template */}
             <div className="rounded-xl border border-gray-700/60 bg-gray-900/60 p-3 flex flex-col gap-1.5">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">GROMACS Template</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">GROMACS Template</p>
               {GMX_TEMPLATES.map((g) => (
                 <button
                   key={g.id}
@@ -3083,11 +3720,12 @@ type SimState = "standby" | "running";
 export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, onNewSession }: Props) {
   const [cfg, setCfg] = useState<Record<string, unknown>>({});
   const cfgRef = useRef<Record<string, unknown>>({});
+  const [sessionLoading, setSessionLoading] = useState(!!sessionId);
   const [activeTab, setActiveTab] = useState("progress");
   const [selectedMolecule, setSelectedMolecule] = useState<{ content: string; name: string } | null>(null);
   const [moleculeLoading, setMoleculeLoading] = useState(false);
   const [simState, setSimState] = useState<SimState>("standby");
-  const [simRunStatus, setSimRunStatus] = useState<"standby" | "running" | "finished" | "failed">("standby");
+  const [simRunStatus, setSimRunStatus] = useState<"standby" | "running" | "finished" | "failed" | "paused">("standby");
   const [simExitCode, setSimExitCode] = useState<number | null>(null);
   const [simStartedAt, setSimStartedAt] = useState<number | null>(null);
   const [simFinishedAt, setSimFinishedAt] = useState<number | null>(null);
@@ -3103,12 +3741,13 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   // Reset simulation state when switching sessions, preserving terminal states from the store
   useEffect(() => {
     const stored = sessionsRef.current.find((s) => s.session_id === sessionId);
-    const preserved = stored?.run_status === "finished" || stored?.run_status === "failed" ? stored.run_status : "standby";
+    const preserved = stored?.run_status === "finished" || stored?.run_status === "failed" || stored?.run_status === "paused" ? stored.run_status : "standby";
     // Sync the ref immediately so the polling effect's first pollStatus() call sees the
     // correct status for the new session, before setSimRunStatus triggers a re-render.
     // Without this, a switch from a "running" session causes the next session to falsely
     // map as "finished" (simRunStatusRef still "running" + backend returns not-running).
     simRunStatusRef.current = preserved;
+    if (sessionId) setSessionLoading(true);
     setSimState("standby");
     setSimRunStatus(preserved);
     setSimExitCode(null);
@@ -3116,11 +3755,22 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setSimFinishedAt(stored?.finished_at ? stored.finished_at * 1000 : null);
     setPauseConfirmOpen(false);
     setGromacsSaveState("idle");
-    // Restore result cards from persisted session data
-    const cards = (stored?.result_cards ?? []).filter((t): t is ResultCardType => VALID_RESULT_CARD_TYPES.has(t));
-    setResultCards(cards.map((type) => ({ id: crypto.randomUUID(), type })));
+    // Restore result cards from persisted session data, or use defaults
+    const savedCards = (stored?.result_cards ?? []).filter((t): t is ResultCardType => VALID_RESULT_CARD_TYPES.has(t));
+    setResultCards(savedCards.map((type) => ({ id: crypto.randomUUID(), type })));
     // Clear chat messages so previous session's conversation doesn't bleed into the new session
     clearMessages();
+    // Fetch authoritative wall-clock timestamps from session.json on disk.
+    // The Zustand store may not have them yet (e.g. after page refresh or session switch).
+    if (sessionId) {
+      getSessionRunStatus(sessionId).then((rs) => {
+        if (rs.started_at) setSimStartedAt((prev) => prev ?? rs.started_at! * 1000);
+        if (rs.finished_at) setSimFinishedAt((prev) => prev ?? rs.finished_at! * 1000);
+        if (rs.run_status === "running" || rs.run_status === "finished" || rs.run_status === "failed" || rs.run_status === "paused") {
+          setSimRunStatus((prev) => prev === "standby" ? rs.run_status as typeof prev : prev);
+        }
+      }).catch(() => {});
+    }
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fix wall-clock race: sessions list may load after the above effect runs (page refresh).
@@ -3131,7 +3781,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     if (!stored) return;
     if (stored.started_at) setSimStartedAt((prev) => prev ?? stored.started_at! * 1000);
     if (stored.finished_at) setSimFinishedAt((prev) => prev ?? stored.finished_at! * 1000);
-    if (stored.run_status === "finished" || stored.run_status === "failed") {
+    if (stored.run_status === "finished" || stored.run_status === "failed" || stored.run_status === "paused") {
       setSimRunStatus((prev) => (prev === "standby" ? stored.run_status! : prev));
     }
   }, [sessionId, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -3169,6 +3819,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     // any in-progress NGL load) only to remount moments later with the same file.
     let cancelled = false;
     cfgRef.current = {};
+    setCfg({});
+    setSessionLoading(true);
     setMoleculeLoading(true);
 
     getSessionConfig(sessionId)
@@ -3176,6 +3828,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         if (cancelled) return;
         setCfg(r.config);
         cfgRef.current = r.config;
+        setSessionLoading(false);
 
         // Derive work_dir and molecule file from the config (authoritative)
         const run = (r.config.run ?? {}) as Record<string, unknown>;
@@ -3201,6 +3854,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         if (!cancelled) {
           setSelectedMolecule(null);
           setMoleculeLoading(false);
+          setSessionLoading(false);
         }
       });
     return () => { cancelled = true; };
@@ -3213,13 +3867,13 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     let timer: ReturnType<typeof setInterval> | null = null;
 
     const pollStatus = async () => {
-      if (simRunStatusRef.current === "finished" || simRunStatusRef.current === "failed") return;
+      if (simRunStatusRef.current === "finished" || simRunStatusRef.current === "failed" || simRunStatusRef.current === "paused") return;
       try {
         const status = await getSimulationStatus(sessionId);
         if (cancelled) return;
-        // Re-check after async gap — reset effect may have updated status to "failed"
-        if ((simRunStatusRef.current as string) === "failed") return;
-        const mappedStatus: "standby" | "running" | "finished" | "failed" =
+        // Re-check after async gap — reset effect may have updated status to "failed" or "paused"
+        if ((simRunStatusRef.current as string) === "failed" || (simRunStatusRef.current as string) === "paused") return;
+        const mappedStatus: "standby" | "running" | "finished" | "failed" | "paused" =
           status.status === "finished" ? "finished"
             : status.status === "failed" ? "failed"
             : status.running ? "running"
@@ -3227,8 +3881,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             : "standby";
         setSimRunStatus(mappedStatus);
         if (mappedStatus === "failed") setSimExitCode(status.exit_code ?? null);
-        if (mappedStatus === "finished") { setSimExitCode(status.exit_code ?? 0); setSimFinishedAt((prev) => prev ?? Date.now()); }
-        if (mappedStatus === "running") setSimStartedAt((prev) => prev ?? Date.now());
+        if (mappedStatus === "finished") { setSimExitCode(status.exit_code ?? 0); setSimFinishedAt((prev) => prev ?? (status.finished_at ? status.finished_at * 1000 : Date.now())); }
+        if (mappedStatus === "running") setSimStartedAt((prev) => prev ?? (status.started_at ? status.started_at * 1000 : Date.now()));
         setSimState(status.running ? "running" : "standby");
         if (!status.running) setPauseConfirmOpen(false);
       } catch {
@@ -3312,8 +3966,33 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const handleConfirmPause = async () => {
     setPauseConfirmOpen(false);
     if (!sessionId) return;
+    // Set paused immediately so the poller doesn't race and map it to "finished"
+    simRunStatusRef.current = "paused";
+    setSimRunStatus("paused");
+    setSimState("standby");
     try {
       await stopSimulation(sessionId);
+    } catch { /* ignore */ }
+  };
+
+  const handleResume = async () => {
+    if (!sessionId) return;
+    try {
+      setSimState("running");
+      setSimRunStatus("running");
+      await resumeSimulation(sessionId);
+      appendSSEEvent({ type: "text_delta", text: "Simulation resumed from checkpoint.\n" });
+    } catch (err) {
+      appendSSEEvent({ type: "error", message: `Failed to resume: ${err}` });
+      setSimState("standby");
+      setSimRunStatus("failed");
+    }
+  };
+
+  const handleTerminate = async () => {
+    if (!sessionId) return;
+    try {
+      await terminateSimulation(sessionId);
     } catch { /* ignore */ }
     setSimState("standby");
     setSimRunStatus("standby");
@@ -3401,38 +4080,49 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     );
   }
 
-  const tabContent: Record<string, React.ReactNode> = {
-    progress: (
-      <ProgressTab
-        sessionId={sessionId}
-        runStatus={simRunStatus}
-        exitCode={simExitCode}
-        totalSteps={Number(((cfg.method as Record<string, unknown> | undefined)?.nsteps ?? 0))}
-        runStartedAt={simStartedAt}
-        runFinishedAt={simFinishedAt}
-        resultCards={resultCards}
-        setResultCards={setResultCards}
-        systemName={(cfg.system as Record<string, unknown>)?.name as string ?? ""}
-      />
-    ),
-    molecule: (
-      <MoleculeTab
-        sessionId={sessionId}
-        cfg={cfg}
-        selectedMolecule={selectedMolecule}
-        moleculeLoading={moleculeLoading}
-        onSelectMolecule={handleSelectMolecule}
-        onMoleculeDeleted={(name) => {
-          if (selectedMolecule?.name === name) setSelectedMolecule(null);
-        }}
-      />
-    ),
-    gromacs:  <GromacsTab cfg={cfg} onChange={handleChange} onSave={handleGromacsSave} saveState={gromacsSaveState} runStatus={simRunStatus} />,
-    method:   <MethodTab sessionId={sessionId} cfg={cfg} onChange={handleChange} onSave={handleSave} />,
+  // Only render the active tab — avoids mounting heavy components (3D viewers, Plotly) for inactive tabs
+  const renderTab = () => {
+    switch (activeTab) {
+      case "progress":
+        return (
+          <ProgressTab
+            sessionId={sessionId}
+            runStatus={simRunStatus}
+            exitCode={simExitCode}
+            totalSteps={Number(((cfg.method as Record<string, unknown> | undefined)?.nsteps ?? 0))}
+            timestepPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.dt ?? 0.002))}
+            runStartedAt={simStartedAt}
+            runFinishedAt={simFinishedAt}
+            resultCards={resultCards}
+            setResultCards={setResultCards}
+            systemName={(cfg.system as Record<string, unknown>)?.name as string ?? ""}
+          />
+        );
+      case "molecule":
+        return (
+          <MoleculeTab
+            sessionId={sessionId}
+            cfg={cfg}
+            selectedMolecule={selectedMolecule}
+            moleculeLoading={moleculeLoading}
+            onSelectMolecule={handleSelectMolecule}
+            onMoleculeDeleted={(name) => {
+              if (selectedMolecule?.name === name) setSelectedMolecule(null);
+            }}
+          />
+        );
+      case "gromacs":
+        return <GromacsTab cfg={cfg} onChange={handleChange} onSave={handleGromacsSave} saveState={gromacsSaveState} runStatus={simRunStatus} />;
+      case "method":
+        return <MethodTab sessionId={sessionId} cfg={cfg} onChange={handleChange} onSave={handleSave} runStatus={simRunStatus} />;
+      default:
+        return null;
+    }
   };
-  const actionState: "standby" | "running" | "finished" =
+  const actionState: "standby" | "running" | "finished" | "paused" =
     simRunStatus === "running" ? "running" :
     simRunStatus === "finished" ? "finished" :
+    simRunStatus === "paused" ? "paused" :
     "standby";
 
   return (
@@ -3440,7 +4130,48 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       <PillTabs active={activeTab} onChange={setActiveTab} />
 
       <div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-        {tabContent[activeTab]}
+        {sessionLoading ? (
+          <div className="p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Loader2 size={14} className="animate-spin text-gray-500" />
+              <span className="text-sm text-gray-500">Loading session…</span>
+            </div>
+            <div className="animate-pulse space-y-4">
+              <div className="rounded-xl border border-gray-800/60 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2 border-b border-gray-800/60 flex items-center gap-2">
+                  <div className="w-5 h-5 bg-gray-800 rounded-md" />
+                  <div className="h-3 w-24 bg-gray-800 rounded" />
+                </div>
+                <div className="p-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="h-14 bg-gray-800/40 rounded-lg" />
+                    <div className="h-14 bg-gray-800/40 rounded-lg" />
+                    <div className="h-14 bg-gray-800/40 rounded-lg" />
+                  </div>
+                  <div className="h-2.5 w-full bg-gray-800/30 rounded-full mt-3" />
+                </div>
+              </div>
+              <div className="rounded-xl border border-gray-800/60 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2 border-b border-gray-800/60 flex items-center gap-2">
+                  <div className="w-5 h-5 bg-gray-800 rounded-md" />
+                  <div className="h-3 w-20 bg-gray-800 rounded" />
+                </div>
+                <div className="p-3">
+                  <div className="h-28 bg-gray-800/30 rounded-lg" />
+                </div>
+              </div>
+              <div className="rounded-xl border border-gray-800/60 bg-gray-900/60 overflow-hidden">
+                <div className="px-3 py-2 border-b border-gray-800/60 flex items-center gap-2">
+                  <div className="w-5 h-5 bg-gray-800 rounded-md" />
+                  <div className="h-3 w-16 bg-gray-800 rounded" />
+                </div>
+                <div className="p-3">
+                  <div className="h-20 bg-gray-800/30 rounded-lg" />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : renderTab()}
       </div>
 
       {/* Simulation action button */}
@@ -3468,9 +4199,27 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             onClick={() => setPauseConfirmOpen(true)}
             className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-amber-900/30 text-sm"
           >
-            <Square size={14} fill="currentColor" />
+            <Pause size={14} />
             Pause MD Simulation
           </button>
+        )}
+        {actionState === "paused" && (
+          <div className="flex gap-2">
+            <button
+              onClick={handleResume}
+              className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-emerald-900/30 text-sm"
+            >
+              <Play size={14} fill="currentColor" />
+              Resume
+            </button>
+            <button
+              onClick={handleTerminate}
+              className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-800 hover:bg-gray-700 text-red-400 hover:text-red-300 font-semibold rounded-xl transition-all border border-gray-700 text-sm"
+            >
+              <Square size={14} fill="currentColor" />
+              Stop
+            </button>
+          </div>
         )}
       </div>
 
@@ -3488,9 +4237,9 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       {pauseConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
-            <h3 className="text-sm font-semibold text-gray-100 mb-2">Stop Simulation?</h3>
+            <h3 className="text-sm font-semibold text-gray-100 mb-2">Pause Simulation?</h3>
             <p className="text-xs text-gray-400 mb-5 leading-relaxed">
-              This will terminate the running mdrun process. Output files written so far will be preserved.
+              This will pause the running mdrun process. A checkpoint is saved automatically — you can resume from where it stopped.
             </p>
             <div className="flex gap-3 justify-end">
               <button
@@ -3501,9 +4250,9 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
               </button>
               <button
                 onClick={handleConfirmPause}
-                className="px-4 py-2 text-xs bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors font-medium"
+                className="px-4 py-2 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors font-medium"
               >
-                Stop Simulation
+                Pause Simulation
               </button>
             </div>
           </div>

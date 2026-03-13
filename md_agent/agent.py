@@ -716,7 +716,10 @@ class MDAgent:
                 self._messages.append({"role": "user", "content": tool_results})
 
         except Exception as exc:
-            yield {"type": "error", "message": str(exc)}
+            msg = str(exc)
+            if "api_key" in msg or "auth_token" in msg or "authentication" in msg.lower():
+                msg = "API key is not set. Please add your Anthropic API key in Settings (top-right gear icon)."
+            yield {"type": "error", "message": msg}
 
     @staticmethod
     def _extract_text(content: list) -> str:
