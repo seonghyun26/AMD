@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Camera, Crosshair, Film, Loader2, Pause, Play, Settings, X } from "lucide-react";
 import { downloadUrl, getFileContent } from "@/lib/api";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
+import { useTheme } from "@/lib/theme";
 
 type ExportBg = "white" | "black" | "transparent";
 
@@ -104,6 +105,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
 
   const [reps, setReps] = useState(repsRef.current);
   useEffect(() => { repsRef.current = reps; }, [reps]);
+  const { theme } = useTheme();
 
   const [ready, setReady]               = useState(false);
   const [error, setError]               = useState<string | null>(null);
@@ -196,7 +198,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
       };
 
       suppressNglDeprecationWarnings();
-      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: "#111827" });
+      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
       stageRef.current = stage;
       ro = new ResizeObserver(() => stage.handleResize());
       ro.observe(containerRef.current);
@@ -305,6 +307,11 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, topologyPath, trajectoryPath]);
+
+  // Update NGL background when theme changes
+  useEffect(() => {
+    stageRef.current?.setParameters({ backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
+  }, [theme]);
 
   const handlePlay = () => {
     if (!playerRef.current) return;
@@ -466,7 +473,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     <div className="space-y-2">
       {/* Viewer canvas */}
       <div
-        className="relative rounded-xl border border-gray-700/60 bg-gray-900 overflow-hidden"
+        className="relative rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-white dark:bg-gray-900 overflow-hidden"
         style={{ height: "360px" }}
       >
         {error ? (
@@ -482,7 +489,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                 <span className="text-xs">Loading trajectory…</span>
               </>
             ) : (
-              <span className="text-xs text-gray-600 px-4 text-center">No trajectory data yet.</span>
+              <span className="text-xs text-gray-400 dark:text-gray-600 px-4 text-center">No trajectory data yet.</span>
             )}
           </div>
         ) : loadingStage ? (
@@ -496,17 +503,17 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
         {/* Upper-left overlay: atom/residue counts */}
         {structInfo && (
           <div className="absolute top-2 left-2 flex gap-1.5 pointer-events-none">
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/80 dark:bg-gray-900/75 text-gray-600 dark:text-gray-300">
               {structInfo.atoms.toLocaleString()} atoms
             </span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/80 dark:bg-gray-900/75 text-gray-600 dark:text-gray-300">
               {structInfo.residues} residues
             </span>
           </div>
         )}
 
         {ready && (
-          <div className="absolute bottom-0 left-0 right-0 px-3 py-1 bg-gray-900/80 text-[10px] text-gray-500">
+          <div className="absolute bottom-0 left-0 right-0 px-3 py-1 bg-white/80 dark:bg-gray-900/80 text-[10px] text-gray-600 dark:text-gray-500">
             drag to rotate · scroll to zoom · right-click to translate
           </div>
         )}
@@ -530,7 +537,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                 className={`px-2 py-1 rounded text-[10px] border transition-colors disabled:opacity-40 ${
                   on
                     ? "bg-indigo-600 border-indigo-500 text-white"
-                    : "bg-gray-800/60 border-gray-700/50 text-gray-400 hover:text-gray-200"
+                    : "bg-gray-100/60 dark:bg-gray-800/60 border-gray-300/50 dark:border-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
                 }`}
               >
                 {label}
@@ -542,7 +549,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           <button
             onClick={handlePlay}
             disabled={!ready || playing || gifGenerating}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-emerald-700/60 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-800/40 disabled:opacity-40"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-emerald-300/60 dark:border-emerald-700/60 bg-emerald-50/60 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60 dark:hover:bg-emerald-800/40 disabled:opacity-40"
           >
             <Play size={11} />
             Play
@@ -550,7 +557,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           <button
             onClick={handlePause}
             disabled={!ready || !playing || gifGenerating}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-amber-700/60 bg-amber-900/30 text-amber-300 hover:bg-amber-800/40 disabled:opacity-40"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-amber-300/60 dark:border-amber-700/60 bg-amber-50/60 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-800/40 disabled:opacity-40"
           >
             <Pause size={11} />
             Pause
@@ -558,7 +565,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           <button
             onClick={handleResetView}
             disabled={!ready || gifGenerating}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-gray-700/60 bg-gray-800/60 text-gray-300 hover:bg-gray-700/60 disabled:opacity-40"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-gray-300/60 dark:border-gray-700/60 bg-gray-100/60 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 disabled:opacity-40"
           >
             <Crosshair size={11} />
             Reset
@@ -566,7 +573,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           <button
             onClick={handleScreenshot}
             disabled={!ready || gifGenerating}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-gray-700/60 bg-gray-800/60 text-gray-300 hover:bg-gray-700/60 disabled:opacity-40"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-gray-300/60 dark:border-gray-700/60 bg-gray-100/60 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 disabled:opacity-40"
           >
             <Camera size={11} />
             Screenshot
@@ -574,7 +581,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           <button
             onClick={handleGifExport}
             disabled={!ready || gifGenerating || !totalFrames}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-purple-700/60 bg-purple-900/30 text-purple-300 hover:bg-purple-800/40 disabled:opacity-40"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-purple-300/60 dark:border-purple-700/60 bg-purple-50/60 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100/60 dark:hover:bg-purple-800/40 disabled:opacity-40"
           >
             {gifGenerating
               ? <Loader2 size={11} className="animate-spin" />
@@ -590,19 +597,19 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
               title="Export settings"
               className={`flex items-center justify-center w-[30px] h-[26px] rounded-md text-xs border transition-colors ${
                 settingsOpen
-                  ? "border-indigo-600 bg-indigo-900/40 text-indigo-300"
-                  : "border-gray-700/60 bg-gray-800/60 text-gray-400 hover:text-gray-200 hover:bg-gray-700/60"
+                  ? "border-indigo-500 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300"
+                  : "border-gray-300/60 dark:border-gray-700/60 bg-gray-100/60 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60"
               }`}
             >
               <Settings size={11} />
             </button>
 
             {settingsOpen && (
-              <div className="absolute right-0 bottom-full mb-2 z-50 w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+              <div className="absolute right-0 bottom-full mb-2 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-gray-700">
-                  <span className="font-semibold text-gray-200">Export Settings</span>
-                  <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
+                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
+                  <span className="font-semibold text-gray-700 dark:text-gray-200">Export Settings</span>
+                  <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
                     <X size={12} />
                   </button>
                 </div>
@@ -610,26 +617,26 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                 <div className="p-3 space-y-4">
                   {/* ── Screenshot ── */}
                   <div>
-                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Screenshot</p>
+                    <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Screenshot</p>
                     <div className="space-y-2">
                       {/* Factor */}
                       <div className="flex items-center gap-2">
-                        <span className="w-24 text-gray-400 flex-shrink-0">Factor</span>
+                        <span className="w-24 text-gray-500 dark:text-gray-400 flex-shrink-0">Factor</span>
                         <input
                           type="range" min={1} max={8} step={1}
                           value={exportSettings.screenshot.factor}
                           onChange={(e) => setExportSettings((s) => ({ ...s, screenshot: { ...s.screenshot, factor: Number(e.target.value) } }))}
                           className="flex-1 accent-indigo-500 h-1"
                         />
-                        <span className="w-5 text-right text-gray-300 tabular-nums">{exportSettings.screenshot.factor}×</span>
+                        <span className="w-5 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.screenshot.factor}×</span>
                       </div>
                       {/* Booleans */}
                       {(["antialias", "trim"] as const).map((key) => (
                         <div key={key} className="flex items-center justify-between">
-                          <span className="text-gray-400 capitalize">{key}</span>
+                          <span className="text-gray-500 dark:text-gray-400 capitalize">{key}</span>
                           <button
                             onClick={() => setExportSettings((s) => ({ ...s, screenshot: { ...s.screenshot, [key]: !s.screenshot[key] } }))}
-                            className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${exportSettings.screenshot[key] ? "bg-indigo-600" : "bg-gray-700"}`}
+                            className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${exportSettings.screenshot[key] ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-700"}`}
                           >
                             <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${exportSettings.screenshot[key] ? "left-[18px]" : "left-0.5"}`} />
                           </button>
@@ -637,7 +644,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                       ))}
                       {/* Background */}
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-400">Background</span>
+                        <span className="text-gray-500 dark:text-gray-400">Background</span>
                         <div className="flex gap-1">
                           {(["white", "black", "transparent"] as const).map((bg) => (
                             <button
@@ -646,7 +653,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                               className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
                                 exportSettings.screenshot.background === bg
                                   ? "bg-indigo-600 border-indigo-500 text-white"
-                                  : "bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300"
+                                  : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                               }`}
                             >
                               {bg === "transparent" ? "None" : bg[0].toUpperCase() + bg.slice(1)}
@@ -657,52 +664,52 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                     </div>
                   </div>
 
-                  <div className="border-t border-gray-800" />
+                  <div className="border-t border-gray-200 dark:border-gray-800" />
 
                   {/* ── GIF ── */}
                   <div>
-                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">GIF Export</p>
+                    <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">GIF Export</p>
                     <div className="space-y-2">
                       {/* Factor */}
                       <div className="flex items-center gap-2">
-                        <span className="w-24 text-gray-400 flex-shrink-0">Factor</span>
+                        <span className="w-24 text-gray-500 dark:text-gray-400 flex-shrink-0">Factor</span>
                         <input
                           type="range" min={1} max={3} step={1}
                           value={exportSettings.gif.factor}
                           onChange={(e) => setExportSettings((s) => ({ ...s, gif: { ...s.gif, factor: Number(e.target.value) } }))}
                           className="flex-1 accent-indigo-500 h-1"
                         />
-                        <span className="w-5 text-right text-gray-300 tabular-nums">{exportSettings.gif.factor}×</span>
+                        <span className="w-5 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.gif.factor}×</span>
                       </div>
                       {/* Max frames */}
                       <div className="flex items-center gap-2">
-                        <span className="w-24 text-gray-400 flex-shrink-0">Max frames</span>
+                        <span className="w-24 text-gray-500 dark:text-gray-400 flex-shrink-0">Max frames</span>
                         <input
                           type="range" min={10} max={120} step={10}
                           value={exportSettings.gif.maxFrames}
                           onChange={(e) => setExportSettings((s) => ({ ...s, gif: { ...s.gif, maxFrames: Number(e.target.value) } }))}
                           className="flex-1 accent-indigo-500 h-1"
                         />
-                        <span className="w-8 text-right text-gray-300 tabular-nums">{exportSettings.gif.maxFrames}</span>
+                        <span className="w-8 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.gif.maxFrames}</span>
                       </div>
                       {/* Frame delay */}
                       <div className="flex items-center gap-2">
-                        <span className="w-24 text-gray-400 flex-shrink-0">Frame delay</span>
+                        <span className="w-24 text-gray-500 dark:text-gray-400 flex-shrink-0">Frame delay</span>
                         <input
                           type="range" min={40} max={200} step={10}
                           value={exportSettings.gif.frameDelay}
                           onChange={(e) => setExportSettings((s) => ({ ...s, gif: { ...s.gif, frameDelay: Number(e.target.value) } }))}
                           className="flex-1 accent-indigo-500 h-1"
                         />
-                        <span className="w-8 text-right text-gray-300 tabular-nums">{exportSettings.gif.frameDelay}ms</span>
+                        <span className="w-8 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.gif.frameDelay}ms</span>
                       </div>
                       {/* Booleans */}
                       {(["antialias", "trim"] as const).map((key) => (
                         <div key={key} className="flex items-center justify-between">
-                          <span className="text-gray-400 capitalize">{key}</span>
+                          <span className="text-gray-500 dark:text-gray-400 capitalize">{key}</span>
                           <button
                             onClick={() => setExportSettings((s) => ({ ...s, gif: { ...s.gif, [key]: !s.gif[key as keyof typeof s.gif] } }))}
-                            className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${exportSettings.gif[key as keyof typeof exportSettings.gif] ? "bg-indigo-600" : "bg-gray-700"}`}
+                            className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${exportSettings.gif[key as keyof typeof exportSettings.gif] ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-700"}`}
                           >
                             <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${exportSettings.gif[key as keyof typeof exportSettings.gif] ? "left-[18px]" : "left-0.5"}`} />
                           </button>
@@ -710,7 +717,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                       ))}
                       {/* Background */}
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-400">Background</span>
+                        <span className="text-gray-500 dark:text-gray-400">Background</span>
                         <div className="flex gap-1">
                           {(["white", "black", "transparent"] as const).map((bg) => (
                             <button
@@ -719,7 +726,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                               className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
                                 exportSettings.gif.background === bg
                                   ? "bg-indigo-600 border-indigo-500 text-white"
-                                  : "bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300"
+                                  : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                               }`}
                             >
                               {bg === "transparent" ? "None" : bg[0].toUpperCase() + bg.slice(1)}
@@ -747,7 +754,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             {/* Custom track */}
             <div className="relative flex-1 h-5 flex items-center group">
               {/* Background track */}
-              <div className="absolute inset-x-0 h-1 rounded-full bg-gray-800" />
+              <div className="absolute inset-x-0 h-1 rounded-full bg-gray-200 dark:bg-gray-800" />
               {/* Filled portion */}
               <div
                 className="absolute left-0 h-1 rounded-full bg-indigo-600/80"

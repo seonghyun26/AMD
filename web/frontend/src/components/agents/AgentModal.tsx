@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Play, StopCircle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { streamAgent, type AgentType } from "@/lib/agentStream";
 import type { SSEEvent, ToolCallBlock, ThinkingBlock, TextBlock, ErrorBlock } from "@/lib/types";
@@ -17,7 +17,7 @@ type AgentBlock =
 
 function TextRenderer({ block }: { block: { kind: "text"; content: string } }) {
   return (
-    <div className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
+    <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">
       {block.content}
     </div>
   );
@@ -26,16 +26,16 @@ function TextRenderer({ block }: { block: { kind: "text"; content: string } }) {
 function ThinkingRenderer({ block }: { block: { kind: "thinking"; content: string; collapsed: boolean } }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-lg border border-purple-800/40 bg-purple-950/20 overflow-hidden text-xs">
+    <div className="rounded-lg border border-purple-200/60 dark:border-purple-800/40 bg-purple-50/40 dark:bg-purple-950/20 overflow-hidden text-xs">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 w-full px-3 py-2 text-purple-400 hover:text-purple-300 transition-colors"
+        className="flex items-center gap-2 w-full px-3 py-2 text-purple-600 dark:text-purple-400 hover:text-purple-500 dark:hover:text-purple-300 transition-colors"
       >
         {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
         <span className="font-medium">Thinking</span>
       </button>
       {open && (
-        <pre className="px-3 pb-3 text-purple-300/70 whitespace-pre-wrap max-h-48 overflow-y-auto font-mono text-[10px]">
+        <pre className="px-3 pb-3 text-purple-500/70 dark:text-purple-300/70 whitespace-pre-wrap max-h-48 overflow-y-auto font-mono text-[10px]">
           {block.content}
         </pre>
       )}
@@ -75,33 +75,33 @@ function ToolCallRenderer({
   const [open, setOpen] = useState(false);
   const icon = TOOL_ICONS[block.tool_name] ?? "🔧";
   const statusIcon =
-    block.status === "pending" ? <Loader2 size={11} className="animate-spin text-blue-400" /> :
-    block.status === "done"    ? <span className="text-emerald-400 text-[10px]">✓</span> :
-                                  <span className="text-red-400 text-[10px]">✗</span>;
+    block.status === "pending" ? <Loader2 size={11} className="animate-spin text-blue-500 dark:text-blue-400" /> :
+    block.status === "done"    ? <span className="text-emerald-500 dark:text-emerald-400 text-[10px]">✓</span> :
+                                  <span className="text-red-500 dark:text-red-400 text-[10px]">✗</span>;
 
   return (
-    <div className="rounded-lg border border-gray-700/60 bg-gray-800/40 overflow-hidden text-xs">
+    <div className="rounded-lg border border-gray-200/60 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 overflow-hidden text-xs">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 w-full px-3 py-2 hover:bg-gray-800/60 transition-colors text-left"
+        className="flex items-center gap-2 w-full px-3 py-2 hover:bg-gray-100/60 dark:hover:bg-gray-800/60 transition-colors text-left"
       >
-        {open ? <ChevronDown size={11} className="text-gray-500" /> : <ChevronRight size={11} className="text-gray-500" />}
+        {open ? <ChevronDown size={11} className="text-gray-400 dark:text-gray-500" /> : <ChevronRight size={11} className="text-gray-400 dark:text-gray-500" />}
         <span>{icon}</span>
-        <span className="font-mono text-gray-300 flex-1">{block.tool_name}</span>
+        <span className="font-mono text-gray-700 dark:text-gray-300 flex-1">{block.tool_name}</span>
         {statusIcon}
       </button>
       {open && (
         <div className="px-3 pb-3 space-y-2">
           <div>
-            <p className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Input</p>
-            <pre className="text-[10px] text-gray-400 whitespace-pre-wrap bg-gray-900/60 rounded p-2 max-h-32 overflow-y-auto">
+            <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase mb-1">Input</p>
+            <pre className="text-[10px] text-gray-500 dark:text-gray-400 whitespace-pre-wrap bg-gray-100/60 dark:bg-gray-900/60 rounded p-2 max-h-32 overflow-y-auto">
               {JSON.stringify(block.input, null, 2)}
             </pre>
           </div>
           {block.result && (
             <div>
-              <p className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Output</p>
-              <pre className="text-[10px] text-gray-300 whitespace-pre-wrap bg-gray-900/60 rounded p-2 max-h-48 overflow-y-auto">
+              <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase mb-1">Output</p>
+              <pre className="text-[10px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-100/60 dark:bg-gray-900/60 rounded p-2 max-h-48 overflow-y-auto">
                 {block.result}
               </pre>
             </div>
@@ -164,16 +164,22 @@ export default function AgentModal({ sessionId, agentType, onClose }: Props) {
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+
   const accentBorder = {
-    blue: "border-blue-800/40",
-    emerald: "border-emerald-800/40",
-    indigo: "border-indigo-800/40",
+    blue: "border-blue-200/60 dark:border-blue-800/40",
+    emerald: "border-emerald-200/60 dark:border-emerald-800/40",
+    indigo: "border-indigo-200/60 dark:border-indigo-800/40",
   }[config.accent];
 
   const accentIcon = {
-    blue: "bg-blue-900/40 text-blue-400",
-    emerald: "bg-emerald-900/40 text-emerald-400",
-    indigo: "bg-indigo-900/40 text-indigo-400",
+    blue: "bg-blue-100/60 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400",
+    emerald: "bg-emerald-100/60 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400",
+    indigo: "bg-indigo-100/60 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400",
   }[config.accent];
 
   const handleRun = async () => {
@@ -211,30 +217,31 @@ export default function AgentModal({ sessionId, agentType, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className={`bg-gray-900 border ${accentBorder} rounded-2xl flex flex-col shadow-2xl`}
+        className={`bg-white dark:bg-gray-900 border ${accentBorder} rounded-2xl flex flex-col shadow-2xl`}
         style={{ width: "min(860px, 92vw)", height: "80vh" }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-800 flex-shrink-0">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className={`p-2 rounded-lg ${accentIcon} flex-shrink-0`}>
             <AgentIcon type={agentType} />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-white">{config.title}</h2>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{config.title}</h2>
             <p className="text-xs text-gray-500 mt-0.5">{config.description}</p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-800 transition-colors"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <X size={15} />
           </button>
         </div>
 
         {/* Input row */}
-        <div className="flex gap-2 items-end px-5 py-3 border-b border-gray-800 flex-shrink-0">
+        <div className="flex gap-2 items-end px-5 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex-1">
             <label className="block text-xs font-medium text-gray-500 mb-1">{config.inputLabel}</label>
             <input
@@ -243,13 +250,13 @@ export default function AgentModal({ sessionId, agentType, onClose }: Props) {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !running) handleRun(); }}
               placeholder={config.inputPlaceholder}
-              className="w-full border border-gray-700 rounded-lg px-3 py-2 bg-gray-800 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           {running ? (
             <button
               onClick={handleStop}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-900/50 text-red-400 border border-red-800/50 hover:bg-red-800/50 transition-colors text-sm flex-shrink-0"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:bg-red-100 dark:hover:bg-red-800/50 transition-colors text-sm flex-shrink-0"
             >
               <StopCircle size={14} />
               Stop
@@ -257,7 +264,7 @@ export default function AgentModal({ sessionId, agentType, onClose }: Props) {
           ) : (
             <button
               onClick={handleRun}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors text-sm flex-shrink-0 font-medium"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors text-sm flex-shrink-0 font-medium"
             >
               <Play size={14} fill="currentColor" />
               Run
@@ -268,7 +275,7 @@ export default function AgentModal({ sessionId, agentType, onClose }: Props) {
         {/* Output */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           {blocks.length === 0 && !running && (
-            <div className="h-full flex items-center justify-center text-gray-600 text-sm">
+            <div className="h-full flex items-center justify-center text-gray-400 dark:text-gray-600 text-sm">
               Configure the input above and click Run to start the agent.
             </div>
           )}
@@ -284,7 +291,7 @@ export default function AgentModal({ sessionId, agentType, onClose }: Props) {
               {block.kind === "thinking" && <ThinkingRenderer block={block} />}
               {block.kind === "tool_call" && <ToolCallRenderer block={block} />}
               {block.kind === "error" && (
-                <div className="text-xs text-red-400 bg-red-950/30 border border-red-900 rounded-lg px-3 py-2">
+                <div className="text-xs text-red-600 dark:text-red-400 bg-red-50/60 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2">
                   Error: {block.content}
                 </div>
               )}

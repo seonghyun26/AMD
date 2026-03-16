@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from web.backend.analysis_utils import (
     _load_energy_npy,
@@ -26,6 +28,17 @@ def _require_session(session_id: str):
     if not session:
         raise HTTPException(404, "Session not found")
     return session
+
+
+class CVDef(BaseModel):
+    type: Literal["distance", "angle", "dihedral"]
+    atoms: list[int]  # 1-based
+    label: str = ""
+
+
+class CustomCVRequest(BaseModel):
+    cvs: list[CVDef]
+    force: bool = False
 
 
 @router.get("/sessions/{session_id}/analysis/colvar")
@@ -146,3 +159,41 @@ async def get_progress(session_id: str, filename: str = "simulation/md.log"):
     path = str(Path(session.work_dir) / filename)
     info = get_log_progress(path)
     return {"progress": info, "available": bool(info)}
+
+
+@router.post("/sessions/{session_id}/analysis/custom-cv")
+async def compute_custom_cv(session_id: str, req: CustomCVRequest):
+    """Compute custom collective variables from trajectory."""
+    session = _require_session(session_id)
+
+    # Validate: 1-3 CVs, each with correct atom count
+    if not (1 <= len(req.cvs) <= 3):
+        raise HTTPException(400, "Must define 1-3 CVs")
+
+    required_atoms = {"distance": 2, "angle": 3, "dihedral": 4}
+    for cv in req.cvs:
+        expected = required_atoms[cv.type]
+        if len(cv.atoms) != expected:
+            raise HTTPException(400, f"{cv.type} requires exactly {expected} atoms, got {len(cv.atoms)}")
+        if any(a < 1 for a in cv.atoms):
+            raise HTTPException(400, "Atom indices must be >= 1 (1-based)")
+
+    try:
+        from web.backend.analysis_utils import compute_custom_cvs
+        cvs_dicts = [{"type": cv.type, "atoms": cv.atoms, "label": cv.label} for cv in req.cvs]
+        data = compute_custom_cvs(str(session.work_dir), cvs_dicts, force=req.force)
+        return {"data": data, "available": True}
+    except Exception as e:
+        return {"data": {}, "available": False, "error": str(e)}
+
+
+@router.get("/sessions/{session_id}/analysis/atoms")
+async def get_atoms(session_id: str):
+    """Return atom list from topology for interactive picking."""
+    session = _require_session(session_id)
+    try:
+        from web.backend.analysis_utils import get_atom_list
+        atoms = get_atom_list(str(session.work_dir))
+        return {"atoms": atoms, "available": len(atoms) > 0}
+    except Exception as e:
+        return {"atoms": [], "available": False, "error": str(e)}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -122,6 +123,13 @@ async def create_session_endpoint(req: CreateSessionRequest):
         "blank":         "protein",
     }
     hydra_system = _HYDRA_SYSTEM_MAP.get(molecule_system) or cfg_defaults["system"]
+
+    # Auto-select system-specific PLUMED CV config when available
+    _PLUMED_CV_MAP: dict[str, str] = {
+        "ala_dipeptide": "ala_dipeptide",
+    }
+    if plumed_cvs == "default" and molecule_system in _PLUMED_CV_MAP:
+        plumed_cvs = _PLUMED_CV_MAP[molecule_system]
 
     session = create_session(
         work_dir=req.work_dir,
@@ -271,7 +279,7 @@ class MoleculeSelectRequest(BaseModel):
 
 
 class ResultCardsRequest(BaseModel):
-    result_cards: list[str] = []
+    result_cards: list[Any] = []
 
 
 @router.post("/sessions/{session_id}/result-cards")

@@ -5,7 +5,7 @@
 cvs:
   - name: d1
     type: DISTANCE
-    atoms: [1, 100]           # atom serial numbers (1-indexed)
+    atoms: [1, 2]             # atom serial numbers (1-indexed) — pick with 3D viewer
 
   # Uncomment for backbone torsion CVs (alanine dipeptide example)
   # - name: phi

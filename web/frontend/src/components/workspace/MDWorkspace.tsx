@@ -43,6 +43,9 @@ const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 const TrajectoryViewer = dynamic(() => import("@/components/viz/TrajectoryViewer"), { ssr: false });
 const MoleculeViewer = dynamic(() => import("@/components/viz/MoleculeViewer"), { ssr: false });
 const MiniStructureViewer = dynamic(() => import("@/components/viz/MiniStructureViewer"), { ssr: false });
+const CVSetupModal = dynamic(() => import("@/components/viz/CVSetupModal"), { ssr: false });
+const InlineCVPicker = dynamic(() => import("@/components/viz/InlineCVPicker"), { ssr: false });
+const CustomCVResultCard = dynamic(() => import("@/components/viz/CustomCVResultCard"), { ssr: false });
 import FileUpload from "@/components/files/FileUpload";
 import {
   getSessionConfig,
@@ -68,6 +71,7 @@ import {
   getRamachandranImageUrl,
   type RamachandranPlotSettings,
   updateResultCards,
+  type CustomCVConfig,
   getSessionRunStatus,
   getAvailableGpu,
   getPlumedPreview,
@@ -78,6 +82,18 @@ import {
 import { useSessionStore } from "@/store/sessionStore";
 
 // ── Helpers ───────────────────────────────────────────────────────────
+
+/** Generate a UUID, with fallback for non-HTTPS / older browsers. */
+function uuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return uuid();
+  }
+  // Fallback: random hex string
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
 
 function defaultNickname(): string {
   const now = new Date();
@@ -156,23 +172,23 @@ function Section({
   action?: React.ReactNode;
 }) {
   const border = {
-    blue: "border-blue-800/40",
-    indigo: "border-indigo-800/40",
-    emerald: "border-emerald-800/40",
-    amber: "border-amber-800/40",
+    blue: "border-blue-300/70 dark:border-blue-800/40",
+    indigo: "border-indigo-300/70 dark:border-indigo-800/40",
+    emerald: "border-emerald-300/70 dark:border-emerald-800/40",
+    amber: "border-amber-300/70 dark:border-amber-800/40",
   }[accent];
   const iconBg = {
-    blue: "bg-blue-900/40 text-blue-400",
-    indigo: "bg-indigo-900/40 text-indigo-400",
-    emerald: "bg-emerald-900/40 text-emerald-400",
-    amber: "bg-amber-900/40 text-amber-400",
+    blue: "bg-blue-100/60 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400",
+    indigo: "bg-indigo-100/60 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400",
+    emerald: "bg-emerald-100/60 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400",
+    amber: "bg-amber-100/60 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400",
   }[accent];
 
   return (
-    <div className={`rounded-xl border ${border} bg-gray-900/60 overflow-hidden`}>
-      <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-800/60">
+    <div className={`rounded-xl border-2 ${border} bg-gray-50/80 dark:bg-gray-900/60 overflow-hidden`}>
+      <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-200/60 dark:border-gray-800/60">
         <span className={`p-1.5 rounded-md ${iconBg}`}>{icon}</span>
-        <span className="text-sm font-semibold text-gray-400 tracking-wider uppercase">{title}</span>
+        <span className="text-sm font-semibold text-gray-600 dark:text-gray-400 tracking-wider uppercase">{title}</span>
         {action && <span className="ml-auto">{action}</span>}
       </div>
       <div className="p-4 space-y-3">{children}</div>
@@ -207,9 +223,9 @@ function Field({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <label className="text-sm font-medium text-gray-400">{label}</label>
+        <label className="text-sm font-medium text-gray-600 dark:text-gray-400">{label}</label>
         {unit && (
-          <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">
+          <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">
             {unit}
           </span>
         )}
@@ -234,9 +250,9 @@ function Field({
           onBlur?.();
         }}
         step={step ?? (type === "number" ? "any" : undefined)}
-        className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
       />
-      {hint && <p className="mt-1.5 text-xs text-gray-600">{hint}</p>}
+      {hint && <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-600">{hint}</p>}
     </div>
   );
 }
@@ -264,17 +280,17 @@ function SelectField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-400 mb-1.5">{label}</label>
+      <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{label}</label>
       <select
         value={value}
         onChange={(e) => { onChange(e.target.value); onSave?.(); }}
-        className="w-full border border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
-      {hint && <p className="mt-1.5 text-xs text-gray-600">{hint}</p>}
+      {hint && <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-600">{hint}</p>}
     </div>
   );
 }
@@ -297,15 +313,15 @@ function PillTabs({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex gap-1 p-2 bg-gray-900 border-b border-gray-800">
+    <div className="flex gap-1 p-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
       {TABS.map(({ value, label, icon }) => (
         <button
           key={value}
           onClick={() => onChange(value)}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
             active === value
-              ? "bg-gray-700 text-white shadow-sm"
-              : "text-gray-500 hover:text-gray-300 hover:bg-gray-800/70"
+              ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+              : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/70"
           }`}
         >
           {icon}
@@ -561,10 +577,10 @@ function DeleteConfirmPopup({
 
 // ── Results section sub-components ────────────────────────────────────
 
-type ResultCardType = "energy_potential" | "energy_kinetic" | "energy_total" | "energy_temperature" | "energy_pressure" | "ramachandran";
-interface ResultCardDef { id: string; type: ResultCardType }
+type ResultCardType = "energy_potential" | "energy_kinetic" | "energy_total" | "energy_temperature" | "energy_pressure" | "ramachandran" | "custom_cv";
+interface ResultCardDef { id: string; type: ResultCardType; meta?: CustomCVConfig }
 
-type EnergyCardType = Exclude<ResultCardType, "ramachandran">;
+type EnergyCardType = Exclude<ResultCardType, "ramachandran" | "custom_cv">;
 const ENERGY_TERM_CONFIG: Record<EnergyCardType, { label: string; xvgPrefix: string; unit: string; color: string; fillColor: string }> = {
   energy_potential:    { label: "Potential Energy", xvgPrefix: "potential",   unit: "kJ/mol", color: "#f59e0b", fillColor: "rgba(245,158,11,0.10)"  },
   energy_kinetic:      { label: "Kinetic Energy",   xvgPrefix: "kinetic",     unit: "kJ/mol", color: "#38bdf8", fillColor: "rgba(56,189,248,0.10)"  },
@@ -577,7 +593,7 @@ const ENERGY_CARD_TYPES: EnergyCardType[] = [
   "energy_potential", "energy_kinetic", "energy_total", "energy_temperature", "energy_pressure",
 ];
 
-const VALID_RESULT_CARD_TYPES = new Set<string>([...ENERGY_CARD_TYPES, "ramachandran"]);
+const VALID_RESULT_CARD_TYPES = new Set<string>([...ENERGY_CARD_TYPES, "ramachandran", "custom_cv"]);
 
 
 /** Write a 2-column float64 numpy array [time, value] and trigger a browser download. */
@@ -668,7 +684,7 @@ function EnergyCardContent({
   if (!data) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
-        <span className="text-xs text-gray-600 px-3 text-center">No .edr file found.</span>
+        <span className="text-xs text-gray-400 dark:text-gray-600 px-3 text-center">No .edr file found.</span>
       </div>
     );
   }
@@ -682,7 +698,7 @@ function EnergyCardContent({
   if (!dataKey || xVals.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
-        <span className="text-xs text-gray-600 px-3 text-center">Term not found in energy file.</span>
+        <span className="text-xs text-gray-400 dark:text-gray-600 px-3 text-center">Term not found in energy file.</span>
       </div>
     );
   }
@@ -788,10 +804,14 @@ function ResultCard({
     return <RamachandranResultCard sessionId={sessionId} onDelete={onDelete} />;
   }
 
+  if (card.type === "custom_cv" && card.meta) {
+    return <CustomCVResultCard sessionId={sessionId} config={card.meta} onDelete={onDelete} />;
+  }
+
   return (
     <>
       <div
-        className="flex-shrink-0 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
+        className="flex-shrink-0 rounded-xl border bg-gray-50/70 dark:bg-gray-900/70 flex flex-col overflow-hidden"
         style={{ width: "440px", height: "300px", borderColor: `${accentColor}30` }}
       >
         {/* Header */}
@@ -801,7 +821,7 @@ function ResultCard({
         >
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-            <span className="text-sm font-medium text-gray-200 truncate">{label}</span>
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{label}</span>
             {stats && (
               <span className="text-sm font-mono tabular-nums ml-1" style={{ color: accentColor }}>
                 {fmtVal(stats.last)} <span className="text-[10px] text-gray-500">{unit}</span>
@@ -812,28 +832,28 @@ function ResultCard({
             <button
               onClick={handleRefresh}
               title="Refresh"
-              className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
+              className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors"
             >
               <RotateCcw size={13} className={spinning ? "animate-spin" : ""} />
             </button>
             <button
               onClick={handleDownload}
               title="Download as .npy"
-              className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
+              className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors"
             >
               <Download size={13} />
             </button>
             <button
               onClick={() => setExpanded(true)}
               title="Expand"
-              className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors"
+              className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors"
             >
               <Search size={13} />
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
               title="Remove"
-              className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700/60 transition-colors"
+              className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors"
             >
               <Trash2 size={13} />
             </button>
@@ -851,17 +871,17 @@ function ResultCard({
             className="flex justify-between px-3 py-1.5 border-t flex-shrink-0"
             style={{ borderColor: `${accentColor}15` }}
           >
-            <span className="text-[10px] text-gray-600">
+            <span className="text-[10px] text-gray-400 dark:text-gray-600">
               <span className="text-gray-500">min </span>
-              <span className="font-mono text-gray-400">{fmtVal(stats.min)}</span>
+              <span className="font-mono text-gray-600 dark:text-gray-400">{fmtVal(stats.min)}</span>
             </span>
-            <span className="text-[10px] text-gray-600">
+            <span className="text-[10px] text-gray-400 dark:text-gray-600">
               <span className="text-gray-500">avg </span>
-              <span className="font-mono text-gray-400">{fmtVal(stats.mean)}</span>
+              <span className="font-mono text-gray-600 dark:text-gray-400">{fmtVal(stats.mean)}</span>
             </span>
-            <span className="text-[10px] text-gray-600">
+            <span className="text-[10px] text-gray-400 dark:text-gray-600">
               <span className="text-gray-500">max </span>
-              <span className="font-mono text-gray-400">{fmtVal(stats.max)}</span>
+              <span className="font-mono text-gray-600 dark:text-gray-400">{fmtVal(stats.max)}</span>
             </span>
           </div>
         )}
@@ -1033,9 +1053,9 @@ function RamachandranExpandedModal({
                 <Settings size={13} />
               </button>
               {settingsOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-gray-700">
-                    <span className="font-semibold text-gray-200">Plot Settings</span>
+                <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
+                    <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
                       <X size={12} />
                     </button>
@@ -1118,12 +1138,12 @@ function RamachandranExpandedModal({
 
 // ── Ramachandran result card ───────────────────────────────────────────
 
-const RAMACHANDRAN_CMAPS = ["Blues", "viridis", "plasma", "inferno", "magma", "cividis", "YlGnBu", "PuBu", "BuPu", "GnBu", "coolwarm", "Spectral"] as const;
+const RAMACHANDRAN_CMAPS = ["viridis", "Blues", "Plasma", "Inferno", "Magma", "Cividis", "YlGnBu", "PuBu", "BuPu", "GnBu", "coolwarm", "Spectral"] as const;
 
 const RAMACHANDRAN_DEFAULTS: Required<RamachandranPlotSettings> = {
   dpi: 120,
   bins: 60,
-  cmap: "Blues",
+  cmap: "viridis",
   log_scale: true,
   show_start: true,
 };
@@ -1201,7 +1221,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
   return (
     <>
       <div
-        className="flex-shrink-0 rounded-xl border bg-gray-900/70 flex flex-col overflow-hidden"
+        className="flex-shrink-0 rounded-xl border bg-gray-50/70 dark:bg-gray-900/70 flex flex-col overflow-hidden"
         style={{ width: "300px", height: "300px", borderColor: `${accentColor}30` }}
       >
         <div
@@ -1210,16 +1230,16 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
         >
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-            <span className="text-sm font-medium text-gray-200 truncate">Ramachandran</span>
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">Ramachandran</span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={handleRefresh} title="Refresh" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors">
+            <button onClick={handleRefresh} title="Refresh" className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors">
               <RotateCcw size={13} className={spinning ? "animate-spin" : ""} />
             </button>
-            <button onClick={handleDownload} disabled={status !== "ok"} title="Download PNG" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <button onClick={handleDownload} disabled={status !== "ok"} title="Download PNG" className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Download size={13} />
             </button>
-            <button onClick={() => setExpanded(true)} title="Expand" className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 transition-colors">
+            <button onClick={() => setExpanded(true)} title="Expand" className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors">
               <Search size={13} />
             </button>
             {/* Settings gear */}
@@ -1230,16 +1250,16 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                 className={`p-1 rounded transition-colors ${
                   settingsOpen
                     ? "text-cyan-400 bg-cyan-900/30"
-                    : "text-gray-500 hover:text-gray-200 hover:bg-gray-700/60"
+                    : "text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60"
                 }`}
               >
                 <Settings size={13} />
               </button>
 
               {settingsOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-gray-700">
-                    <span className="font-semibold text-gray-200">Plot Settings</span>
+                <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
+                    <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
                       <X size={12} />
                     </button>
@@ -1305,7 +1325,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                 </div>
               )}
             </div>
-            <button onClick={() => setConfirmDelete(true)} title="Remove" className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700/60 transition-colors">
+            <button onClick={() => setConfirmDelete(true)} title="Remove" className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors">
               <Trash2 size={13} />
             </button>
           </div>
@@ -1368,13 +1388,17 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
 function AddPlotModal({
   onSelect,
   onClose,
+  onCustomCV,
   existingTypes,
   systemName,
+  sessionId,
 }: {
   onSelect: (types: ResultCardType[]) => void;
   onClose: () => void;
+  onCustomCV: () => void;
   existingTypes: Set<ResultCardType>;
   systemName: string;
+  sessionId: string;
 }) {
   const [checked, setChecked] = useState<Set<ResultCardType>>(new Set());
 
@@ -1416,10 +1440,10 @@ function AddPlotModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl p-5 w-80"
+        className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-80"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-gray-200 mb-4">Add Analysis</h3>
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-4">Add Analysis</h3>
 
         {/* Energy group */}
         <div className="flex items-center justify-between mb-2">
@@ -1444,7 +1468,7 @@ function AddPlotModal({
               <label
                 key={t}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                  alreadyAdded ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-800"
+                  alreadyAdded ? "opacity-40 cursor-not-allowed" : "hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
               >
                 <input
@@ -1454,8 +1478,8 @@ function AddPlotModal({
                   onChange={() => !alreadyAdded && toggle(t)}
                   className="accent-blue-500 w-3.5 h-3.5 flex-shrink-0"
                 />
-                <span className="text-xs text-gray-300">{ENERGY_TERM_CONFIG[t].label}</span>
-                <span className="ml-auto text-[10px] text-gray-600">{ENERGY_TERM_CONFIG[t].unit}</span>
+                <span className="text-xs text-gray-700 dark:text-gray-300">{ENERGY_TERM_CONFIG[t].label}</span>
+                <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">{ENERGY_TERM_CONFIG[t].unit}</span>
                 {alreadyAdded && <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />}
               </label>
             );
@@ -1466,35 +1490,38 @@ function AddPlotModal({
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Structural</p>
         <div className="space-y-1 mb-5">
           {ramachandranAvailable ? (
-            <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-800 transition-colors">
+            <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
               <input
                 type="checkbox"
                 checked={checked.has("ramachandran")}
                 onChange={() => toggle("ramachandran")}
                 className="accent-blue-500 w-3.5 h-3.5 flex-shrink-0"
               />
-              <span className="text-xs text-gray-300">Ramachandran</span>
-              <span className="ml-auto text-[10px] text-gray-600">φ/ψ map</span>
+              <span className="text-xs text-gray-700 dark:text-gray-300">Ramachandran</span>
+              <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">φ/ψ map</span>
             </label>
           ) : ramachandranAdded ? (
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
               <input type="checkbox" checked readOnly disabled className="accent-blue-500 w-3.5 h-3.5 flex-shrink-0" />
-              <span className="text-xs text-gray-300">Ramachandran</span>
-              <span className="ml-auto text-[10px] text-gray-600">φ/ψ map</span>
+              <span className="text-xs text-gray-700 dark:text-gray-300">Ramachandran</span>
+              <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">φ/ψ map</span>
               <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />
             </div>
           ) : (
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
               <Lock size={11} className="text-gray-600 flex-shrink-0" />
-              <span className="text-xs text-gray-400">Ramachandran</span>
-              <span className="ml-auto text-[10px] text-gray-500">ala dipeptide only</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Ramachandran</span>
+              <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">ala dipeptide only</span>
             </div>
           )}
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
-            <Lock size={11} className="text-gray-600 flex-shrink-0" />
-            <span className="text-xs text-gray-400">Custom CV</span>
-            <span className="ml-auto text-[10px] text-gray-500">coming soon</span>
-          </div>
+          <button
+            onClick={() => { onClose(); onCustomCV(); }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left"
+          >
+            <FlaskConical size={11} className="text-violet-500 flex-shrink-0" />
+            <span className="text-xs text-gray-700 dark:text-gray-300">Custom CV</span>
+            <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">up to 3 CVs</span>
+          </button>
         </div>
 
         <button
@@ -1627,53 +1654,53 @@ function SimRunConfirmModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
       <div
-        className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md"
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <div>
-            <h3 className="text-sm font-semibold text-gray-100">Start Simulation</h3>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Start Simulation</h3>
             <p className="text-xs text-gray-500 mt-0.5">Total: {simLabel} · {nsteps.toLocaleString()} steps</p>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition-colors">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors">
             <X size={16} />
           </button>
         </div>
 
         {/* Logging table */}
         <div className="px-5 py-4">
-          <p className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wider">Output logging</p>
-          <div className="rounded-lg border border-gray-800 overflow-hidden">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">Output logging</p>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-gray-800/60 text-gray-400">
+                <tr className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400">
                   <th className="text-left px-3 py-2 font-medium">File</th>
                   <th className="text-right px-3 py-2 font-medium">Every</th>
                   <th className="text-right px-3 py-2 font-medium">Frames</th>
                   <th className="text-right px-3 py-2 font-medium">Est. size</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/60">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60">
                 {rows.map((row) => (
-                  <tr key={row.ext} className="text-gray-300">
+                  <tr key={row.ext} className="text-gray-700 dark:text-gray-300">
                     <td className="px-3 py-2">
-                      <span className="font-mono text-[11px] text-blue-400">{["colvar","hills","kernels"].includes(row.ext) ? row.ext.toUpperCase() : `.${row.ext}`}</span>
-                      <span className="ml-2 text-gray-500">{row.label.split("(")[1]?.replace(")", "") ?? ""}</span>
+                      <span className="font-mono text-[11px] text-blue-500 dark:text-blue-400">{["colvar","hills","kernels"].includes(row.ext) ? row.ext.toUpperCase() : `.${row.ext}`}</span>
+                      <span className="ml-2 text-gray-400 dark:text-gray-500">{row.label.split("(")[1]?.replace(")", "") ?? ""}</span>
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-400">
-                      {row.freq > 0 ? `${row.freq.toLocaleString()} steps` : <span className="text-gray-600">off</span>}
+                    <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">
+                      {row.freq > 0 ? `${row.freq.toLocaleString()} steps` : <span className="text-gray-300 dark:text-gray-600">off</span>}
                     </td>
                     <td className="px-3 py-2 text-right font-mono">
-                      {row.frames > 0 ? row.frames.toLocaleString() : <span className="text-gray-600">—</span>}
+                      {row.frames > 0 ? row.frames.toLocaleString() : <span className="text-gray-300 dark:text-gray-600">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-400">{row.sizeLabel}</td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">{row.sizeLabel}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-xs text-gray-600 leading-relaxed">
+          <p className="mt-2 text-xs text-gray-400 dark:text-gray-600 leading-relaxed">
             Size estimates are approximate and may vary with solvent and settings.
           </p>
         </div>
@@ -1682,13 +1709,13 @@ function SimRunConfirmModal({
         <div className="flex gap-3 justify-end px-5 pb-5">
           <button
             onClick={onEdit}
-            className="px-4 py-2 text-xs text-gray-300 hover:text-gray-100 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors font-medium"
+            className="px-4 py-2 text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors font-medium"
           >
             Edit Settings
           </button>
           <button
             onClick={onRun}
-            className="px-5 py-2 text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-lg transition-all shadow-lg shadow-blue-900/30 flex items-center gap-1.5"
+            className="px-5 py-2 text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 flex items-center gap-1.5"
           >
             <Play size={12} fill="currentColor" />
             Run
@@ -1734,6 +1761,7 @@ function ProgressTab({
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const [trajectoryKey, setTrajectoryKey] = useState(0);
   const [addPlotOpen, setAddPlotOpen] = useState(false);
+  const [cvSetupOpen, setCvSetupOpen] = useState(false);
 
   // Archive panel
   const [showArchive, setShowArchive] = useState(false);
@@ -1908,20 +1936,6 @@ function ProgressTab({
 
   return (
     <div className="p-4 space-y-4">
-      {/* Status + agent button */}
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-2 bg-gray-950/95 backdrop-blur border-b border-gray-800/80">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-200">Simulation Status</h3>
-          <button
-            onClick={() => setAgentOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-emerald-900/30 border border-emerald-800/50 text-emerald-400 hover:bg-emerald-800/40 transition-colors font-medium"
-          >
-            <Bot size={11} />
-            Analyse Results
-          </button>
-        </div>
-      </div>
-
       <Section
         icon={<Activity size={13} />}
         title="Run Summary"
@@ -1929,19 +1943,19 @@ function ProgressTab({
         action={<span className={`text-xs font-semibold ${runStatusBadge.className}`}>{runStatusBadge.label}</span>}
       >
         <div className="grid grid-cols-3 gap-2">
-          <div className="bg-gray-900/70 border border-gray-800 rounded-lg p-2">
+          <div className="bg-gray-50/70 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-800 rounded-lg p-2">
             <p className="text-xs text-gray-500 uppercase tracking-wider">Wall Time</p>
-            <p className="text-sm font-mono text-gray-200">{elapsedLabel}</p>
+            <p className="text-sm font-mono text-gray-800 dark:text-gray-200">{elapsedLabel}</p>
           </div>
-          <div className="bg-gray-900/70 border border-gray-800 rounded-lg p-2">
+          <div className="bg-gray-50/70 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-800 rounded-lg p-2">
             <p className="text-xs text-gray-500 uppercase tracking-wider">Sim Time</p>
-            <p className="text-sm font-mono text-gray-200">
+            <p className="text-sm font-mono text-gray-800 dark:text-gray-200">
               {simNs.toFixed(3)}{totalSimNs > 0 ? ` / ${totalSimNs.toFixed(1)} ns` : " ns"}
             </p>
           </div>
-          <div className="bg-gray-900/70 border border-gray-800 rounded-lg p-2">
+          <div className="bg-gray-50/70 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-800 rounded-lg p-2">
             <p className="text-xs text-gray-500 uppercase tracking-wider">Performance</p>
-            <p className="text-sm font-mono text-gray-200">
+            <p className="text-sm font-mono text-gray-800 dark:text-gray-200">
               {computedNsPerDay !== null ? `${computedNsPerDay.toFixed(2)} ns/day` : "—"}
             </p>
           </div>
@@ -1957,7 +1971,7 @@ function ProgressTab({
             </span>
             <span>{(runStatus === "finished" || (liveProgress && targetSteps > 0)) ? `${pct.toFixed(1)}%` : "0.0%"}</span>
           </div>
-          <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+          <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
             <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
           </div>
         </div>
@@ -1994,13 +2008,22 @@ function ProgressTab({
         title={`Results${resultCards.length > 0 ? ` (${resultCards.length})` : ""}`}
         accent="indigo"
         action={
-          <button
-            onClick={() => setAddPlotOpen(true)}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-indigo-400 hover:bg-indigo-900/30 transition-colors font-medium"
-          >
-            <Plus size={12} />
-            Add
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAgentOpen(true)}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100/40 dark:hover:bg-emerald-900/30 transition-colors font-medium"
+            >
+              <Bot size={12} />
+              Analyse
+            </button>
+            <button
+              onClick={() => setAddPlotOpen(true)}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-indigo-400 hover:bg-indigo-900/30 transition-colors font-medium"
+            >
+              <Plus size={12} />
+              Add
+            </button>
+          </div>
         }
       >
         {/* Horizontal scrollable card row */}
@@ -2008,7 +2031,7 @@ function ProgressTab({
           {resultCards.length === 0 ? (
             <button
               onClick={() => setAddPlotOpen(true)}
-              className="w-full rounded-lg border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
+              className="w-full rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/30 dark:bg-gray-900/30 hover:bg-gray-200/40 dark:hover:bg-gray-800/40 hover:border-gray-400 dark:hover:border-gray-600 transition-colors flex items-center justify-center gap-2 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400"
               style={{ height: "300px" }}
             >
               <Plus size={16} />
@@ -2027,7 +2050,7 @@ function ProgressTab({
               {/* Add button */}
               <button
                 onClick={() => setAddPlotOpen(true)}
-                className="flex-shrink-0 rounded-xl border border-dashed border-gray-700 bg-gray-900/30 hover:bg-gray-800/40 hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-600 hover:text-gray-400"
+                className="flex-shrink-0 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/30 dark:bg-gray-900/30 hover:bg-gray-200/40 dark:hover:bg-gray-800/40 hover:border-gray-400 dark:hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400"
                 style={{ width: "120px", height: "300px" }}
               >
                 <Plus size={18} />
@@ -2043,12 +2066,29 @@ function ProgressTab({
           onSelect={(types) => {
             setResultCards((prev) => [
               ...prev,
-              ...types.map((type) => ({ id: crypto.randomUUID(), type })),
+              ...types.map((type) => ({ id: uuid(), type })),
             ]);
           }}
           onClose={() => setAddPlotOpen(false)}
+          onCustomCV={() => setCvSetupOpen(true)}
           existingTypes={new Set(resultCards.map((c) => c.type))}
           systemName={systemName}
+          sessionId={sessionId}
+        />
+      )}
+
+      {cvSetupOpen && (
+        <CVSetupModal
+          sessionId={sessionId}
+          onConfirm={(cvDefs) => {
+            const meta: CustomCVConfig = { cvs: cvDefs.map((d) => ({ type: d.type, atoms: d.atoms, label: d.label })) };
+            setResultCards((prev) => [
+              ...prev,
+              { id: uuid(), type: "custom_cv" as ResultCardType, meta },
+            ]);
+            setCvSetupOpen(false);
+          }}
+          onClose={() => setCvSetupOpen(false)}
         />
       )}
 
@@ -2085,7 +2125,7 @@ function ProgressTab({
         }
       >
         {simFiles.length === 0 ? (
-          <p className="text-xs text-gray-600 py-1">No simulation files yet.</p>
+          <p className="text-xs text-gray-400 dark:text-gray-600 py-1">No simulation files yet.</p>
         ) : (
           <div className="space-y-0.5 max-h-56 overflow-y-auto">
             {simFiles.map((f) => {
@@ -2094,12 +2134,12 @@ function ProgressTab({
               return (
                 <div
                   key={f}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-gray-800/60 group"
+                  className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-gray-100/60 dark:hover:bg-gray-800/60 group"
                 >
                   {/* Filename — click to preview */}
                   <button
                     onClick={() => setPreviewPath(f)}
-                    className="flex-1 text-left text-[13px] font-mono text-gray-400 hover:text-gray-200 truncate transition-colors"
+                    className="flex-1 text-left text-[13px] font-mono text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 truncate transition-colors"
                     title={name}
                   >
                     {name}
@@ -2110,7 +2150,7 @@ function ProgressTab({
                     <button
                       onClick={() => setPreviewPath(f)}
                       title="Preview"
-                      className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700 transition-colors"
+                      className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                     >
                       <Eye size={12} />
                     </button>
@@ -2118,7 +2158,7 @@ function ProgressTab({
                       href={downloadUrl(sessionId, f)}
                       download={name}
                       title="Download"
-                      className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700 transition-colors"
+                      className="p-1 rounded text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                     >
                       <Download size={12} />
                     </a>
@@ -2126,7 +2166,7 @@ function ProgressTab({
                       onClick={() => setDeleteTarget(f)}
                       disabled={isDeleting}
                       title="Move to archive"
-                      className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-700 transition-colors disabled:opacity-50"
+                      className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
                     >
                       {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                     </button>
@@ -2139,7 +2179,7 @@ function ProgressTab({
 
         {/* Archive panel */}
         {showArchive && (
-          <div className="mt-2 pt-3 border-t border-gray-700/40">
+          <div className="mt-2 pt-3 border-t border-gray-300/40 dark:border-gray-700/40">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
                 <Archive size={11} className="text-amber-500" />
@@ -2149,7 +2189,7 @@ function ProgressTab({
               </div>
               <button
                 onClick={refreshArchive}
-                className="p-0.5 text-gray-600 hover:text-gray-400 transition-colors"
+                className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
                 title="Refresh archive"
               >
                 <RefreshCw size={11} className={archiveLoading ? "animate-spin" : ""} />
@@ -2161,7 +2201,7 @@ function ProgressTab({
                 <Loader2 size={14} className="animate-spin text-gray-600" />
               </div>
             ) : archiveFiles.length === 0 ? (
-              <p className="text-xs text-gray-600 py-1">Archive is empty.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-600 py-1">Archive is empty.</p>
             ) : (
               <div className="space-y-0.5 max-h-40 overflow-y-auto">
                 {archiveFiles.map((f) => {
@@ -2170,10 +2210,10 @@ function ProgressTab({
                   return (
                     <div
                       key={f}
-                      className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-gray-800/60 group"
+                      className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-gray-100/60 dark:hover:bg-gray-800/60 group"
                     >
                       <span
-                        className="flex-1 text-[13px] font-mono text-gray-500 truncate"
+                        className="flex-1 text-[13px] font-mono text-gray-500 dark:text-gray-500 truncate"
                         title={name}
                       >
                         {name}
@@ -2182,7 +2222,7 @@ function ProgressTab({
                         onClick={() => handleRestore(f)}
                         disabled={isRestoring}
                         title="Restore to working directory"
-                        className="p-1 rounded text-gray-600 hover:text-emerald-400 hover:bg-gray-700 transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100"
+                        className="p-1 rounded text-gray-400 dark:text-gray-600 hover:text-emerald-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100"
                       >
                         {isRestoring ? (
                           <Loader2 size={12} className="animate-spin" />
@@ -2338,58 +2378,39 @@ function MoleculeTab({
 
   return (
     <div className="p-4 space-y-4">
-      {/* Header: {molecule} - {filename} + agent button */}
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-2 bg-gray-950/95 backdrop-blur border-b border-gray-800/80">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-gray-200 truncate">
-            {selectedMolecule ? (
-              <>
-                {systemLabel && (
-                  <span className="text-gray-400 font-normal">{systemLabel} — </span>
-                )}
-                {selectedMolecule.name}
-              </>
-            ) : (
-              <span className="text-gray-500 font-normal text-xs">No molecule selected</span>
-            )}
-          </h3>
-          <button
-            onClick={() => setAgentOpen(true)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-blue-900/30 border border-blue-800/50 text-blue-400 hover:bg-blue-800/40 transition-colors font-medium"
-          >
-            <Bot size={11} />
-            Search with agent
-          </button>
-        </div>
-      </div>
-
       {/* Inline 3D viewer */}
       {selectedMolecule ? (
-        <MoleculeViewer
-          fileContent={selectedMolecule.content}
-          fileName={selectedMolecule.name}
-          inline={true}
-        />
+        <Section
+          icon={<Eye size={13} />}
+          title={systemLabel ? `${systemLabel} — ${selectedMolecule.name}` : selectedMolecule.name}
+          accent="indigo"
+        >
+          <MoleculeViewer
+            fileContent={selectedMolecule.content}
+            fileName={selectedMolecule.name}
+            inline={true}
+          />
+        </Section>
       ) : (moleculeLoading || viewLoading) ? (
         <div
-          className="relative rounded-xl border border-gray-700/60 bg-gray-900 overflow-hidden flex items-center justify-center"
-          style={{ height: "520px" }}
+          className="relative rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50 dark:bg-gray-900 overflow-hidden flex items-center justify-center"
+          style={{ height: "360px" }}
         >
-          <div className="flex items-center gap-2 text-gray-400">
+          <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
             <Loader2 size={20} className="animate-spin" />
             <span className="text-sm">Loading molecule…</span>
           </div>
         </div>
       ) : molLibrary.length > 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-700/60 bg-gray-900/40 p-5">
+        <div className="rounded-xl border border-dashed border-gray-300/60 dark:border-gray-700/60 bg-gray-50/40 dark:bg-gray-900/40 p-5">
           <div className="text-center mb-4">
-            <FlaskConical size={24} className="mx-auto text-gray-600 mb-2" />
+            <FlaskConical size={24} className="mx-auto text-gray-400 dark:text-gray-600 mb-2" />
             <p className="text-xs text-gray-500">No molecule selected. Load one from the library:</p>
           </div>
           <div className="grid grid-cols-1 gap-2">
             {molLibrary.map((sys) => (
-              <div key={sys.id} className="rounded-lg border border-gray-700/50 bg-gray-800/40 p-3">
-                <p className="text-xs font-semibold text-gray-300 mb-2">{sys.label}</p>
+              <div key={sys.id} className="rounded-lg border border-gray-300/50 dark:border-gray-700/50 bg-gray-100/40 dark:bg-gray-800/40 p-3">
+                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">{sys.label}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {sys.states.map((st) => {
                     const key = `${sys.id}/${st.name}`;
@@ -2419,13 +2440,22 @@ function MoleculeTab({
         title="Molecule Files"
         accent="indigo"
         action={
-          <button
-            onClick={refreshFiles}
-            className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAgentOpen(true)}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-100/40 dark:hover:bg-blue-900/30 transition-colors font-medium"
+            >
+              <Bot size={12} />
+              Search
+            </button>
+            <button
+              onClick={refreshFiles}
+              className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
         }
       >
 
@@ -2447,8 +2477,8 @@ function MoleculeTab({
                         key={f}
                         className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border ${
                           isSelected
-                            ? "bg-indigo-950/40 border-indigo-700/60"
-                            : "bg-gray-800/50 border-gray-700/50"
+                            ? "bg-indigo-50/40 dark:bg-indigo-950/40 border-indigo-300/60 dark:border-indigo-700/60"
+                            : "bg-gray-100/50 dark:bg-gray-800/50 border-gray-300/50 dark:border-gray-700/50"
                         }`}
                         style={{ marginLeft: isRoot ? "0px" : "16px" }}
                       >
@@ -2464,11 +2494,11 @@ function MoleculeTab({
                           <span className="text-gray-500 text-xs font-mono w-3 text-center">└</span>
                         )}
                         <span className="text-base">{node.isDerived ? "🧪" : "🧬"}</span>
-                        <span className="text-xs text-gray-200 truncate flex-1 font-mono" title={f}>
+                        <span className="text-xs text-gray-800 dark:text-gray-200 truncate flex-1 font-mono" title={f}>
                           {name}
                         </span>
                         {node.isDerived && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700/60 text-gray-500 bg-gray-900/70">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded border border-gray-300/60 dark:border-gray-700/60 text-gray-500 bg-gray-100/70 dark:bg-gray-900/70">
                             intermediate
                           </span>
                         )}
@@ -2491,14 +2521,14 @@ function MoleculeTab({
                         <button
                           onClick={() => setPreviewPath(f)}
                           title="Preview file content"
-                          className="flex items-center justify-center p-1.5 rounded-md text-gray-400 hover:text-indigo-300 hover:bg-indigo-900/20 border border-gray-700/50 hover:border-indigo-800/40 transition-colors flex-shrink-0"
+                          className="flex items-center justify-center p-1.5 rounded-md text-gray-500 dark:text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-300 hover:bg-indigo-100/20 dark:hover:bg-indigo-900/20 border border-gray-300/50 dark:border-gray-700/50 hover:border-indigo-300/40 dark:hover:border-indigo-800/40 transition-colors flex-shrink-0"
                         >
                           <Eye size={11} />
                         </button>
                         <a
                           href={downloadUrl(sessionId, f)}
                           download={name}
-                          className="flex items-center justify-center p-1.5 rounded-md text-gray-400 hover:text-blue-400 hover:bg-blue-900/20 border border-gray-700/50 hover:border-blue-800/40 transition-colors flex-shrink-0"
+                          className="flex items-center justify-center p-1.5 rounded-md text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-100/20 dark:hover:bg-blue-900/20 border border-gray-300/50 dark:border-gray-700/50 hover:border-blue-300/40 dark:hover:border-blue-800/40 transition-colors flex-shrink-0"
                           title="Download file"
                         >
                           <Download size={11} />
@@ -2506,7 +2536,7 @@ function MoleculeTab({
                         <button
                           onClick={() => handleDelete(f)}
                           disabled={isDeleting || isLoading}
-                          className="flex items-center justify-center p-1.5 rounded-md text-gray-400 hover:text-red-400 hover:bg-red-900/20 border border-gray-700/50 hover:border-red-800/40 transition-colors disabled:opacity-50 flex-shrink-0"
+                          className="flex items-center justify-center p-1.5 rounded-md text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-100/20 dark:hover:bg-red-900/20 border border-gray-300/50 dark:border-gray-700/50 hover:border-red-300/40 dark:hover:border-red-800/40 transition-colors disabled:opacity-50 flex-shrink-0"
                           title="Delete file"
                         >
                           {isDeleting
@@ -2532,7 +2562,7 @@ function MoleculeTab({
           <div className="space-y-2">
             {molLibrary.map((sys) => (
               <div key={sys.id} className="flex items-center gap-3">
-                <span className="text-xs font-medium text-gray-400 w-28 truncate flex-shrink-0">{sys.label}</span>
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-400 w-28 truncate flex-shrink-0">{sys.label}</span>
                 <div className="flex flex-wrap gap-1.5 flex-1">
                   {sys.states.map((st) => {
                     const key = `${sys.id}/${st.name}`;
@@ -2542,7 +2572,7 @@ function MoleculeTab({
                         key={st.name}
                         onClick={() => handleLoadFromLibrary(sys.id, st.name)}
                         disabled={!!molLibLoading}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-gray-800/60 border border-gray-700/50 text-gray-300 hover:bg-indigo-900/30 hover:border-indigo-700/40 hover:text-indigo-300 transition-colors disabled:opacity-50 font-mono"
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-gray-100/60 dark:bg-gray-800/60 border border-gray-300/50 dark:border-gray-700/50 text-gray-700 dark:text-gray-300 hover:bg-indigo-100/30 dark:hover:bg-indigo-900/30 hover:border-indigo-300/40 dark:hover:border-indigo-700/40 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors disabled:opacity-50 font-mono"
                       >
                         {isLoading ? <Loader2 size={9} className="animate-spin" /> : <FlaskConical size={9} />}
                         {st.file}
@@ -2601,16 +2631,16 @@ function GpuCpuToggle({ value, onChange }: { value: string; onChange: (v: string
 
   return (
     <div>
-      <label className="text-sm font-medium text-gray-400 mb-1.5 block">Compute</label>
-      <div className="flex rounded-lg border border-gray-700 overflow-hidden h-[38px]">
+      <label className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5 block">Compute</label>
+      <div className="flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden h-[38px]">
         <button
           type="button"
           onClick={selectGpu}
           disabled={checking}
           className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors ${
             isGpu
-              ? "bg-emerald-900/40 text-emerald-400 border-r border-gray-700"
-              : "bg-gray-800/40 text-gray-500 hover:text-gray-300 hover:bg-gray-800 border-r border-gray-700"
+              ? "bg-emerald-100/40 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 border-r border-gray-300 dark:border-gray-700"
+              : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 border-r border-gray-300 dark:border-gray-700"
           }`}
         >
           {checking ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
@@ -2621,8 +2651,8 @@ function GpuCpuToggle({ value, onChange }: { value: string; onChange: (v: string
           onClick={selectCpu}
           className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors ${
             !isGpu
-              ? "bg-blue-900/40 text-blue-400"
-              : "bg-gray-800/40 text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+              ? "bg-blue-100/40 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
+              : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
           }`}
         >
           <Cpu size={12} />
@@ -2653,29 +2683,30 @@ function GromacsTab({
 
   return (
     <div className="p-4 space-y-4">
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-2 bg-gray-950/95 backdrop-blur border-b border-gray-800/80">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-200">GROMACS Parameters</h3>
-          {isLocked && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-amber-400">
-              <Lock size={12} />
-              Locked after simulation started
-            </span>
-          )}
-          {!isLocked && saveState === "saving" && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-blue-400">
-              <Loader2 size={12} className="animate-spin" />
-              Saving
-            </span>
-          )}
-          {!isLocked && saveState === "saved" && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400">
-              <CheckCircle2 size={12} />
-              Saved
-            </span>
-          )}
+      {isLocked && (
+        <div className="flex items-center justify-end">
+          <span className="inline-flex items-center gap-1.5 text-xs text-amber-500 dark:text-amber-400">
+            <Lock size={12} />
+            Locked after simulation started
+          </span>
         </div>
-      </div>
+      )}
+      {!isLocked && saveState === "saving" && (
+        <div className="flex items-center justify-end">
+          <span className="inline-flex items-center gap-1.5 text-xs text-blue-500 dark:text-blue-400">
+            <Loader2 size={12} className="animate-spin" />
+            Saving
+          </span>
+        </div>
+      )}
+      {!isLocked && saveState === "saved" && (
+        <div className="flex items-center justify-end">
+          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-500 dark:text-emerald-400">
+            <CheckCircle2 size={12} />
+            Saved
+          </span>
+        </div>
+      )}
 
       <fieldset disabled={isLocked} className={isLocked ? "space-y-4 opacity-70" : "space-y-4"}>
         {/* System */}
@@ -2715,7 +2746,7 @@ function GromacsTab({
               onChange={(v) => { onChange("gromacs.gpu_id", v); onSave(); }}
             />
           </FieldGrid>
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-gray-500 dark:text-gray-600">
             Minimum distance from the molecule to the box edge (editconf <code className="font-mono">-d</code>).
             Must satisfy: clearance × √3/2 &gt; max cutoff ({String((gromacs.rcoulomb as number | undefined) ?? 1.0)} nm).
           </p>
@@ -2812,22 +2843,22 @@ function AdvancedSection({
   const gromacs = (cfg.gromacs ?? {}) as Record<string, unknown>;
 
   return (
-    <div className="rounded-xl border border-gray-700/40 overflow-hidden">
+    <div className="rounded-xl border border-gray-300/40 dark:border-gray-700/40 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-2 bg-gray-900/60 hover:bg-gray-800/60 transition-colors text-left"
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-50/60 dark:bg-gray-900/60 hover:bg-gray-100/60 dark:hover:bg-gray-800/60 transition-colors text-left"
       >
         <div className="flex items-center gap-2">
           {open ? <ChevronDown size={12} className="text-gray-500" /> : <ChevronRight size={12} className="text-gray-500" />}
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Advanced Parameters</span>
         </div>
-        <span className="text-[10px] text-gray-600">Cutoffs, electrostatics, constraints, output…</span>
+        <span className="text-[10px] text-gray-400 dark:text-gray-600">Cutoffs, electrostatics, constraints, output…</span>
       </button>
 
       {open && (
         <fieldset disabled={isLocked} className={isLocked ? "space-y-3 opacity-70" : "space-y-3"}>
-        <div className="p-3 space-y-5 border-t border-gray-700/40 bg-gray-900/20">
+        <div className="p-3 space-y-5 border-t border-gray-300/40 dark:border-gray-700/40 bg-gray-50/20 dark:bg-gray-900/20">
           {/* Non-bonded cutoffs */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Non-bonded Cutoffs</p>
@@ -3068,13 +3099,13 @@ function CVEditor({
   const atomCount = cv.type === "DISTANCE" ? 2 : cv.type === "TORSION" ? 4 : cv.type === "ANGLE" ? 3 : 0;
 
   return (
-    <div className="rounded-lg border border-gray-700/50 bg-gray-800/30 p-2.5 space-y-2">
+    <div className="rounded-lg border border-gray-300/50 dark:border-gray-700/50 bg-gray-100/30 dark:bg-gray-800/30 p-2.5 space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">CV {index + 1}</span>
-          <span className="text-[10px] font-mono text-gray-600">{cv.type}</span>
+          <span className="text-[10px] font-mono text-gray-400 dark:text-gray-600">{cv.type}</span>
         </div>
-        <button onClick={onRemove} className="p-0.5 rounded text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition-colors">
+        <button onClick={onRemove} className="p-0.5 rounded text-gray-400 dark:text-gray-600 hover:text-red-400 hover:bg-red-100/20 dark:hover:bg-red-900/20 transition-colors">
           <Trash2 size={11} />
         </button>
       </div>
@@ -3084,7 +3115,7 @@ function CVEditor({
           <input
             value={cv.name}
             onChange={(e) => onChange({ ...cv, name: e.target.value })}
-            className="w-full border border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="d1"
           />
         </div>
@@ -3094,9 +3125,9 @@ function CVEditor({
             value={cv.type}
             onChange={(e) => {
               const v = e.target.value;
-              onChange({ ...cv, type: v, atoms: v === "DISTANCE" ? [1, 2] : v === "TORSION" ? [1, 2, 3, 4] : v === "ANGLE" ? [1, 2, 3] : cv.atoms });
+              onChange({ ...cv, type: v, atoms: [] });
             }}
-            className="w-full border border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             {CV_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
@@ -3110,7 +3141,7 @@ function CVEditor({
                 const parsed = e.target.value.split(/[,\s]+/).map(Number).filter((n) => !isNaN(n));
                 onChange({ ...cv, atoms: parsed });
               }}
-              className="w-full border border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-800 text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder={cv.type === "TORSION" ? "5,7,9,15" : "1,100"}
             />
           </div>
@@ -3121,7 +3152,7 @@ function CVEditor({
             <input
               value={cv.reference ?? ""}
               onChange={(e) => onChange({ ...cv, reference: e.target.value })}
-              className="w-full border border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="reference.pdb"
             />
           </div>
@@ -3160,6 +3191,10 @@ function MethodTab({
   const plumedCfg = (cfg.plumed ?? {}) as Record<string, unknown>;
   const cvsCfg = (plumedCfg.collective_variables ?? {}) as Record<string, unknown>;
   const [agentOpen, setAgentOpen] = useState(false);
+  const [cvMode, setCvMode] = useState<"manual" | "mlcv">("manual");
+  const [mlCheckpoints, setMlCheckpoints] = useState<string[]>([]);
+  const [mlSelectedCkpt, setMlSelectedCkpt] = useState<string>("");
+  const [mlInputCvs, setMlInputCvs] = useState<Set<number>>(new Set());
   const [plumedPreview, setPlumedPreview] = useState<string | null>(null);
   const [plumedLoading, setPlumedLoading] = useState(false);
   const [plumedMessage, setPlumedMessage] = useState<string | null>(null);
@@ -3170,6 +3205,7 @@ function MethodTab({
   const isLocked = runStatus === "running" || runStatus === "finished";
 
   // Load PDB/structure files for steered MD initial/target selection
+  const [fileRefreshKey, setFileRefreshKey] = useState(0);
   useEffect(() => {
     listFiles(sessionId).then(({ files }) => {
       const structs = files.filter((f) => {
@@ -3177,8 +3213,15 @@ function MethodTab({
         return ["pdb", "gro", "mol2", "xyz", "sdf"].includes(ext);
       }).map((f) => f.split("/").pop() ?? f);
       setPdbFiles(structs);
+      // Scan for ML checkpoint files (.pt, .ckpt, .pth)
+      const ckpts = files.filter((f) => {
+        const ext = f.split(".").pop()?.toLowerCase() ?? "";
+        return ["pt", "ckpt", "pth"].includes(ext);
+      }).map((f) => f.split("/").pop() ?? f);
+      setMlCheckpoints(ckpts);
+      if (ckpts.length > 0 && !mlSelectedCkpt) setMlSelectedCkpt(ckpts[0]);
     }).catch(() => {});
-  }, [sessionId]);
+  }, [sessionId, fileRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load structure content for steered MD viewers
   const initialPdb = String(method.initial_pdb ?? "");
@@ -3224,6 +3267,20 @@ function MethodTab({
   const rawCvs = (cvsCfg.cvs ?? []) as CVDefinition[];
   const cvs: CVDefinition[] = Array.isArray(rawCvs) ? rawCvs : [];
 
+  // Auto-save and refresh plumed preview when CVs change (debounced)
+  const cvsJsonRef = useRef(JSON.stringify(cvs));
+  useEffect(() => {
+    const json = JSON.stringify(cvs);
+    if (json === cvsJsonRef.current) return;
+    cvsJsonRef.current = json;
+    const timer = setTimeout(() => {
+      onSave();
+      if (needsPlumed) setPlumedRevision((r) => r + 1);
+    }, 600);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cvs]);
+
   const handleMethodChange = (id: string) => {
     if (isLocked) return;
     onChange("method._target_name", id);
@@ -3243,7 +3300,7 @@ function MethodTab({
   };
 
   const handleCVAdd = () => {
-    const newCv: CVDefinition = { name: `d${cvs.length + 1}`, type: "DISTANCE", atoms: [1, 2] };
+    const newCv: CVDefinition = { name: `cv${cvs.length + 1}`, type: "DISTANCE", atoms: [] };
     onChange("plumed.collective_variables.cvs", [...cvs, newCv]);
     saveAndRefreshPlumed();
   };
@@ -3281,10 +3338,10 @@ function MethodTab({
 
   return (
     <div className="p-3 space-y-3">
-      <div className="sticky top-0 z-20 -mx-3 px-3 py-1.5 bg-gray-950/95 backdrop-blur border-b border-gray-800/80">
+      <div className="sticky top-0 z-20 -mx-3 px-3 py-1.5 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur border-b border-gray-200/80 dark:border-gray-800/80">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-200 truncate">
-            <span className="text-gray-400 font-normal">{currentMethod.long}</span> — {currentMethod.label}
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
+            <span className="text-gray-500 dark:text-gray-400 font-normal">{currentMethod.long}</span> — {currentMethod.label}
           </h3>
           {isLocked && (
             <span className="inline-flex items-center gap-1 text-xs text-amber-400">
@@ -3297,7 +3354,7 @@ function MethodTab({
 
       {/* Method toggle — horizontal buttons */}
       <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
-        <div className="flex rounded-lg border border-gray-700 overflow-hidden h-[32px]">
+        <div className="flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden h-[32px]">
           {METHOD_OPTIONS.map((m, i) => (
             <button
               key={m.id}
@@ -3306,9 +3363,9 @@ function MethodTab({
               title={m.long}
               className={`flex-1 flex items-center justify-center text-xs font-medium transition-colors ${
                 m.id === currentMethodId
-                  ? "bg-indigo-900/50 text-indigo-300"
-                  : "bg-gray-800/40 text-gray-500 hover:text-gray-300 hover:bg-gray-800"
-              } ${i < METHOD_OPTIONS.length - 1 ? "border-r border-gray-700" : ""}`}
+                  ? "bg-indigo-100/50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300"
+                  : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
+              } ${i < METHOD_OPTIONS.length - 1 ? "border-r border-gray-300 dark:border-gray-700" : ""}`}
             >
               {m.label}
             </button>
@@ -3316,18 +3373,111 @@ function MethodTab({
         </div>
       </fieldset>
 
-      {/* COLVAR output settings — always shown for PLUMED methods, persisted across switches */}
-      {needsPlumed && (
+      {/* Method-specific parameters + COLVAR output — combined section above CVs */}
+      {isMetaD && (
         <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
-        <Section icon={<FileText size={11} />} title="COLVAR Output" accent="blue">
-          <div className="grid grid-cols-2 gap-2">
+        <Section icon={<Mountain size={11} />} title="Metadynamics" accent="indigo">
+          <div className="grid grid-cols-2 gap-2 mb-2">
             <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Stride <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
-              <input type="number" value={String(cvsCfg.colvar_stride ?? 100)} onChange={(e) => onChange("plumed.collective_variables.colvar_stride", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Stride <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(cvsCfg.colvar_stride ?? 100)} onChange={(e) => onChange("plumed.collective_variables.colvar_stride", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
             <div>
               <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Filename</label>
-              <input value={String(cvsCfg.colvar_file ?? "COLVAR")} onChange={(e) => onChange("plumed.collective_variables.colvar_file", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              <input value={String(cvsCfg.colvar_file ?? "COLVAR")} onChange={(e) => onChange("plumed.collective_variables.colvar_file", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div className="h-px bg-gray-200 dark:bg-gray-800 my-2" />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Height <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol</span></label>
+              <input type="number" step="any" value={String(hills.height ?? "")} onChange={(e) => onChange("method.hills.height", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Pace <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(hills.pace ?? "")} onChange={(e) => onChange("method.hills.pace", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Sigma <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">CV units</span></label>
+              <input type="number" step="any" value={String(Array.isArray(hills.sigma) ? hills.sigma[0] : hills.sigma ?? "")} onChange={(e) => onChange("method.hills.sigma", [Number(e.target.value)])} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Bias factor <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">γ</span></label>
+              <input type="number" step="any" value={String(hills.biasfactor ?? "")} onChange={(e) => onChange("method.hills.biasfactor", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-600 mt-1">Well-tempered: γ 5–15. Leave empty for standard MetaD.</p>
+        </Section>
+        </fieldset>
+      )}
+
+      {isOpes && (
+        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
+        <Section icon={<Mountain size={11} />} title="OPES Parameters" accent="indigo">
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Stride <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(cvsCfg.colvar_stride ?? 100)} onChange={(e) => onChange("plumed.collective_variables.colvar_stride", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Filename</label>
+              <input value={String(cvsCfg.colvar_file ?? "COLVAR")} onChange={(e) => onChange("plumed.collective_variables.colvar_file", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div className="h-px bg-gray-200 dark:bg-gray-800 my-2" />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Pace <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(method.pace ?? 500)} onChange={(e) => onChange("method.pace", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Sigma</label>
+              <input type="number" step="any" value={String(method.sigma ?? 0.05)} onChange={(e) => onChange("method.sigma", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Barrier <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol</span></label>
+              <input type="number" step="any" value={String(method.barrier ?? 30)} onChange={(e) => onChange("method.barrier", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Temperature <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">K</span></label>
+              <input type="number" step="any" value={String(method.temperature ?? 340)} onChange={(e) => onChange("method.temperature", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-600 mt-1">OPES_METAD: adaptive kernel-based enhanced sampling.</p>
+        </Section>
+        </fieldset>
+      )}
+
+      {isUmbrella && (
+        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
+        <Section icon={<Mountain size={11} />} title="Umbrella Sampling" accent="indigo">
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Stride <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(cvsCfg.colvar_stride ?? 100)} onChange={(e) => onChange("plumed.collective_variables.colvar_stride", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Filename</label>
+              <input value={String(cvsCfg.colvar_file ?? "COLVAR")} onChange={(e) => onChange("plumed.collective_variables.colvar_file", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div className="h-px bg-gray-200 dark:bg-gray-800 my-2" />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Window start <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">nm</span></label>
+              <input type="number" step="any" value={String(method.window_start ?? 0)} onChange={(e) => onChange("method.window_start", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Window end <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">nm</span></label>
+              <input type="number" step="any" value={String(method.window_end ?? 4.0)} onChange={(e) => onChange("method.window_end", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Spacing <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">nm</span></label>
+              <input type="number" step="any" value={String(method.window_spacing ?? 0.2)} onChange={(e) => onChange("method.window_spacing", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Force κ <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol/nm²</span></label>
+              <input type="number" step="any" value={String(method.force_constant ?? 1000)} onChange={(e) => onChange("method.force_constant", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
           </div>
         </Section>
@@ -3341,106 +3491,159 @@ function MethodTab({
           action={!isLocked ? (
             <button
               onClick={() => setAgentOpen(true)}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-indigo-900/30 border border-indigo-800/50 text-indigo-400 hover:bg-indigo-800/40 transition-colors"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-indigo-50/60 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100/60 dark:hover:bg-indigo-800/40 transition-colors"
             >
               <Bot size={10} />
               Suggest
             </button>
           ) : undefined}
         >
-          {/* Scrollable CV list */}
-          <div className={`space-y-2 ${cvs.length > 2 ? "max-h-48 overflow-y-auto pr-1 [scrollbar-gutter:stable]" : ""}`}>
-            {cvs.map((cv, i) => (
-              <CVEditor key={i} cv={cv} index={i} onChange={(u) => handleCVChange(i, u)} onRemove={() => handleCVRemove(i)} />
-            ))}
-          </div>
-          {!isLocked && (
+          {/* Descriptors / MLCVs toggle */}
+          <div className="flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden h-[30px] mb-3">
             <button
-              onClick={handleCVAdd}
-              className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg border border-dashed border-gray-700 text-xs text-gray-500 hover:text-emerald-400 hover:border-emerald-700 transition-colors"
+              type="button"
+              onClick={() => setCvMode("manual")}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+                cvMode === "manual"
+                  ? "bg-emerald-100/50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400"
+                  : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
+              } border-r border-gray-300 dark:border-gray-700`}
             >
-              <Plus size={10} />
-              Add CV
+              <FlaskConical size={11} />
+              Descriptors
             </button>
+            <button
+              type="button"
+              onClick={() => setCvMode("mlcv")}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+                cvMode === "mlcv"
+                  ? "bg-violet-100/50 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400"
+                  : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
+              }`}
+            >
+              <Layers size={11} />
+              MLCVs
+            </button>
+          </div>
+
+          {cvMode === "manual" ? (
+            /* Interactive 3D atom picker — inline, synced with config */
+            <InlineCVPicker
+              sessionId={sessionId}
+              cvs={cvs as import("@/components/viz/InlineCVPicker").ConfigCV[]}
+              onChange={(updated) => {
+                onChange("plumed.collective_variables.cvs", updated);
+              }}
+            />
+          ) : (
+            /* MLCVs — checkpoint upload (left, same size as 3D viewer) + input descriptors (right) */
+            <div className="flex gap-4">
+              {/* Left: Checkpoint files — same size as the 3D viewer in Descriptors */}
+              <div className="flex flex-col flex-shrink-0 rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50/80 dark:bg-gray-900/50 overflow-hidden" style={{ width: "360px", height: "400px" }}>
+                <div className="px-3 py-2 border-b border-gray-200/60 dark:border-gray-800">
+                  <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Checkpoints</p>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarWidth: "thin" }}>
+                  {mlCheckpoints.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center px-2 gap-2">
+                      <Upload size={16} className="text-gray-300 dark:text-gray-600" />
+                      <p className="text-[9px] text-gray-400 dark:text-gray-600">No .pt / .ckpt / .pth files.<br />Upload below.</p>
+                    </div>
+                  ) : (
+                    mlCheckpoints.map((ckpt) => (
+                      <button
+                        key={ckpt}
+                        onClick={() => setMlSelectedCkpt(ckpt)}
+                        className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left transition-colors text-[10px] ${
+                          mlSelectedCkpt === ckpt
+                            ? "bg-violet-100/50 dark:bg-violet-900/30 border border-violet-300/60 dark:border-violet-700/50 text-violet-700 dark:text-violet-300"
+                            : "bg-white/40 dark:bg-gray-800/30 border border-gray-200/60 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100/60 dark:hover:bg-gray-800/50"
+                        }`}
+                      >
+                        <Archive size={10} className="flex-shrink-0" />
+                        <span className="font-mono truncate">{ckpt}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {/* Upload area — accepts checkpoint files */}
+                <div className="p-1.5 border-t border-gray-200/60 dark:border-gray-800 flex-shrink-0">
+                  <FileUpload sessionId={sessionId} onUploaded={() => setFileRefreshKey((n) => n + 1)} accept={{ "application/octet-stream": [".pt", ".ckpt", ".pth"] }} label="Drop .pt/.ckpt/.pth" />
+                </div>
+              </div>
+
+              {/* Right: Input CV selection from Descriptors */}
+              <div className="flex-1 flex flex-col min-w-0 rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50/80 dark:bg-gray-900/50 overflow-hidden" style={{ height: "400px" }}>
+                <div className="flex items-start justify-between px-3 py-2.5 border-b border-gray-200/60 dark:border-gray-800">
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Input Descriptors</p>
+                    <p className="text-[9px] text-gray-400 dark:text-gray-600 mt-0.5">Select CVs as input features for the MLCV model.</p>
+                  </div>
+                  {cvs.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const allSelected = cvs.length > 0 && cvs.every((_, i) => mlInputCvs.has(i));
+                        setMlInputCvs(allSelected ? new Set() : new Set(cvs.map((_, i) => i)));
+                      }}
+                      className="flex-shrink-0 text-[9px] font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 dark:hover:text-violet-300 transition-colors mt-0.5"
+                    >
+                      {cvs.length > 0 && cvs.every((_, i) => mlInputCvs.has(i)) ? "Deselect all" : "Select all"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarWidth: "thin" }}>
+                  {cvs.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center px-3 gap-2">
+                      <Search size={16} className="text-gray-300 dark:text-gray-600" />
+                      <p className="text-[10px] text-gray-400 dark:text-gray-600">No descriptors defined yet.<br />Switch to Descriptors tab first.</p>
+                    </div>
+                  ) : (
+                    cvs.map((cv, i) => {
+                      const selected = mlInputCvs.has(i);
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => setMlInputCvs((prev) => {
+                            const next = new Set(prev);
+                            next.has(i) ? next.delete(i) : next.add(i);
+                            return next;
+                          })}
+                          className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors text-xs ${
+                            selected
+                              ? "bg-violet-100/50 dark:bg-violet-900/30 border border-violet-300/60 dark:border-violet-700/50 text-violet-700 dark:text-violet-300"
+                              : "bg-white/40 dark:bg-gray-800/30 border border-gray-200/60 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100/60 dark:hover:bg-gray-800/50"
+                          }`}
+                        >
+                          <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
+                            selected ? "bg-violet-500 border-violet-500" : "border-gray-300 dark:border-gray-600"
+                          }`}>
+                            {selected && <CheckCircle2 size={9} className="text-white" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="font-mono text-[11px]">{cv.name}</span>
+                            <span className="text-[9px] text-gray-400 dark:text-gray-600 ml-1.5">{cv.type}</span>
+                          </div>
+                          {cv.atoms && cv.atoms.length > 0 && (
+                            <span className="text-[9px] text-gray-400 dark:text-gray-600 font-mono">[{cv.atoms.join(",")}]</span>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="px-2 py-2 border-t border-gray-200/60 dark:border-gray-800 flex-shrink-0">
+                  <div className="text-[9px] text-gray-400 dark:text-gray-600 text-center">
+                    {mlInputCvs.size > 0 ? `${mlInputCvs.size} descriptor${mlInputCvs.size > 1 ? "s" : ""} selected` : "No descriptors selected"}
+                    {mlSelectedCkpt ? ` · ${mlSelectedCkpt}` : ""}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
-        </Section>
-        </fieldset>
-      )}
-
-      {/* Method-specific parameters */}
-      {isMetaD && (
-        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
-        <Section icon={<Mountain size={11} />} title="Metadynamics Bias" accent="indigo">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Height <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol</span></label>
-              <input type="number" step="any" value={String(hills.height ?? "")} onChange={(e) => onChange("method.hills.height", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Pace <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
-              <input type="number" value={String(hills.pace ?? "")} onChange={(e) => onChange("method.hills.pace", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Sigma <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">CV units</span></label>
-              <input type="number" step="any" value={String(Array.isArray(hills.sigma) ? hills.sigma[0] : hills.sigma ?? "")} onChange={(e) => onChange("method.hills.sigma", [Number(e.target.value)])} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Bias factor <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">γ</span></label>
-              <input type="number" step="any" value={String(hills.biasfactor ?? "")} onChange={(e) => onChange("method.hills.biasfactor", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-          </div>
-          <p className="text-xs text-gray-600 mt-1">Well-tempered: γ 5–15. Leave empty for standard MetaD.</p>
-        </Section>
-        </fieldset>
-      )}
-
-      {isOpes && (
-        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
-        <Section icon={<Mountain size={11} />} title="OPES Parameters" accent="indigo">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Pace <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
-              <input type="number" value={String(method.pace ?? 500)} onChange={(e) => onChange("method.pace", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Sigma</label>
-              <input type="number" step="any" value={String(method.sigma ?? 0.05)} onChange={(e) => onChange("method.sigma", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Barrier <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol</span></label>
-              <input type="number" step="any" value={String(method.barrier ?? 30)} onChange={(e) => onChange("method.barrier", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Temperature <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">K</span></label>
-              <input type="number" step="any" value={String(method.temperature ?? 340)} onChange={(e) => onChange("method.temperature", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-          </div>
-          <p className="text-xs text-gray-600 mt-1">OPES_METAD: adaptive kernel-based enhanced sampling.</p>
-        </Section>
-        </fieldset>
-      )}
-
-      {isUmbrella && (
-        <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
-        <Section icon={<Mountain size={11} />} title="Umbrella Sampling" accent="indigo">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Window start <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">nm</span></label>
-              <input type="number" step="any" value={String(method.window_start ?? 0)} onChange={(e) => onChange("method.window_start", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Window end <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">nm</span></label>
-              <input type="number" step="any" value={String(method.window_end ?? 4.0)} onChange={(e) => onChange("method.window_end", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Spacing <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">nm</span></label>
-              <input type="number" step="any" value={String(method.window_spacing ?? 0.2)} onChange={(e) => onChange("method.window_spacing", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Force κ <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol/nm²</span></label>
-              <input type="number" step="any" value={String(method.force_constant ?? 1000)} onChange={(e) => onChange("method.force_constant", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-            </div>
-          </div>
         </Section>
         </fieldset>
       )}
@@ -3448,22 +3651,33 @@ function MethodTab({
       {isSteered && (
         <fieldset disabled={isLocked} className={isLocked ? "opacity-60" : ""}>
         <Section icon={<Mountain size={11} />} title="Steered MD" accent="indigo">
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <div>
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Stride <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">steps</span></label>
+              <input type="number" value={String(cvsCfg.colvar_stride ?? 100)} onChange={(e) => onChange("plumed.collective_variables.colvar_stride", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Filename</label>
+              <input value={String(cvsCfg.colvar_file ?? "COLVAR")} onChange={(e) => onChange("plumed.collective_variables.colvar_file", e.target.value)} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div className="h-px bg-gray-200 dark:bg-gray-800 my-2" />
           {/* Initial & Target state — viewers + selectors side by side */}
           <div className="flex items-stretch gap-2 mb-3">
             {/* Initial State */}
-            <div className="flex-1 min-w-0 rounded-lg border border-gray-700/60 bg-gray-800/30 p-2.5 space-y-2">
-              <label className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider block">Initial State (A)</label>
+            <div className="flex-1 min-w-0 rounded-lg border border-gray-300/60 dark:border-gray-700/60 bg-gray-100/30 dark:bg-gray-800/30 p-2.5 space-y-2">
+              <label className="text-[10px] font-semibold text-indigo-500 dark:text-indigo-400 uppercase tracking-wider block">Initial State (A)</label>
               {initialContent ? (
                 <MiniStructureViewer fileContent={initialContent} fileName={initialPdb} height={160} />
               ) : (
-                <div className="h-[160px] rounded-lg border border-dashed border-gray-700/60 bg-gray-900/40 flex items-center justify-center">
-                  <span className="text-[10px] text-gray-600">No structure selected</span>
+                <div className="h-[160px] rounded-lg border border-dashed border-gray-300/60 dark:border-gray-700/60 bg-gray-50/40 dark:bg-gray-900/40 flex items-center justify-center">
+                  <span className="text-[10px] text-gray-400 dark:text-gray-600">No structure selected</span>
                 </div>
               )}
               <select
                 value={initialPdb}
                 onChange={(e) => { onChange("method.initial_pdb", e.target.value); saveAndRefreshPlumed(); }}
-                className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
                 <option value="">Select structure…</option>
                 {pdbFiles.map((f) => (
@@ -3478,19 +3692,19 @@ function MethodTab({
               <div className="h-8 w-px bg-gradient-to-b from-amber-600/40 to-transparent" />
             </div>
             {/* Target State */}
-            <div className="flex-1 min-w-0 rounded-lg border border-gray-700/60 bg-gray-800/30 p-2.5 space-y-2">
-              <label className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider block">Target State (B)</label>
+            <div className="flex-1 min-w-0 rounded-lg border border-gray-300/60 dark:border-gray-700/60 bg-gray-100/30 dark:bg-gray-800/30 p-2.5 space-y-2">
+              <label className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wider block">Target State (B)</label>
               {targetContent ? (
                 <MiniStructureViewer fileContent={targetContent} fileName={targetPdb} height={160} />
               ) : (
-                <div className="h-[160px] rounded-lg border border-dashed border-gray-700/60 bg-gray-900/40 flex items-center justify-center">
-                  <span className="text-[10px] text-gray-600">No structure selected</span>
+                <div className="h-[160px] rounded-lg border border-dashed border-gray-300/60 dark:border-gray-700/60 bg-gray-50/40 dark:bg-gray-900/40 flex items-center justify-center">
+                  <span className="text-[10px] text-gray-400 dark:text-gray-600">No structure selected</span>
                 </div>
               )}
               <select
                 value={targetPdb}
                 onChange={(e) => { onChange("method.target_pdb", e.target.value); saveAndRefreshPlumed(); }}
-                className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
               >
                 <option value="">Select structure…</option>
                 {pdbFiles.map((f) => (
@@ -3503,19 +3717,19 @@ function MethodTab({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Initial value</label>
-              <input type="number" step="any" value={String(method.initial_value ?? 0)} onChange={(e) => onChange("method.initial_value", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              <input type="number" step="any" value={String(method.initial_value ?? 0)} onChange={(e) => onChange("method.initial_value", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
             <div>
               <label className="flex items-center text-xs font-medium text-gray-500 mb-1 h-[22px]">Final value</label>
-              <input type="number" step="any" value={String(method.final_value ?? 4.0)} onChange={(e) => onChange("method.final_value", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              <input type="number" step="any" value={String(method.final_value ?? 4.0)} onChange={(e) => onChange("method.final_value", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Force κ <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol/nm²</span></label>
-              <input type="number" step="any" value={String(method.force_constant ?? 500)} onChange={(e) => onChange("method.force_constant", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Force κ <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">kJ/mol/nm²</span></label>
+              <input type="number" step="any" value={String(method.force_constant ?? 500)} onChange={(e) => onChange("method.force_constant", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Pull rate <span className="text-xs font-mono text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">nm/ps</span></label>
-              <input type="number" step="any" value={String(method.pull_rate ?? 0.005)} onChange={(e) => onChange("method.pull_rate", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-800 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              <label className="flex items-center justify-between text-xs font-medium text-gray-500 mb-1 h-[22px]">Pull rate <span className="text-xs font-mono text-gray-500 dark:text-gray-600 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">nm/ps</span></label>
+              <input type="number" step="any" value={String(method.pull_rate ?? 0.005)} onChange={(e) => onChange("method.pull_rate", Number(e.target.value))} onBlur={saveAndRefreshPlumed} className="w-full border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
           </div>
         </Section>
@@ -3534,7 +3748,7 @@ function MethodTab({
                 onClick={handlePreviewPlumed}
                 disabled={plumedLoading}
                 title="Refresh preview"
-                className="p-1 rounded text-gray-500 hover:text-amber-400 hover:bg-gray-800 transition-colors disabled:opacity-50"
+                className="p-1 rounded text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
               >
                 {plumedLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
               </button>
@@ -3542,7 +3756,7 @@ function MethodTab({
                 onClick={handleGeneratePlumed}
                 disabled={plumedLoading || isLocked}
                 title="Generate plumed.dat"
-                className="p-1 rounded text-gray-500 hover:text-emerald-400 hover:bg-gray-800 transition-colors disabled:opacity-50"
+                className="p-1 rounded text-gray-500 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
               >
                 <Download size={11} />
               </button>
@@ -3555,12 +3769,12 @@ function MethodTab({
               <span className="text-xs">Loading…</span>
             </div>
           ) : plumedPreview ? (
-            <pre className="text-[10px] leading-relaxed text-gray-300 bg-gray-950 border border-gray-700/50 rounded-lg p-2.5 overflow-x-auto max-h-56 font-mono whitespace-pre">
+            <pre className="text-[10px] leading-relaxed text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-950 border border-gray-300/50 dark:border-gray-700/50 rounded-lg p-2.5 overflow-x-auto max-h-56 font-mono whitespace-pre">
               {plumedPreview}
             </pre>
           ) : (
             <div className="py-4 text-center">
-              <p className="text-xs text-gray-600">{plumedMessage || "No PLUMED file generated yet."}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-600">{plumedMessage || "No PLUMED file generated yet."}</p>
             </div>
           )}
         </Section>
@@ -3568,9 +3782,9 @@ function MethodTab({
 
       {/* Plain MD note */}
       {!needsPlumed && (
-        <div className="rounded-xl border border-gray-700/40 bg-gray-900/30 p-3 text-center">
-          <p className="text-xs text-gray-600">
-            No enhanced sampling for <span className="text-gray-400">{currentMethod.long}</span>. Standard unbiased MD will run.
+        <div className="rounded-xl border border-gray-300/40 dark:border-gray-700/40 bg-gray-50/30 dark:bg-gray-900/30 p-3 text-center">
+          <p className="text-xs text-gray-400 dark:text-gray-600">
+            No enhanced sampling for <span className="text-gray-600 dark:text-gray-400">{currentMethod.long}</span>. Standard unbiased MD will run.
           </p>
         </div>
       )}
@@ -3627,14 +3841,14 @@ function NewSessionForm({
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 mb-3 shadow-lg">
             <FlaskConical size={22} className="text-white" />
           </div>
-          <h2 className="text-xl font-bold text-gray-100">New Session</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New Session</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Nickname */}
-          <div className="rounded-xl border border-gray-700/60 bg-gray-900/60 p-4">
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">
-              Session name <span className="text-gray-600">(editable anytime)</span>
+          <div className="rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-900/60 p-4">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+              Session name <span className="text-gray-400 dark:text-gray-600">(editable anytime)</span>
             </label>
             <input
               autoFocus
@@ -3642,7 +3856,7 @@ function NewSessionForm({
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               placeholder={defaultNickname()}
-              className="w-full border border-gray-700 rounded-lg px-3 py-2 bg-gray-800 text-gray-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -3650,7 +3864,7 @@ function NewSessionForm({
           <div className="grid grid-cols-3 gap-3">
 
             {/* Molecule system */}
-            <div className="rounded-xl border border-gray-700/60 bg-gray-900/60 p-3 flex flex-col gap-1.5">
+            <div className="rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-900/60 p-3 flex flex-col gap-1.5">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Molecule System</p>
               {SYSTEMS.map((s) => (
                 <button
@@ -3659,18 +3873,18 @@ function NewSessionForm({
                   onClick={() => setSystem(s.id)}
                   className={`w-full text-left px-2.5 py-2 rounded-lg border transition-all ${
                     system === s.id
-                      ? "border-indigo-600 bg-indigo-950/40 text-white"
-                      : "border-gray-700/60 bg-gray-800/40 text-gray-400 hover:border-gray-600 hover:text-gray-200"
+                      ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/40 text-gray-900 dark:text-white"
+                      : "border-gray-300/60 dark:border-gray-700/60 bg-gray-100/40 dark:bg-gray-800/40 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-600 hover:text-gray-800 dark:hover:text-gray-200"
                   }`}
                 >
                   <span className="text-xs font-medium">{s.label}</span>
-                  <p className="text-[10px] text-gray-600 mt-0.5 leading-snug">{s.description}</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5 leading-snug">{s.description}</p>
                 </button>
               ))}
             </div>
 
             {/* Simulation method */}
-            <div className="rounded-xl border border-gray-700/60 bg-gray-900/60 p-3 flex flex-col gap-1.5">
+            <div className="rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-900/60 p-3 flex flex-col gap-1.5">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Simulation Method</p>
               {PRESETS.map((p) => (
                 <button
@@ -3679,25 +3893,25 @@ function NewSessionForm({
                   onClick={() => setPreset(p.id)}
                   className={`w-full text-left px-2.5 py-2 rounded-lg border transition-all ${
                     preset === p.id
-                      ? "border-blue-600 bg-blue-950/40 text-white"
-                      : "border-gray-700/60 bg-gray-800/40 text-gray-400 hover:border-gray-600 hover:text-gray-200"
+                      ? "border-blue-600 bg-blue-50/40 dark:bg-blue-950/40 text-gray-900 dark:text-white"
+                      : "border-gray-300/60 dark:border-gray-700/60 bg-gray-100/40 dark:bg-gray-800/40 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-600 hover:text-gray-800 dark:hover:text-gray-200"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-xs font-medium leading-snug">{p.label}</span>
                     {p.tag && (
                       <span className={`text-[10px] font-mono px-1 py-0.5 rounded flex-shrink-0 ${
-                        preset === p.id ? "bg-blue-700/60 text-blue-200" : "bg-gray-700 text-gray-500"
+                        preset === p.id ? "bg-blue-200/60 dark:bg-blue-700/60 text-blue-700 dark:text-blue-200" : "bg-gray-200 dark:bg-gray-700 text-gray-500"
                       }`}>{p.tag}</span>
                     )}
                   </div>
-                  <p className="text-[10px] text-gray-600 mt-0.5 leading-snug">{p.description}</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5 leading-snug">{p.description}</p>
                 </button>
               ))}
             </div>
 
             {/* GROMACS template */}
-            <div className="rounded-xl border border-gray-700/60 bg-gray-900/60 p-3 flex flex-col gap-1.5">
+            <div className="rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-900/60 p-3 flex flex-col gap-1.5">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">GROMACS Template</p>
               {GMX_TEMPLATES.map((g) => (
                 <button
@@ -3706,12 +3920,12 @@ function NewSessionForm({
                   onClick={() => setGromacs(g.id)}
                   className={`w-full text-left px-2.5 py-2 rounded-lg border transition-all ${
                     gromacs === g.id
-                      ? "border-emerald-600 bg-emerald-950/40 text-white"
-                      : "border-gray-700/60 bg-gray-800/40 text-gray-400 hover:border-gray-600 hover:text-gray-200"
+                      ? "border-emerald-600 bg-emerald-50/40 dark:bg-emerald-950/40 text-gray-900 dark:text-white"
+                      : "border-gray-300/60 dark:border-gray-700/60 bg-gray-100/40 dark:bg-gray-800/40 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-600 hover:text-gray-800 dark:hover:text-gray-200"
                   }`}
                 >
                   <span className="text-xs font-medium">{g.label}</span>
-                  <p className="text-[10px] text-gray-600 mt-0.5 leading-snug">{g.description}</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5 leading-snug">{g.description}</p>
                 </button>
               ))}
             </div>
@@ -3789,8 +4003,20 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setHasCheckpoint(true); // reset, will be checked below if paused
     setGromacsSaveState("idle");
     // Restore result cards from persisted session data, or use defaults
-    const savedCards = (stored?.result_cards ?? []).filter((t): t is ResultCardType => VALID_RESULT_CARD_TYPES.has(t));
-    setResultCards(savedCards.map((type) => ({ id: crypto.randomUUID(), type })));
+    const restoredCards = (stored?.result_cards ?? [])
+      .map((entry: unknown) => {
+        if (typeof entry === "string") {
+          if (!VALID_RESULT_CARD_TYPES.has(entry)) return null;
+          return { id: uuid(), type: entry as ResultCardType };
+        }
+        if (typeof entry === "object" && entry !== null && (entry as Record<string, unknown>).type === "custom_cv" && (entry as Record<string, unknown>).meta) {
+          const obj = entry as Record<string, unknown>;
+          return { id: (obj.id as string) ?? uuid(), type: "custom_cv" as ResultCardType, meta: obj.meta as CustomCVConfig };
+        }
+        return null;
+      })
+      .filter(Boolean) as ResultCardDef[];
+    setResultCards(restoredCards);
     // Clear chat messages so previous session's conversation doesn't bleed into the new session
     clearMessages();
     // Fetch authoritative wall-clock timestamps from session.json on disk.
@@ -3838,9 +4064,11 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   // Persist result cards to session.json whenever they change
   useEffect(() => {
     if (!sessionId) return;
-    const types = resultCards.map((c) => c.type);
-    setSessionResultCards(sessionId, types);
-    updateResultCards(sessionId, types).catch(() => {});
+    const serialized = resultCards.map((c) =>
+      c.type === "custom_cv" && c.meta ? { type: c.type, id: c.id, meta: c.meta } : c.type
+    );
+    setSessionResultCards(sessionId, serialized);
+    updateResultCards(sessionId, serialized).catch(() => {});
   }, [sessionId, resultCards, setSessionResultCards]);
 
   useEffect(() => {
@@ -4103,20 +4331,20 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   if (!sessionId) {
     if (showNewForm) {
       return (
-        <div className="flex-1 flex flex-col bg-gray-950 h-full">
+        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 h-full">
           <NewSessionForm onCreated={handleSessionCreated} />
         </div>
       );
     }
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-950 h-full gap-6 px-8">
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 h-full gap-6 px-8">
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center">
-            <FlaskConical size={28} className="text-gray-600" />
+          <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center">
+            <FlaskConical size={28} className="text-gray-400 dark:text-gray-600" />
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-300">No session selected</p>
-            <p className="text-xs text-gray-600 mt-1">Select a session from the sidebar or create a new one to get started.</p>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No session selected</p>
+            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Select a session from the sidebar or create a new one to get started.</p>
           </div>
         </div>
         <button
@@ -4176,7 +4404,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     "standby";
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-950 h-full min-w-0">
+    <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 h-full min-w-0">
       <PillTabs active={activeTab} onChange={setActiveTab} />
 
       <div className={`flex-1 overflow-y-auto [scrollbar-gutter:stable] ${sessionLoading ? "flex flex-col" : ""}`}>
@@ -4184,18 +4412,18 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={24} className="animate-spin text-gray-400" />
-              <span className="text-sm text-gray-500">Loading session\u2026</span>
+              <span className="text-sm text-gray-500">Loading session…</span>
             </div>
           </div>
         ) : renderTab()}
       </div>
 
       {/* Simulation action button */}
-      <div className="flex-shrink-0 p-4 border-t border-gray-800 bg-gray-900/50">
+      <div className="flex-shrink-0 p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
         {actionState === "standby" && (
           <button
             onClick={() => setShowRunConfirm(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/30 text-sm"
+            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 text-sm"
           >
             <Play size={16} fill="currentColor" />
             Start MD Simulation
@@ -4204,7 +4432,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         {actionState === "finished" && (
           <button
             disabled
-            className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-900/40 text-emerald-300 font-semibold rounded-xl text-sm cursor-not-allowed border border-emerald-800/50"
+            className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold rounded-xl text-sm cursor-not-allowed border border-emerald-200 dark:border-emerald-800/50"
           >
             <CheckCircle2 size={16} />
             Simulation Finished
@@ -4213,7 +4441,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         {actionState === "running" && (
           <button
             onClick={() => setPauseConfirmOpen(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-amber-900/30 text-sm"
+            className="w-full flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-400 dark:bg-amber-600 dark:hover:bg-amber-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-amber-500/20 dark:shadow-amber-900/30 text-sm"
           >
             <Pause size={14} />
             Pause MD Simulation
@@ -4222,13 +4450,13 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         {actionState === "paused" && (
           <div className="flex flex-col gap-2">
             {!hasCheckpoint && (
-              <p className="text-xs text-amber-400 text-center">No checkpoint found — simulation ran too briefly. Restart required.</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 text-center">No checkpoint found — simulation ran too briefly. Restart required.</p>
             )}
             <div className="flex gap-2">
               {hasCheckpoint ? (
                 <button
                   onClick={handleResume}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/30 text-sm"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 text-sm"
                 >
                   <Play size={14} fill="currentColor" />
                   Resume
@@ -4236,7 +4464,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
               ) : (
                 <button
                   onClick={() => { handleTerminate(); }}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/30 text-sm"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 text-sm"
                 >
                   <RotateCcw size={14} />
                   Restart
@@ -4244,7 +4472,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
               )}
               <button
                 onClick={handleTerminate}
-                className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-red-900/30 text-sm"
+                className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-red-600/20 dark:shadow-red-900/30 text-sm"
               >
                 <Square size={14} fill="currentColor" />
                 Stop

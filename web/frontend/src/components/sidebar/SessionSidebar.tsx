@@ -20,11 +20,11 @@ interface Props {
 function statusDotClass(runStatus: string | undefined): string {
   const base = "w-2 h-2 rounded-full flex-shrink-0";
   switch (runStatus) {
-    case "running":  return `${base} bg-${palette.status.running} animate-pulse`;
-    case "paused":   return `${base} bg-${palette.status.paused}`;
-    case "finished": return `${base} bg-${palette.status.finished}`;
-    case "failed":   return `${base} bg-${palette.status.failed}`;
-    default:         return `${base} bg-${palette.status.idle}`;
+    case "running":  return `${base} bg-green-400 animate-pulse`;
+    case "paused":   return `${base} bg-amber-400`;
+    case "finished": return `${base} bg-blue-400`;
+    case "failed":   return `${base} bg-red-500`;
+    default:         return `${base} bg-gray-400 dark:bg-gray-600`;
   }
 }
 
@@ -130,7 +130,7 @@ function SessionItem({
                 disabled={deleting}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
               >
-                <Check size={13} /> {deleting ? "Deleting\u2026" : "Delete"}
+                <Check size={13} /> {deleting ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>
@@ -186,7 +186,7 @@ function SessionItem({
           )}
         </div>
         {!editing && (
-          <div className="pl-3 text-[10px] text-gray-400 dark:text-gray-600 font-mono truncate">{s.session_id.slice(0, 8)}\u2026</div>
+          <div className="pl-3 text-[10px] text-gray-400 dark:text-gray-600 font-mono truncate">{s.session_id.slice(0, 8)}…</div>
         )}
       </div>
 
@@ -275,14 +275,13 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
               </div>
               <button
                 onClick={toggle}
-                className={`relative w-11 h-6 rounded-full transition-colors ${
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
                   theme === "dark" ? "bg-indigo-600" : "bg-gray-300"
                 }`}
               >
                 <span
-                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                    theme === "dark" ? "translate-x-[22px]" : "translate-x-0.5"
-                  }`}
+                  className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-[left] duration-200"
+                  style={{ left: theme === "dark" ? "22px" : "2px" }}
                 />
               </button>
             </div>
@@ -332,7 +331,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
                   disabled={saving}
                   className="px-3 py-2 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
                 >
-                  {saved ? <Check size={12} /> : saving ? "\u2026" : "Save"}
+                  {saved ? <Check size={12} /> : saving ? "…" : "Save"}
                 </button>
               </div>
             </div>
@@ -366,7 +365,7 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
       <div className="space-y-1">
         <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
           <span>Util {gpu.utilization_pct}%</span>
-          <span>{gpu.temperature_c}\u00b0C</span>
+          <span>{gpu.temperature_c}°C</span>
         </div>
         <div className="h-2 bg-gray-200 dark:bg-gray-900 rounded-full overflow-hidden">
           <div
@@ -660,7 +659,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
   }
 
   return (
-    <aside className="w-56 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full transition-all duration-200">
+    <aside className="w-64 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full transition-all duration-200">
       {/* Brand */}
       <div className="px-4 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2.5 flex-shrink-0">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow">
@@ -696,7 +695,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
           <div className="px-1 py-2">
             <div className="flex items-center gap-2 px-2 mb-3">
               <Loader2 size={11} className="animate-spin text-gray-400" />
-              <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading sessions\u2026</span>
+              <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading sessions…</span>
             </div>
             <div className="space-y-1 animate-pulse">
               {[1, 2, 3].map((i) => (

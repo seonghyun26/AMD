@@ -261,7 +261,36 @@ export async function getEnergy(
   return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/energy${qs}`));
 }
 
-export async function updateResultCards(sessionId: string, resultCards: string[]): Promise<void> {
+export interface CVDefinition {
+  type: "distance" | "angle" | "dihedral";
+  atoms: number[];   // 1-based (PLUMED convention)
+  label: string;
+}
+
+export interface CustomCVConfig {
+  cvs: CVDefinition[];
+}
+
+export async function computeCustomCV(
+  sessionId: string,
+  config: CustomCVConfig,
+  force = false,
+): Promise<{ data: Record<string, number[] | string[]>; available: boolean }> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/analysis/custom-cv`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cvs: config.cvs, force }),
+  });
+  return json(res);
+}
+
+export async function getAtomList(
+  sessionId: string,
+): Promise<{ atoms: { index: number; name: string; element: string; resName: string; resSeq: number }[]; available: boolean }> {
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/atoms`));
+}
+
+export async function updateResultCards(sessionId: string, resultCards: unknown[]): Promise<void> {
   await fetch(`${BASE}/sessions/${sessionId}/result-cards`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

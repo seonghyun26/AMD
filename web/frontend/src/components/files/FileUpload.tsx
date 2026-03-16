@@ -8,9 +8,11 @@ import { uploadFile } from "@/lib/api";
 interface Props {
   sessionId: string;
   onUploaded?: () => void;
+  accept?: Record<string, string[]>;
+  label?: string;
 }
 
-export default function FileUpload({ sessionId, onUploaded }: Props) {
+export default function FileUpload({ sessionId, onUploaded, accept, label }: Props) {
   const [status, setStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -36,9 +38,9 @@ export default function FileUpload({ sessionId, onUploaded }: Props) {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
+    accept: accept ?? {
       "chemical/x-pdb": [".pdb"],
-      "application/octet-stream": [".gro", ".top", ".itp", ".tpr", ".cpt"],
+      "application/octet-stream": [".gro", ".top", ".itp", ".tpr", ".cpt", ".pt", ".ckpt", ".pth"],
       "text/plain": [".mdp", ".dat", ".yaml", ".yml"],
     },
     multiple: true,
@@ -67,7 +69,7 @@ export default function FileUpload({ sessionId, onUploaded }: Props) {
       ) : (
         <div className="text-gray-400">
           <UploadCloud size={18} className="mx-auto mb-1" />
-          <p>Drop PDB/GRO/TOP files here</p>
+          <p>{label ?? "Drop PDB/GRO/TOP files here"}</p>
         </div>
       )}
     </div>

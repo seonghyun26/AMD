@@ -61,7 +61,7 @@ export default function ChatInput({ sessionId, autoSend, onAutoSendComplete }: P
   }, [autoSend]);
 
   return (
-    <div className="border-t border-gray-800 p-3 bg-gray-900/50 flex-shrink-0">
+    <div className="border-t border-gray-200 dark:border-gray-800 p-3 bg-white/50 dark:bg-gray-900/50 flex-shrink-0">
       <div className="flex gap-2 items-end">
         <textarea
           value={value}
@@ -69,7 +69,7 @@ export default function ChatInput({ sessionId, autoSend, onAutoSendComplete }: P
           onKeyDown={handleKeyDown}
           placeholder="Describe your simulation, ask about a paper, or give instructions…"
           rows={3}
-          className="flex-1 resize-none border border-gray-700 rounded-xl px-3 py-2 text-sm bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-500"
+          className="flex-1 resize-none border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
         />
         {isStreaming ? (
           <button
@@ -90,7 +90,7 @@ export default function ChatInput({ sessionId, autoSend, onAutoSendComplete }: P
           </button>
         )}
       </div>
-      <p className="text-center text-xs text-gray-600 mt-1.5">
+      <p className="text-center text-xs text-gray-400 dark:text-gray-600 mt-1.5">
         Enter to send · Shift+Enter for newline
       </p>
     </div>

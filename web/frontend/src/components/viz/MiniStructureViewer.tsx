@@ -46,7 +46,7 @@ export default function MiniStructureViewer({ fileContent, fileName, height = 18
       containerRef.current.innerHTML = "";
 
       suppressNglDeprecationWarnings();
-      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: "#111827" });
+      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: "transparent" });
       stageRef.current = stage;
 
       ro = new ResizeObserver(() => stage.handleResize());
@@ -103,7 +103,7 @@ export default function MiniStructureViewer({ fileContent, fileName, height = 18
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden border border-gray-700/60 bg-gray-900"
+      className="relative rounded-lg overflow-hidden border border-gray-300/60 dark:border-gray-700/60 bg-white dark:bg-gray-900"
       style={{ height }}
     >
       {error ? (

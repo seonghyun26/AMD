@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -266,6 +267,30 @@ def fes_dat_to_heatmap(fes_path: str) -> dict[str, Any]:
     return {"x": unique_x, "y": unique_y, "z": z_matrix}
 
 
+def _load_trajectory(wd: Path):
+    """Load trajectory from work_dir, trying topology candidates.
+    Returns mdtraj.Trajectory or raises RuntimeError."""
+    import mdtraj
+
+    xtc_path = wd / "simulation" / "md.xtc"
+    if not xtc_path.exists():
+        raise RuntimeError("No trajectory file found")
+
+    top_candidates: list[Path] = []
+    tpr = wd / "md.tpr"
+    if tpr.exists():
+        top_candidates.append(tpr)
+    top_candidates.extend(wd.glob("*_system.gro"))
+    top_candidates.extend(p for p in wd.glob("*.gro") if p not in top_candidates)
+    top_candidates.extend(p for p in wd.glob("*.pdb") if p not in top_candidates)
+
+    for top in top_candidates:
+        try:
+            return mdtraj.load(str(xtc_path), top=str(top))
+        except Exception:
+            continue
+    raise RuntimeError("Could not load trajectory with any topology candidate")
+
 
 def generate_ramachandran_png(
     work_dir: str,
@@ -316,52 +341,31 @@ def generate_ramachandran_png(
     if phi_arr is None:
         xtc_path = wd / "simulation" / "md.xtc"
         if xtc_path.exists():
-            top_candidates: list[Path] = []
-            tpr = wd / "md.tpr"
-            if tpr.exists():
-                top_candidates.append(tpr)
-            top_candidates.extend(wd.glob("*_system.gro"))
-            top_candidates.extend(p for p in wd.glob("*.gro") if p not in top_candidates)
+            try:
+                import mdtraj  # type: ignore[import]
 
-            if not top_candidates:
-                log.warning("ramachandran: no topology (.tpr/.gro) found in %s", wd)
-            else:
-                try:
-                    import mdtraj  # type: ignore[import]
+                traj = _load_trajectory(wd)
+                log.info("ramachandran: loaded %d frames", traj.n_frames)
+                _, phi_vals = mdtraj.compute_phi(traj)
+                _, psi_vals = mdtraj.compute_psi(traj)
+                log.info("ramachandran: phi shape=%s psi shape=%s",
+                         phi_vals.shape, psi_vals.shape)
+                if phi_vals.size > 0 and psi_vals.size > 0:
+                    phi_arr = phi_vals[:, 0]
+                    psi_arr = psi_vals[:, 0]
+                    analysis_dir.mkdir(parents=True, exist_ok=True)
+                    np.save(str(phi_npy), phi_arr)
+                    np.save(str(psi_npy), psi_arr)
+                    log.info("ramachandran: saved phi.npy/psi.npy (%d frames)", len(phi_arr))
+                else:
+                    log.warning("ramachandran: compute_phi/psi returned empty arrays for %s", wd)
 
-                    traj = None
-                    last_err: Exception | None = None
-                    for top in top_candidates:
-                        try:
-                            traj = mdtraj.load(str(xtc_path), top=str(top))
-                            log.info("ramachandran: loaded %d frames with topology %s",
-                                     traj.n_frames, top.name)
-                            break
-                        except Exception as e:
-                            last_err = e
-                            log.warning("ramachandran: failed with topology %s — %s", top.name, e)
-
-                    if traj is None:
-                        log.error("ramachandran: could not load trajectory — %s", last_err)
-                    else:
-                        _, phi_vals = mdtraj.compute_phi(traj)
-                        _, psi_vals = mdtraj.compute_psi(traj)
-                        log.info("ramachandran: phi shape=%s psi shape=%s",
-                                 phi_vals.shape, psi_vals.shape)
-                        if phi_vals.size > 0 and psi_vals.size > 0:
-                            phi_arr = phi_vals[:, 0]
-                            psi_arr = psi_vals[:, 0]
-                            analysis_dir.mkdir(parents=True, exist_ok=True)
-                            np.save(str(phi_npy), phi_arr)
-                            np.save(str(psi_npy), psi_arr)
-                            log.info("ramachandran: saved phi.npy/psi.npy (%d frames)", len(phi_arr))
-                        else:
-                            log.warning("ramachandran: compute_phi/psi returned empty arrays for %s", wd)
-
-                except ImportError:
-                    log.warning("ramachandran: mdtraj not installed, falling back to COLVAR")
-                except Exception as e:
-                    log.error("ramachandran: mdtraj extraction failed — %s", e)
+            except ImportError:
+                log.warning("ramachandran: mdtraj not installed, falling back to COLVAR")
+            except RuntimeError as e:
+                log.error("ramachandran: could not load trajectory — %s", e)
+            except Exception as e:
+                log.error("ramachandran: mdtraj extraction failed — %s", e)
 
     # ── Step 3b: ramachandran.json fallback ─────────────────────────────
     if phi_arr is None:
@@ -422,8 +426,8 @@ def generate_ramachandran_png(
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt  # type: ignore[import]
 
-        fig, ax = plt.subplots(figsize=(4.5, 4.5), facecolor="#111827")
-        ax.set_facecolor("#111827")
+        fig, ax = plt.subplots(figsize=(4.5, 4.5), facecolor="none")
+        ax.set_facecolor("none")
         h, xe, ye = np.histogram2d(phi_plot, psi_plot, bins=bins,
                                    range=[[-np.pi, np.pi], [-np.pi, np.pi]])
         xc = (xe[:-1] + xe[1:]) / 2
@@ -434,17 +438,17 @@ def generate_ramachandran_png(
             ax.plot(phi_arr[0], psi_arr[0], marker="*", markersize=14,
                     color="white", alpha=0.8, markeredgecolor="black",
                     markeredgewidth=0.8, zorder=10)
-        ax.set_xlabel("φ (rad)", color="#9ca3af", fontsize=12)
-        ax.set_ylabel("ψ (rad)", color="#9ca3af", fontsize=12)
+        ax.set_xlabel("φ (rad)", color="#6b7280", fontsize=12)
+        ax.set_ylabel("ψ (rad)", color="#6b7280", fontsize=12)
         ax.set_xlim(-np.pi, np.pi)
         ax.set_ylim(-np.pi, np.pi)
         ax.tick_params(colors="#6b7280", labelsize=10)
         for spine in ax.spines.values():
-            spine.set_edgecolor("#374151")
+            spine.set_edgecolor("#9ca3af")
         plt.tight_layout(pad=0.4)
         analysis_dir.mkdir(parents=True, exist_ok=True)
         plt.savefig(str(png_path), dpi=dpi, bbox_inches="tight",
-                    facecolor=fig.get_facecolor())
+                    facecolor="none", transparent=True)
         plt.close(fig)
         log.info("ramachandran: PNG saved to %s", png_path)
         return str(png_path), None
@@ -458,3 +462,127 @@ def get_log_progress(log_path: str) -> dict[str, Any]:
     """Return latest step/time/ns_per_day from GROMACS log."""
     info = parse_gromacs_log_progress(log_path)
     return info or {}
+
+
+# ── Custom CV analysis ────────────────────────────────────────────────
+
+
+def _cv_cache_key(cvs: list[dict]) -> str:
+    canonical = json.dumps(
+        [{"type": c["type"], "atoms": c["atoms"]} for c in cvs],
+        sort_keys=True,
+    )
+    return hashlib.md5(canonical.encode()).hexdigest()[:12]
+
+
+def compute_custom_cvs(work_dir: str, cvs: list[dict], force: bool = False) -> dict:
+    """Compute custom collective variables from trajectory using mdtraj.
+
+    Args:
+        work_dir: Session work directory
+        cvs: List of CV definitions, each with 'type', 'atoms' (1-based), 'label'
+        force: If True, recompute even if cached
+
+    Returns:
+        dict with 'time_ps', 'cv_labels', and one key per CV label with values
+    """
+    import numpy as np
+    import mdtraj
+
+    wd = Path(work_dir)
+    analysis_dir = wd / "analysis"
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+
+    cache_key = _cv_cache_key(cvs)
+    cache_path = analysis_dir / f"custom_cv_{cache_key}.npz"
+
+    if not force and cache_path.exists():
+        try:
+            data = np.load(str(cache_path), allow_pickle=False)
+            labels = [cv.get("label", f"CV{i+1}") for i, cv in enumerate(cvs)]
+            result: dict[str, Any] = {"time_ps": data["time_ps"].tolist(), "cv_labels": labels}
+            for i, label in enumerate(labels):
+                key = f"cv_{i}"
+                if key in data:
+                    result[label] = data[key].tolist()
+            return result
+        except Exception:
+            pass
+
+    traj = _load_trajectory(wd)
+
+    # Downsample if too many frames
+    step = max(1, len(traj) // 5000)
+    if step > 1:
+        traj = traj[::step]
+
+    time_ps = traj.time.tolist()
+    labels = []
+    arrays: dict[str, Any] = {}
+
+    for i, cv in enumerate(cvs):
+        cv_type = cv["type"]
+        atoms_1based = cv["atoms"]
+        label = cv.get("label", f"CV{i+1}")
+        labels.append(label)
+
+        # Convert 1-based to 0-based for mdtraj
+        atoms_0based = [a - 1 for a in atoms_1based]
+
+        if cv_type == "distance":
+            values = mdtraj.compute_distances(traj, [atoms_0based])
+            values = values[:, 0] * 10.0  # nm -> Angstroms
+        elif cv_type == "angle":
+            values = mdtraj.compute_angles(traj, [atoms_0based])
+            values = np.degrees(values[:, 0])
+        elif cv_type == "dihedral":
+            values = mdtraj.compute_dihedrals(traj, [atoms_0based])
+            values = np.degrees(values[:, 0])
+        else:
+            raise ValueError(f"Unknown CV type: {cv_type}")
+
+        arrays[f"cv_{i}"] = values
+
+    # Cache
+    np.savez(str(cache_path), time_ps=np.array(time_ps), **arrays)
+
+    result = {"time_ps": time_ps, "cv_labels": labels}
+    for i, label in enumerate(labels):
+        result[label] = arrays[f"cv_{i}"].tolist()
+    return result
+
+
+def get_atom_list(work_dir: str) -> list[dict]:
+    """Return list of atoms from topology file for atom picking UI."""
+    import mdtraj
+
+    wd = Path(work_dir)
+
+    # Find topology file (don't need trajectory for this)
+    top_candidates: list[Path] = []
+    tpr = wd / "md.tpr"
+    if tpr.exists():
+        top_candidates.append(tpr)
+    top_candidates.extend(wd.glob("*_ionized.gro"))
+    top_candidates.extend(wd.glob("*_solvated.gro"))
+    top_candidates.extend(wd.glob("*_system.gro"))
+    top_candidates.extend(p for p in wd.glob("*.gro") if p not in top_candidates)
+    top_candidates.extend(p for p in wd.glob("*.pdb") if p not in top_candidates)
+
+    for top_path in top_candidates:
+        try:
+            topology = mdtraj.load_topology(str(top_path))
+            atoms = []
+            for atom in topology.atoms:
+                atoms.append({
+                    "index": atom.index + 1,  # 1-based for PLUMED convention
+                    "name": atom.name,
+                    "element": atom.element.symbol if atom.element else "",
+                    "resName": atom.residue.name,
+                    "resSeq": atom.residue.resSeq,
+                })
+            return atoms
+        except Exception:
+            continue
+
+    return []

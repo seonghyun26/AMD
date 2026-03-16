@@ -17,10 +17,10 @@ export default function ChatWindow() {
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-600">
+      <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-600">
         <div className="text-center">
-          <p className="text-sm font-medium text-gray-400">AI Assistant</p>
-          <p className="text-xs mt-1 text-gray-600">Configure your simulation in the<br />middle panel and start chatting</p>
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">AI Assistant</p>
+          <p className="text-xs mt-1 text-gray-400 dark:text-gray-600">Configure your simulation in the<br />middle panel and start chatting</p>
         </div>
       </div>
     );

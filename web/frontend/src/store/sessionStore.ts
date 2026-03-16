@@ -18,7 +18,7 @@ export interface SessionSummary {
   run_status?: "standby" | "running" | "finished" | "failed" | "paused";
   started_at?: number;
   finished_at?: number;
-  result_cards?: string[];
+  result_cards?: unknown[];
 }
 
 interface SessionState {
@@ -39,16 +39,26 @@ interface SessionState {
   updateSessionNickname: (sessionId: string, nickname: string) => void;
   setSessionMolecule: (sessionId: string, molecule: string) => void;
   setSessionRunStatus: (sessionId: string, runStatus: SessionSummary["run_status"]) => void;
-  setSessionResultCards: (sessionId: string, resultCards: string[]) => void;
+  setSessionResultCards: (sessionId: string, resultCards: unknown[]) => void;
   addUserMessage: (text: string) => void;
   appendSSEEvent: (event: SSEEvent) => void;
   updateProgress: (progress: SimProgress) => void;
   clearMessages: () => void;
 }
 
+function uuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return uuid();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 function newAssistantMessage(): ChatMessage {
   return {
-    id: crypto.randomUUID(),
+    id: uuid(),
     role: "assistant",
     blocks: [],
     timestamp: Date.now(),
@@ -132,7 +142,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       messages: [
         ...state.messages,
         {
-          id: crypto.randomUUID(),
+          id: uuid(),
           role: "user",
           blocks: [{ kind: "text", content: text }],
           timestamp: Date.now(),

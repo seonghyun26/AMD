@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Loader2, AlertCircle, Crosshair, Camera } from "lucide-react";
+import { X, Loader2, AlertCircle, Crosshair, Camera, Settings } from "lucide-react";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
-
-type ExportBg = "white" | "black" | "transparent";
+import { useTheme } from "@/lib/theme";
 
 function parseStructureInfo(
   content: string,
@@ -65,11 +64,6 @@ const REP_LABELS: { key: keyof RepState; label: string }[] = [
   { key: "surface", label: "Surface" },
 ];
 
-const BG_OPTIONS: { value: ExportBg; label: string }[] = [
-  { value: "white",       label: "White"       },
-  { value: "black",       label: "Black"       },
-  { value: "transparent", label: "Transparent" },
-];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyRepresentations(component: any, reps: RepState) {
@@ -95,24 +89,10 @@ const DEFAULT_REPS: RepState = {
   surface: false,
 };
 
-/**
- * Capture an image from an NGL stage with the chosen background.
- * Temporarily swaps the stage background, captures, then restores.
- */
+/** Capture a screenshot from the NGL stage. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function captureImage(stage: any, bg: ExportBg, opts: Record<string, unknown> = {}): Promise<Blob> {
-  const isTransparent = bg === "transparent";
-  const originalBg = stage.getParameters().backgroundColor;
-
-  if (!isTransparent) {
-    stage.setParameters({ backgroundColor: bg });
-  }
-
-  try {
-    return await stage.makeImage({ factor: 6, antialias: true, trim: false, transparent: isTransparent, ...opts });
-  } finally {
-    stage.setParameters({ backgroundColor: originalBg });
-  }
+async function captureImage(stage: any, opts: { factor: number; antialias: boolean; trim: boolean }): Promise<Blob> {
+  return await stage.makeImage({ ...opts, transparent: true });
 }
 
 export default function MoleculeViewer({ fileContent, fileName, onClose, inline = false }: Props) {
@@ -129,7 +109,25 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
   const [error, setError]           = useState<string | null>(null);
   const [reps, setReps]             = useState<RepState>(DEFAULT_REPS);
   const [structInfo, setStructInfo] = useState<{ atoms: number; residues: number } | null>(null);
-  const [exportBg, setExportBg]     = useState<ExportBg>("white");
+  const { theme } = useTheme();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef                    = useRef<HTMLDivElement>(null);
+
+  const [exportSettings, setExportSettings] = useState({
+    factor: 6, antialias: true, trim: false,
+  });
+
+  // Close settings on outside click
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [settingsOpen]);
 
   // Keep repsRef in sync so the load effect never reads stale state
   useEffect(() => { repsRef.current = reps; }, [reps]);
@@ -163,7 +161,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
       containerRef.current.innerHTML = "";
 
       suppressNglDeprecationWarnings();
-      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: "#111827" });
+      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
       stageRef.current = stage;
 
       ro = new ResizeObserver(() => stage.handleResize());
@@ -240,6 +238,11 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
     };
   }, [fileContent, fileName]);
 
+  // Update NGL background when theme changes
+  useEffect(() => {
+    stageRef.current?.setParameters({ backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
+  }, [theme]);
+
   const handleResetView = () => {
     if (!stageRef.current) return;
     if (initialOrientRef.current) {
@@ -251,7 +254,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
 
   const handleScreenshot = async () => {
     if (!stageRef.current) return;
-    const blob = await captureImage(stageRef.current, exportBg);
+    const blob = await captureImage(stageRef.current, exportSettings);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -266,84 +269,13 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
     setReps((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  /** Background selector row */
-  const bgSelector = (
-    <div>
-      <span className="text-[9px] font-semibold text-gray-500 dark:text-gray-600 uppercase tracking-wider block text-center mb-1">
-        Export BG
-      </span>
-      <div className="flex gap-1">
-        {BG_OPTIONS.map(({ value, label }) => (
-          <button
-            key={value}
-            onClick={() => setExportBg(value)}
-            className={`flex-1 py-1 rounded text-[10px] font-medium border transition-colors ${
-              exportBg === value
-                ? "bg-indigo-600 border-indigo-500 text-white"
-                : "bg-gray-100 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
-  /** Toggle buttons shown to the right of the canvas */
-  const repColumn = (
-    <div className="flex flex-col gap-1.5 w-[148px] flex-shrink-0 pt-0.5">
-      <span className="text-[9px] font-semibold text-gray-500 dark:text-gray-600 uppercase tracking-wider text-center">
-        Representation
-      </span>
-      {REP_LABELS.map(({ key, label }) => {
-        const on = reps[key];
-        return (
-          <button
-            key={key}
-            onClick={() => handleRepToggle(key)}
-            disabled={!ready}
-            className={`py-2 rounded-lg text-xs font-medium text-center transition-colors border disabled:opacity-40 ${
-              on
-                ? "bg-indigo-600 border-indigo-500 text-white"
-                : "bg-gray-100 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800"
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
-      <div className="h-px bg-gray-200 dark:bg-gray-700/50 my-0.5" />
-      {bgSelector}
-      <div className="h-px bg-gray-200 dark:bg-gray-700/50 my-0.5" />
-      <button
-        onClick={handleResetView}
-        disabled={!ready}
-        title="Reset view"
-        className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-center transition-colors border border-gray-200 dark:border-gray-700/50 bg-gray-100 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-40"
-      >
-        <Crosshair size={12} />
-        Reset View
-      </button>
-      <button
-        onClick={handleScreenshot}
-        disabled={!ready}
-        title="Download screenshot"
-        className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium text-center transition-colors border border-gray-200 dark:border-gray-700/50 bg-gray-100 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-40"
-      >
-        <Camera size={12} />
-        Screenshot
-      </button>
-    </div>
-  );
-
   if (inline) {
     return (
-      <div className="flex gap-3 items-start">
+      <div className="space-y-2">
         {/* Viewer canvas */}
         <div
-          className="relative flex-1 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700/60 bg-gray-100 dark:bg-gray-900 min-w-0"
-          style={{ height: "520px" }}
+          className="relative rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-white dark:bg-gray-900 overflow-hidden"
+          style={{ height: "360px" }}
         >
           {error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-red-500 gap-2 p-4 z-10">
@@ -353,29 +285,118 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
           ) : !ready ? (
             <div className="absolute inset-0 flex items-center justify-center text-gray-400 z-10">
               <Loader2 size={20} className="animate-spin mr-2" />
-              <span className="text-xs">Loading\u2026</span>
+              <span className="text-xs">Loading…</span>
             </div>
           ) : null}
           <div ref={containerRef} className="w-full h-full" />
           {structInfo && (
             <div className="absolute top-2 left-2 flex gap-1.5 pointer-events-none">
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/80 dark:bg-gray-900/75 text-gray-600 dark:text-gray-300">
                 {structInfo.atoms.toLocaleString()} atoms
               </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-900/75 text-gray-300">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/80 dark:bg-gray-900/75 text-gray-600 dark:text-gray-300">
                 {structInfo.residues} residues
               </span>
             </div>
           )}
           {ready && (
-            <div className="absolute bottom-0 left-0 right-0 px-3 py-1 bg-gray-900/80 text-[10px] text-gray-500">
+            <div className="absolute bottom-0 left-0 right-0 px-3 py-1 bg-white/80 dark:bg-gray-900/80 text-[10px] text-gray-600 dark:text-gray-500">
               drag to rotate · scroll to zoom · right-click to translate
             </div>
           )}
         </div>
 
-        {/* Display toggles — right of canvas */}
-        {repColumn}
+        {/* Controls row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            {REP_LABELS.map(({ key, label }) => {
+              const on = reps[key];
+              return (
+                <button
+                  key={key}
+                  onClick={() => handleRepToggle(key)}
+                  disabled={!ready}
+                  className={`px-2 py-1 rounded text-[10px] border transition-colors disabled:opacity-40 ${
+                    on
+                      ? "bg-indigo-600 border-indigo-500 text-white"
+                      : "bg-gray-100/60 dark:bg-gray-800/60 border-gray-300/50 dark:border-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleResetView}
+              disabled={!ready}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-gray-300/60 dark:border-gray-700/60 bg-gray-100/60 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 disabled:opacity-40"
+            >
+              <Crosshair size={11} />
+              Reset
+            </button>
+            <button
+              onClick={handleScreenshot}
+              disabled={!ready}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-gray-300/60 dark:border-gray-700/60 bg-gray-100/60 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 disabled:opacity-40"
+            >
+              <Camera size={11} />
+              Screenshot
+            </button>
+
+            {/* Settings */}
+            <div className="relative" ref={settingsRef}>
+              <button
+                onClick={() => setSettingsOpen((v) => !v)}
+                title="Export settings"
+                className={`flex items-center justify-center w-[30px] h-[26px] rounded-md text-xs border transition-colors ${
+                  settingsOpen
+                    ? "border-indigo-500 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300"
+                    : "border-gray-300/60 dark:border-gray-700/60 bg-gray-100/60 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700/60"
+                }`}
+              >
+                <Settings size={11} />
+              </button>
+
+              {settingsOpen && (
+                <div className="absolute right-0 bottom-full mb-2 z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
+                    <span className="font-semibold text-gray-700 dark:text-gray-200">Export Settings</span>
+                    <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {/* Factor */}
+                    <div className="flex items-center gap-2">
+                      <span className="w-20 text-gray-500 dark:text-gray-400 flex-shrink-0">Factor</span>
+                      <input
+                        type="range" min={1} max={8} step={1}
+                        value={exportSettings.factor}
+                        onChange={(e) => setExportSettings((s) => ({ ...s, factor: Number(e.target.value) }))}
+                        className="flex-1 accent-indigo-500 h-1"
+                      />
+                      <span className="w-5 text-right text-gray-700 dark:text-gray-300 tabular-nums">{exportSettings.factor}×</span>
+                    </div>
+                    {/* Booleans */}
+                    {(["antialias", "trim"] as const).map((key) => (
+                      <div key={key} className="flex items-center justify-between">
+                        <span className="text-gray-500 dark:text-gray-400 capitalize">{key}</span>
+                        <button
+                          onClick={() => setExportSettings((s) => ({ ...s, [key]: !s[key] }))}
+                          className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${exportSettings[key] ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-700"}`}
+                        >
+                          <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${exportSettings[key] ? "left-[18px]" : "left-0.5"}`} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -412,22 +433,6 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
                 );
               })}
             </div>
-            {/* Background selector in popup header */}
-            <div className="flex gap-1 ml-2 border-l border-gray-200 dark:border-gray-600 pl-2">
-              {BG_OPTIONS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  onClick={() => setExportBg(value)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${
-                    exportBg === value
-                      ? "bg-indigo-600 border-indigo-500 text-white"
-                      : "bg-gray-200 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600/50 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
           <button
             onClick={onClose}
@@ -447,7 +452,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
           ) : !ready ? (
             <div className="absolute inset-0 flex items-center justify-center text-gray-400 z-10">
               <Loader2 size={24} className="animate-spin mr-2" />
-              <span className="text-sm">Loading viewer\u2026</span>
+              <span className="text-sm">Loading viewer…</span>
             </div>
           ) : null}
           <div ref={containerRef} className="w-full h-full" />
