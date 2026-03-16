@@ -187,7 +187,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
           setReady(true);
         })
         .catch((err: unknown) => {
-          if (!cancelled) setError(String(err));
+          if (!cancelled) { console.error("MoleculeViewer load failed:", err); setError(err instanceof Error ? err.message.split("\n")[0] : "Failed to load structure"); }
         });
     };
 

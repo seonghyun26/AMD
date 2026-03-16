@@ -189,7 +189,9 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
         setError((result as { error?: string }).error ?? "No data available");
       }
     } catch (e) {
-      setError(String(e));
+      console.error("Custom CV computation failed:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg.split("\n")[0].slice(0, 120));
     } finally {
       setLoading(false);
     }

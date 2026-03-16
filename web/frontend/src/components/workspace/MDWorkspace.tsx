@@ -86,13 +86,25 @@ import { useSessionStore } from "@/store/sessionStore";
 /** Generate a UUID, with fallback for non-HTTPS / older browsers. */
 function uuid(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return uuid();
+    return crypto.randomUUID();
   }
   // Fallback: random hex string
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
   });
+}
+
+/** Shorten an error for UI display — keep first line only, trim paths to filename. */
+function briefError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  // Take only the first line
+  let msg = raw.split("\n")[0].trim();
+  // Collapse absolute paths to just the filename
+  msg = msg.replace(/(?:\/[\w.\-/]+\/)([\w.\-]+)/g, "$1");
+  // Cap length
+  if (msg.length > 120) msg = msg.slice(0, 117) + "…";
+  return msg || "Unknown error";
 }
 
 function defaultNickname(): string {
@@ -3268,11 +3280,14 @@ function MethodTab({
   const cvs: CVDefinition[] = Array.isArray(rawCvs) ? rawCvs : [];
 
   // Auto-save and refresh plumed preview when CVs change (debounced)
-  const cvsJsonRef = useRef(JSON.stringify(cvs));
+  const cvsLenRef = useRef(cvs.length);
+  const cvsAtomsRef = useRef("");
   useEffect(() => {
-    const json = JSON.stringify(cvs);
-    if (json === cvsJsonRef.current) return;
-    cvsJsonRef.current = json;
+    // Build a lightweight fingerprint instead of JSON.stringify (avoids circular ref crashes)
+    const fp = cvs.map((c) => `${c.name}|${c.type}|${(c.atoms ?? []).join(",")}`).join(";");
+    if (fp === cvsAtomsRef.current && cvs.length === cvsLenRef.current) return;
+    cvsAtomsRef.current = fp;
+    cvsLenRef.current = cvs.length;
     const timer = setTimeout(() => {
       onSave();
       if (needsPlumed) setPlumedRevision((r) => r + 1);
@@ -3829,7 +3844,8 @@ function NewSessionForm({
       });
       onCreated(session_id, work_dir, savedNick, seeded_files ?? []);
     } catch (err) {
-      setError(String(err));
+      console.error("Session creation failed:", err);
+      setError(briefError(err));
       setLoading(false);
     }
   };
@@ -4222,7 +4238,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       appendSSEEvent({ type: "agent_done", final_text: "" });
       setSimStartedAt(Date.now());
     } catch (err) {
-      appendSSEEvent({ type: "error", message: `Failed to start simulation: ${err}` });
+      console.error("Failed to start simulation:", err);
+      appendSSEEvent({ type: "error", message: `Failed to start simulation: ${briefError(err)}` });
       setSimState("standby");
       setSimRunStatus("failed");
     }
@@ -4260,7 +4277,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       }
       appendSSEEvent({ type: "text_delta", text: "Simulation resumed from checkpoint.\n" });
     } catch (err) {
-      appendSSEEvent({ type: "error", message: `Failed to resume: ${err}` });
+      console.error("Failed to resume simulation:", err);
+      appendSSEEvent({ type: "error", message: `Failed to resume: ${briefError(err)}` });
       setSimState("standby");
       setSimRunStatus("standby");
       setHasCheckpoint(false);

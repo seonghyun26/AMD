@@ -63,7 +63,7 @@ export default function MiniStructureViewer({ fileContent, fileName, height = 18
           setReady(true);
         })
         .catch((err: unknown) => {
-          if (!cancelled) setError(String(err));
+          if (!cancelled) { console.error("MiniStructureViewer load failed:", err); setError(err instanceof Error ? err.message.split("\n")[0] : "Failed to load structure"); }
         });
     };
 

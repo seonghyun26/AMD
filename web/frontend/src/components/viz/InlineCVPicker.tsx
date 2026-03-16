@@ -182,7 +182,8 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
         await initNGL(content, ext);
         if (!cancelled) { setReady(true); setLoading(false); }
       } catch (e) {
-        if (!cancelled) { setError(String(e)); setLoading(false); }
+        console.error("InlineCVPicker load failed:", e);
+        if (!cancelled) { setError(e instanceof Error ? e.message.split("\n")[0] : "Failed to load structure"); setLoading(false); }
       }
     })();
 

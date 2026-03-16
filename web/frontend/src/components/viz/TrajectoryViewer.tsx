@@ -262,7 +262,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
         .catch((e: unknown) => {
           if (!cancelled) {
             setLoadingStage(null);
-            setError(String(e));
+            console.error("TrajectoryViewer load failed:", e); setError(e instanceof Error ? e.message.split("\n")[0] : "Failed to load trajectory");
           }
         });
     };
