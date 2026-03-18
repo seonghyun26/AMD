@@ -2210,9 +2210,9 @@ function ProgressTab({
         <TrajectoryViewer
           key={`${sessionId}-${trajectoryKey}`}
           sessionId={sessionId}
-          topologyPath={runStatus === "finished" ? (topologyFile?.path ?? null) : null}
-          trajectoryPath={runStatus === "finished" ? (trajectoryFile?.path ?? null) : null}
-          isLoading={runStatus === "finished" && (filesLoading || filesLoadedFor !== sessionId)}
+          topologyPath={(runStatus === "finished" || runStatus === "failed") ? (topologyFile?.path ?? null) : null}
+          trajectoryPath={(runStatus === "finished" || runStatus === "failed") ? (trajectoryFile?.path ?? null) : null}
+          isLoading={(runStatus === "finished" || runStatus === "failed") && (filesLoading || filesLoadedFor !== sessionId)}
         />
       </Section>
 

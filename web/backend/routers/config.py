@@ -49,7 +49,11 @@ async def update_session_config(session_id: str, req: ConfigUpdateRequest):
 
     cfg = session.agent.cfg
     for key, value in req.updates.items():
-        OmegaConf.update(cfg, key, value, merge=True)
+        try:
+            OmegaConf.update(cfg, key, value, merge=True)
+        except Exception:
+            # Key not in schema — force-add it (new fields like store_states, gpu_id, etc.)
+            OmegaConf.update(cfg, key, value, merge=True, force_add=True)
     return {"updated": True, "config": OmegaConf.to_container(cfg, resolve=True)}
 
 
@@ -188,10 +192,12 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
                 model = torch.jit.load(ckpt_path, map_location="cpu")
                 model.eval()
                 # Parameter inspection: last 2D weight's shape[0] = output dim
+                last_w = None
                 for p in model.parameters():
                     if p.dim() == 2:
                         last_w = p
-                out_count = int(last_w.shape[0])  # noqa: F821
+                if last_w is not None:
+                    out_count = int(last_w.shape[0])
             except Exception:
                 pass
 

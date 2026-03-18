@@ -197,10 +197,11 @@ def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
         if not log_path.exists():
             continue
         try:
-            if started_at > 0 and log_path.stat().st_mtime < started_at:
-                continue
+            mtime = log_path.stat().st_mtime
         except Exception:
-            pass
+            continue
+        if started_at > 0 and mtime < started_at:
+            continue
 
         tail = _tail_text(log_path).lower()
         if "fatal error" in tail or "segmentation fault" in tail:
@@ -212,12 +213,8 @@ def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
 
         # If the log hasn't been written to in >60s and steps didn't reach target,
         # the process died silently (Docker crash, OOM, etc.)
-        try:
-            mtime = log_path.stat().st_mtime
-            if _time.time() - mtime > 60:
-                return {"status": "failed", "detected_by": "stale_log"}
-        except Exception:
-            pass
+        if _time.time() - mtime > 60:
+            return {"status": "failed", "detected_by": "stale_log"}
 
     return None
 

@@ -450,7 +450,7 @@ async def stream_chat(session_id: str, message: str):
         raise HTTPException(404, "Session not found")
 
     async def event_generator():
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
         # Run the synchronous generator in a thread pool.

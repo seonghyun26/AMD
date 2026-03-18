@@ -114,6 +114,7 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
   const componentRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const highlightRepsRef = useRef<any[]>([]);
+  const roRef = useRef<ResizeObserver | null>(null);
 
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -214,6 +215,8 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
 
     if (!containerRef.current) return;
 
+    roRef.current?.disconnect();
+    roRef.current = null;
     if (stageRef.current) { stageRef.current.dispose(); stageRef.current = null; }
     componentRef.current = null;
     highlightRepsRef.current = [];
@@ -225,6 +228,7 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
 
     const ro = new ResizeObserver(() => stage.handleResize());
     ro.observe(containerRef.current);
+    roRef.current = ro;
 
     const blob = new Blob([content], { type: "text/plain" });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -261,6 +265,8 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
 
   useEffect(() => {
     return () => {
+      roRef.current?.disconnect();
+      roRef.current = null;
       if (stageRef.current) { stageRef.current.dispose(); stageRef.current = null; }
     };
   }, []);
