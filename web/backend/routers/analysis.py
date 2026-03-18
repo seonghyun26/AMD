@@ -55,11 +55,15 @@ class CustomCVRequest(BaseModel):
 
 
 @router.get("/sessions/{session_id}/analysis/colvar")
-async def get_colvar(session_id: str, filename: str = "COLVAR"):
+async def get_colvar(
+    session_id: str,
+    filename: str = "COLVAR",
+    max_points: int = Query(default=MAX_PLOT_POINTS, ge=100, le=100000),
+):
     """Parse COLVAR and return column arrays for Plotly line/scatter charts."""
     session = _require_session(session_id)
     path = str(Path(session.work_dir) / filename)
-    data = colvar_to_columns(path)
+    data = _downsample(colvar_to_columns(path), max_points)
     return {"data": data, "available": bool(data)}
 
 
@@ -76,36 +80,51 @@ async def get_fes(session_id: str, filename: str = "fes.dat"):
 async def get_energy(
     session_id: str,
     force: bool = Query(default=False),
+    extract: bool = Query(default=False),
+    max_points: int = Query(default=MAX_PLOT_POINTS, ge=100, le=100000),
 ):
-    """Run 'gmx energy' on simulation/md.edr → time series for Plotly.
+    """Return energy time series for Plotly.
 
-    Results are cached as analysis/energy.xvg inside the session work_dir.
-    Pass force=true to regenerate from the latest .edr data.
+    Behavior:
+    - Default (no flags): serve from cache only (.npy or .xvg). Returns available=false if no cache.
+    - extract=true: if no cache, run 'gmx energy' to extract from .edr and cache the result.
+    - force=true: re-extract from .edr even if cache exists.
     """
     session = _require_session(session_id)
     wd = Path(session.work_dir)
     analysis_dir = wd / "analysis"
 
-    # Fast path: serve from cached .npy files (no gmx runner needed)
+    # Serve from cached .npy files (fastest)
     if not force:
         npy_data = _load_energy_npy(analysis_dir)
         if npy_data:
-            return {"data": npy_data, "available": True}
+            return {"data": _downsample(npy_data, max_points), "available": True, "source": "cache"}
 
-    # Fallback: serve cached XVG without needing a gmx runner
+    # Serve from cached XVG
     xvg_path = analysis_dir / "energy.xvg"
     if not force and xvg_path.exists() and xvg_path.stat().st_size > 0:
         data = _parse_xvg_with_header(str(xvg_path))
         if data:
-            return {"data": data, "available": True}
+            return {"data": _downsample(data, max_points), "available": True, "source": "cache"}
 
-    # Fall back to gmx energy extraction
+    # No cache — only run gmx energy if explicitly requested
+    if not extract and not force:
+        # Check if .edr exists so frontend knows extraction is possible
+        edr_candidates = [
+            wd / "simulation" / "md.edr",
+            wd / "ener.edr",
+            wd / "md.edr",
+        ]
+        has_edr = any(p.exists() for p in edr_candidates)
+        return {"data": {}, "available": False, "has_edr": has_edr, "source": "none"}
+
+    # Extract from .edr via gmx energy
     try:
         gmx = session.agent._gmx
     except AttributeError:
-        return {"data": {}, "available": False}
+        return {"data": {}, "available": False, "source": "error"}
     data = run_gmx_energy(session.work_dir, gmx, force=force)
-    return {"data": data, "available": bool(data)}
+    return {"data": _downsample(data, max_points), "available": bool(data), "source": "extracted"}
 
 
 @router.get("/sessions/{session_id}/analysis/ramachandran")

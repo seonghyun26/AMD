@@ -775,7 +775,7 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
   }, []);
 
   return (
-    <div ref={ref} className="relative px-3 py-3 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
+    <div ref={ref} className="relative px-3 border-t border-gray-200 dark:border-gray-800 flex-shrink-0 h-[72px] flex items-center w-full">
       {/* Larger settings trigger */}
       <button
         onClick={() => setOpen((v) => !v)}

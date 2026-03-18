@@ -132,6 +132,8 @@ def _tail_text(path: Path, max_bytes: int = 64 * 1024) -> str:
 def infer_run_status_from_disk(session_root: Path, work_dir: Path) -> str | None:
     """Infer finished/failed from md.log and config when session is not in memory.
     Returns 'finished', 'failed', or None if unknown. Used when listing sessions."""
+    import time as _time
+
     try:
         cfg_path = session_root / "config.yaml"
         expected_nsteps = None
@@ -157,11 +159,21 @@ def infer_run_status_from_disk(session_root: Path, work_dir: Path) -> str | None
         info = parse_gromacs_log_progress(str(log_path))
         if expected_nsteps is not None and info and int(info.get("step", 0)) >= expected_nsteps:
             return "finished"
+        # If the log exists but hasn't been modified in >60s and the simulation
+        # didn't reach the target steps, the process likely died silently.
+        try:
+            mtime = log_path.stat().st_mtime
+            if _time.time() - mtime > 60:
+                return "failed"
+        except Exception:
+            pass
     return None
 
 
 def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
     """Infer terminal simulation status from output files/log markers."""
+    import time as _time
+
     work_dir = Path(session.work_dir)
     sim_meta = session.sim_status or {}
     started_at = float(sim_meta.get("started_at") or 0.0)
@@ -197,6 +209,15 @@ def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
         info = parse_gromacs_log_progress(str(log_path))
         if expected_nsteps is not None and info and int(info.get("step", 0)) >= expected_nsteps:
             return {"status": "finished", "detected_by": "step_reached"}
+
+        # If the log hasn't been written to in >60s and steps didn't reach target,
+        # the process died silently (Docker crash, OOM, etc.)
+        try:
+            mtime = log_path.stat().st_mtime
+            if _time.time() - mtime > 60:
+                return {"status": "failed", "detected_by": "stale_log"}
+        except Exception:
+            pass
 
     return None
 

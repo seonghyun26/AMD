@@ -16,7 +16,7 @@ export default function ColvarPlot({ sessionId }: Props) {
 
   const load = () => {
     setLoading(true);
-    getColvar(sessionId)
+    getColvar(sessionId, "COLVAR", 3000)
       .then((r) => { if (r.available) setData(r.data); })
       .catch(() => {})
       .finally(() => setLoading(false));

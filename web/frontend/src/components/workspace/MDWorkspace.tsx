@@ -577,26 +577,26 @@ function DeleteConfirmPopup({
   onCancel: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
       <div
-        className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-5 w-full max-w-sm"
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl p-5 w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-gray-100 mb-1">Move to archive?</h3>
-        <p className="text-xs text-gray-400 mb-4">
-          <span className="font-mono text-gray-300">{name}</span> will be moved to the session&apos;s
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Move to archive?</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          <span className="font-mono text-gray-700 dark:text-gray-300">{name}</span> will be moved to the session&apos;s
           archive folder. You can recover it manually.
         </p>
         <div className="flex gap-2 justify-end">
           <button
             onClick={onCancel}
-            className="px-3 py-1.5 rounded-lg text-xs text-gray-400 hover:text-gray-200 border border-gray-700 hover:bg-gray-800 transition-colors"
+            className="px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-900/60 hover:bg-red-800/70 border border-red-700/60 text-red-300 hover:text-red-100 transition-colors"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-900/60 hover:bg-red-100 dark:hover:bg-red-800/70 border border-red-300/60 dark:border-red-700/60 text-red-600 dark:text-red-300 hover:text-red-700 dark:hover:text-red-100 transition-colors"
           >
             Move to archive
           </button>
@@ -661,16 +661,20 @@ function EnergyCardContent({
   type,
   compact,
   refreshKey = 0,
+  maxPoints = 2000,
   onStats,
 }: {
   sessionId: string;
   type: EnergyCardType;
   compact: boolean;
   refreshKey?: number;
+  maxPoints?: number;
   onStats?: (stats: { last: number; min: number; max: number; mean: number }) => void;
 }) {
   const [data, setData] = useState<Record<string, number[]> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [extracting, setExtracting] = useState(false);
+  const [hasEdr, setHasEdr] = useState(false);
   const prevRefreshKeyRef = useRef(refreshKey);
   const cfg = ENERGY_TERM_CONFIG[type];
 
@@ -680,12 +684,42 @@ function EnergyCardContent({
     let cancelled = false;
     setLoading(true);
     setData(null);
-    getEnergy(sessionId, isRefresh)
-      .then((r) => { if (!cancelled && r.available) setData(r.data); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false); });
+    setHasEdr(false);
+
+    (async () => {
+      try {
+        // Step 1: try cache first (fast, no gmx needed)
+        const cached = await getEnergy(sessionId, { maxPoints });
+        if (cancelled) return;
+        if (cached.available) {
+          setData(cached.data);
+          setLoading(false);
+          return;
+        }
+        setHasEdr(cached.has_edr ?? false);
+
+        // Step 2: if refresh was clicked and .edr exists, extract via gmx energy
+        if (isRefresh && cached.has_edr) {
+          setExtracting(true);
+          const extracted = await getEnergy(sessionId, { extract: true, maxPoints });
+          if (cancelled) return;
+          if (extracted.available) setData(extracted.data);
+          setExtracting(false);
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    })();
     return () => { cancelled = true; };
-  }, [sessionId, refreshKey]);
+  }, [sessionId, refreshKey, maxPoints]);
+
+  const handleExtract = async () => {
+    setExtracting(true);
+    try {
+      const result = await getEnergy(sessionId, { extract: true, maxPoints });
+      if (result.available) setData(result.data);
+    } catch { /* ignore */ }
+    setExtracting(false);
+  };
 
   // Notify parent of stats when data is available — must run unconditionally (Rules of Hooks)
   useEffect(() => {
@@ -704,18 +738,27 @@ function EnergyCardContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, loading, sessionId, cfg.xvgPrefix]);
 
-  if (loading) {
+  if (loading || extracting) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
         <Loader2 size={16} className="animate-spin" />
-        <span className="text-xs">Running gmx energy…</span>
+        <span className="text-xs">{extracting ? "Running gmx energy…" : "Loading energy data…"}</span>
       </div>
     );
   }
   if (!data) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
-        <span className="text-xs text-gray-400 dark:text-gray-600 px-3 text-center">No .edr file found.</span>
+        {hasEdr ? (
+          <>
+            <span className="text-xs text-gray-400 dark:text-gray-600 px-3 text-center">Energy data not yet extracted.</span>
+            <button onClick={handleExtract} className="text-xs text-blue-500 hover:text-blue-400 transition-colors">
+              Run gmx energy
+            </button>
+          </>
+        ) : (
+          <span className="text-xs text-gray-400 dark:text-gray-600 px-3 text-center">No .edr file found.</span>
+        )}
       </div>
     );
   }
@@ -816,7 +859,7 @@ function ResultCard({
   const handleDownload = async () => {
     if (!termCfg) return;
     try {
-      const result = await getEnergy(sessionId);
+      const result = await getEnergy(sessionId, { extract: true, maxPoints: 100000 });
       if (!result.available) return;
       const xVals = result.data.time_ps ?? result.data.step ?? [];
       const dataKey = Object.keys(result.data).find((k) =>
@@ -893,7 +936,7 @@ function ResultCard({
 
         {/* Chart */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact refreshKey={refreshKey} onStats={setStats} />
+          <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact refreshKey={refreshKey} maxPoints={2000} onStats={setStats} />
         </div>
 
         {/* Stats strip */}
@@ -921,40 +964,33 @@ function ResultCard({
       {/* Expanded modal */}
       {expanded && (
         <div
-          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setExpanded(false)}
         >
           <div
-            className="bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border"
-            style={{ width: "min(1080px, 95vw)", height: "420px", borderColor: `${accentColor}40` }}
+            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
+            style={{ width: "min(1080px, 95vw)", height: "420px" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div
-              className="flex items-center justify-between px-4 py-2.5 bg-gray-800/80 border-b flex-shrink-0"
-              style={{ borderColor: `${accentColor}25` }}
-            >
+            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
                 <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>{label}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <button
-                  onClick={handleRefresh}
-                  title="Refresh"
-                  className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
-                >
+                <button onClick={handleDownload} title="Download" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                  <Download size={12} />
+                </button>
+                <button onClick={handleRefresh} title="Refresh" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
                 </button>
-                <button
-                  onClick={() => setExpanded(false)}
-                  className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
-                >
+                <button onClick={() => setExpanded(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   <X size={14} />
                 </button>
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
-              <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact={false} refreshKey={refreshKey} />
+              <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact={false} refreshKey={refreshKey} maxPoints={50000} />
             </div>
           </div>
         </div>
@@ -1038,18 +1074,15 @@ function RamachandranExpandedModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border"
-        style={{ width: "min(600px, 95vw)", height: "min(600px, 90vh)", borderColor: `${accentColor}40` }}
+        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
+        style={{ width: "min(600px, 95vw)", height: "min(600px, 90vh)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="flex items-center justify-between px-4 py-2.5 bg-gray-800/80 border-b flex-shrink-0"
-          style={{ borderColor: `${accentColor}25` }}
-        >
+        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
             <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>Ramachandran</span>
@@ -1058,7 +1091,7 @@ function RamachandranExpandedModal({
             <button
               onClick={onRefresh}
               title="Refresh"
-              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
             >
               <RotateCcw size={13} className={spinning ? "animate-spin" : ""} />
             </button>
@@ -1066,7 +1099,7 @@ function RamachandranExpandedModal({
               onClick={onDownload}
               disabled={status !== "ok"}
               title="Download PNG"
-              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download size={13} />
             </button>
@@ -1077,8 +1110,8 @@ function RamachandranExpandedModal({
                 title="Plot settings"
                 className={`p-1.5 rounded-lg transition-colors ${
                   settingsOpen
-                    ? "text-cyan-400 bg-cyan-900/30"
-                    : "text-gray-500 hover:text-white hover:bg-gray-700"
+                    ? "text-cyan-500 bg-cyan-100/50 dark:bg-cyan-900/30"
+                    : "text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
                 }`}
               >
                 <Settings size={13} />
@@ -1109,20 +1142,20 @@ function RamachandranExpandedModal({
                     <div className="flex items-center gap-2">
                       <span className="w-20 text-gray-400 flex-shrink-0">Colormap</span>
                       <select value={plotSettings.cmap} onChange={(e) => onUpdateSetting("cmap", e.target.value)}
-                        className="flex-1 bg-gray-800 border border-gray-700 rounded-md px-2 py-1 text-gray-200 text-xs focus:outline-none focus:border-cyan-600">
+                        className="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 text-gray-700 dark:text-gray-200 text-xs focus:outline-none focus:border-cyan-600">
                         {RAMACHANDRAN_CMAPS.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
-                    <div className="border-t border-gray-800" />
+                    <div className="border-t border-gray-200 dark:border-gray-800" />
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Log scale</span>
+                      <span className="text-gray-500 dark:text-gray-400">Log scale</span>
                       <button onClick={() => onUpdateSetting("log_scale", !plotSettings.log_scale)}
                         className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.log_scale ? "bg-cyan-600" : "bg-gray-700"}`}>
                         <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.log_scale ? "left-[18px]" : "left-0.5"}`} />
                       </button>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Show start</span>
+                      <span className="text-gray-500 dark:text-gray-400">Show start</span>
                       <button onClick={() => onUpdateSetting("show_start", !plotSettings.show_start)}
                         className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.show_start ? "bg-cyan-600" : "bg-gray-700"}`}>
                         <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.show_start ? "left-[18px]" : "left-0.5"}`} />
@@ -1134,7 +1167,7 @@ function RamachandranExpandedModal({
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
             >
               <X size={14} />
             </button>
@@ -1344,7 +1377,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                     </div>
                     {/* Show start toggle */}
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Show start</span>
+                      <span className="text-gray-500 dark:text-gray-400">Show start</span>
                       <button
                         onClick={() => updateSetting("show_start", !plotSettings.show_start)}
                         className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.show_start ? "bg-cyan-600" : "bg-gray-700"}`}
@@ -4665,7 +4698,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       </div>
 
       {/* Simulation action button */}
-      <div className="flex-shrink-0 p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
+      <div className="flex-shrink-0 px-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 h-[72px] flex items-center w-full">
         {actionState === "standby" && (
           <button
             onClick={() => setShowRunConfirm(true)}

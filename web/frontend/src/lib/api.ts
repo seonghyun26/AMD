@@ -205,9 +205,10 @@ export async function getFileContent(sessionId: string, path: string): Promise<s
 
 export async function getColvar(
   sessionId: string,
-  filename = "COLVAR"
+  filename = "COLVAR",
+  maxPoints = 5000,
 ): Promise<{ data: Record<string, number[]>; available: boolean }> {
-  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/colvar?filename=${filename}`));
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/colvar?filename=${filename}&max_points=${maxPoints}`));
 }
 
 export async function getRamachandranData(
@@ -255,10 +256,13 @@ export async function getFes(
 
 export async function getEnergy(
   sessionId: string,
-  force = false,
-): Promise<{ data: Record<string, number[]>; available: boolean }> {
-  const qs = force ? "?force=true" : "";
-  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/energy${qs}`));
+  options: { force?: boolean; extract?: boolean; maxPoints?: number } = {},
+): Promise<{ data: Record<string, number[]>; available: boolean; has_edr?: boolean; source?: string }> {
+  const params = new URLSearchParams();
+  if (options.force) params.set("force", "true");
+  if (options.extract) params.set("extract", "true");
+  params.set("max_points", String(options.maxPoints ?? 5000));
+  return json(await fetch(`${BASE}/sessions/${sessionId}/analysis/energy?${params}`));
 }
 
 export interface CVDefinition {
