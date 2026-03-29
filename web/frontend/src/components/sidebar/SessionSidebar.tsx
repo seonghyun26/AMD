@@ -227,6 +227,7 @@ function ApiKeyRow({
   saved,
   verified,
   verifying,
+  verifyError,
   onVerify,
 }: {
   label: string;
@@ -239,46 +240,52 @@ function ApiKeyRow({
   saved: boolean;
   verified: boolean | null;
   verifying: boolean;
+  verifyError: string | null;
   onVerify: () => void;
 }) {
   const [show, setShow] = useState(false);
   return (
-    <div className="flex items-center gap-1.5">
-      <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 w-[72px] flex-shrink-0">
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
         <span className={`w-2 h-2 rounded-full ${color} inline-block flex-shrink-0`} />
-        <span className="truncate">{label}</span>
+        {label}
       </label>
-      <div className="relative flex-1 min-w-0">
-        <input
-          type={show ? "text" : "password"}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 pr-7 transition-colors"
-        />
+      <div className="flex items-center gap-1.5">
+        <div className="relative flex-1 min-w-0">
+          <input
+            type={show ? "text" : "password"}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 pr-7 transition-colors"
+          />
+          <button
+            type="button"
+            onClick={() => setShow((v) => !v)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+          >
+            {show ? <EyeOff size={11} /> : <Eye size={11} />}
+          </button>
+        </div>
         <button
-          type="button"
-          onClick={() => setShow((v) => !v)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+          onClick={async () => { await onSave(); onVerify(); }}
+          disabled={saving || !value}
+          className="px-2 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors flex-shrink-0"
         >
-          {show ? <EyeOff size={11} /> : <Eye size={11} />}
+          {saved ? <Check size={12} /> : saving ? "…" : "Save"}
         </button>
+        {verified !== null ? (
+          <span className={`flex-shrink-0 ${verified ? "text-emerald-500" : "text-red-400"}`} title={verified ? "Verified" : verifyError || "Invalid"}>
+            {verified ? <CircleCheck size={14} /> : <CircleX size={14} />}
+          </span>
+        ) : verifying ? (
+          <Loader2 size={14} className="animate-spin text-gray-400 flex-shrink-0" />
+        ) : (
+          <span className="w-[14px] flex-shrink-0" />
+        )}
       </div>
-      <button
-        onClick={async () => { await onSave(); onVerify(); }}
-        disabled={saving || !value}
-        className="px-2 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors flex-shrink-0"
-      >
-        {saved ? <Check size={12} /> : saving ? "…" : "Save"}
-      </button>
-      {verified !== null ? (
-        <span className={`flex-shrink-0 ${verified ? "text-emerald-500" : "text-red-400"}`} title={verified ? "Verified" : "Invalid"}>
-          {verified ? <CircleCheck size={14} /> : <CircleX size={14} />}
-        </span>
-      ) : verifying ? (
-        <Loader2 size={14} className="animate-spin text-gray-400 flex-shrink-0" />
-      ) : (
-        <span className="w-[14px] flex-shrink-0" />
+      {verified === false && verifyError && (
+        <p className="mt-0.5 text-[10px] text-red-400 dark:text-red-500">{verifyError}</p>
       )}
     </div>
   );
@@ -301,6 +308,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [verified, setVerified] = useState<Record<string, boolean | null>>({});
   const [verifying, setVerifying] = useState<Record<string, boolean>>({});
+  const [verifyErrors, setVerifyErrors] = useState<Record<string, string | null>>({});
 
   // Agent backbone
   const [agentBackend, setAgentBackend] = useState<AgentBackendId>("anthropic");
@@ -313,8 +321,14 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
         if (k[svc]) {
           setVerifying((v) => ({ ...v, [svc]: true }));
           verifyApiKey(username, svc)
-            .then((res) => setVerified((v) => ({ ...v, [svc]: res.valid })))
-            .catch(() => setVerified((v) => ({ ...v, [svc]: false })))
+            .then((res) => {
+              setVerified((v) => ({ ...v, [svc]: res.valid }));
+              setVerifyErrors((e) => ({ ...e, [svc]: res.error ?? null }));
+            })
+            .catch((err) => {
+              setVerified((v) => ({ ...v, [svc]: false }));
+              setVerifyErrors((e) => ({ ...e, [svc]: String(err) }));
+            })
             .finally(() => setVerifying((v) => ({ ...v, [svc]: false })));
         }
       }
@@ -343,11 +357,14 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
   const handleVerify = async (service: string) => {
     setVerifying((v) => ({ ...v, [service]: true }));
     setVerified((v) => ({ ...v, [service]: null }));
+    setVerifyErrors((e) => ({ ...e, [service]: null }));
     try {
       const res = await verifyApiKey(username, service);
       setVerified((v) => ({ ...v, [service]: res.valid }));
-    } catch {
+      setVerifyErrors((e) => ({ ...e, [service]: res.error ?? null }));
+    } catch (err) {
       setVerified((v) => ({ ...v, [service]: false }));
+      setVerifyErrors((e) => ({ ...e, [service]: String(err) }));
     } finally {
       setVerifying((v) => ({ ...v, [service]: false }));
     }
@@ -361,6 +378,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
   const setKeyValue = (service: string, value: string) => {
     setKeys((k) => ({ ...k, [service]: value }));
     setVerified((v) => ({ ...v, [service]: null }));
+    setVerifyErrors((e) => ({ ...e, [service]: null }));
   };
 
   const gmxImage = "gromacs-plumed:latest";
@@ -414,6 +432,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
               saved={saved["anthropic"] ?? false}
               verified={verified["anthropic"] ?? null}
               verifying={verifying["anthropic"] ?? false}
+              verifyError={verifyErrors["anthropic"] ?? null}
               onVerify={() => handleVerify("anthropic")}
             />
             <ApiKeyRow
@@ -427,6 +446,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
               saved={saved["openai"] ?? false}
               verified={verified["openai"] ?? null}
               verifying={verifying["openai"] ?? false}
+              verifyError={verifyErrors["openai"] ?? null}
               onVerify={() => handleVerify("openai")}
             />
             <ApiKeyRow
@@ -440,6 +460,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
               saved={saved["deepseek"] ?? false}
               verified={verified["deepseek"] ?? null}
               verifying={verifying["deepseek"] ?? false}
+              verifyError={verifyErrors["deepseek"] ?? null}
               onVerify={() => handleVerify("deepseek")}
             />
             <ApiKeyRow
@@ -453,6 +474,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
               saved={saved["wandb"] ?? false}
               verified={verified["wandb"] ?? null}
               verifying={verifying["wandb"] ?? false}
+              verifyError={verifyErrors["wandb"] ?? null}
               onVerify={() => handleVerify("wandb")}
             />
           </div>

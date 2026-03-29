@@ -16,7 +16,7 @@ export default function ChatInput({ sessionId, autoSend, onAutoSendComplete }: P
   const [value, setValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const isStreaming = useSessionStore((s) => s.isStreaming);
-  const { addUserMessage, appendSSEEvent } = useSessionStore();
+  const { addUserMessage, appendSSEEvent, persistMessages } = useSessionStore();
 
   const doSend = async (text: string) => {
     if (!text.trim() || isStreaming) return;
@@ -36,6 +36,8 @@ export default function ChatInput({ sessionId, autoSend, onAutoSendComplete }: P
         appendSSEEvent({ type: "agent_done", final_text: "" });
       }
     }
+    // Persist messages after streaming completes
+    persistMessages(sessionId);
   };
 
   const handleSend = () => doSend(value);

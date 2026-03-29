@@ -1,4 +1,5 @@
 import type { SSEEvent } from "@/lib/types";
+import { getToken } from "./auth";
 
 export type AgentType = "paper" | "analysis" | "cv";
 
@@ -14,7 +15,11 @@ export async function* streamAgent(
   signal?: AbortSignal
 ): AsyncGenerator<SSEEvent> {
   const url = `/api/agents/${sessionId}/${agentType}/run?input=${encodeURIComponent(input)}`;
-  const res = await fetch(url, { signal });
+  const token = getToken();
+  const res = await fetch(url, {
+    signal,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   if (!res.ok || !res.body) {
     throw new Error(`Agent request failed: ${res.status}`);
   }

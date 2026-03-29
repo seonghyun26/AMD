@@ -16,10 +16,13 @@ _repo_root = str(Path(__file__).parents[2])
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
+from web.backend.jwt_auth import verify_token  # noqa: E402
 from web.backend.routers import (  # noqa: E402
     agents,
     analysis,
@@ -41,6 +44,43 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── JWT auth middleware ────────────────────────────────────────────────
+
+# Paths that do not require authentication
+_PUBLIC_PATHS = {"/api/auth/login", "/health"}
+_PUBLIC_PREFIXES = ("/docs", "/openapi.json", "/redoc")
+# Path fragments that are public (file downloads via <a> tags can't carry auth headers)
+_PUBLIC_FRAGMENTS = ("/files/download",)
+
+
+class JWTAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # Skip auth for public paths, static assets, and preflight requests
+        if (
+            path in _PUBLIC_PATHS
+            or path.startswith(_PUBLIC_PREFIXES)
+            or not path.startswith("/api")
+            or request.method == "OPTIONS"
+            or any(frag in path for frag in _PUBLIC_FRAGMENTS)
+        ):
+            return await call_next(request)
+
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse({"detail": "Missing authorization token"}, status_code=401)
+
+        try:
+            verify_token(auth_header[7:])
+        except Exception:
+            return JSONResponse({"detail": "Invalid or expired token"}, status_code=401)
+
+        return await call_next(request)
+
+
+app.add_middleware(JWTAuthMiddleware)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")

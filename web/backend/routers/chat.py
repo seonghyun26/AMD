@@ -463,6 +463,56 @@ async def delete_session_endpoint(session_id: str):
     return {"deleted": session_id, "simulation_stopped": stopped, "moved_to": moved_to}
 
 
+# ── Chat message persistence ──────────────────────────────────────────
+
+
+class SaveMessagesRequest(BaseModel):
+    messages: list[Any] = []
+
+
+def _find_session_root(session_id: str) -> Path | None:
+    """Find the session root directory (parent of data/) by session_id."""
+    for sf in Path("outputs").glob("*/*/session.json"):
+        try:
+            data = json.loads(sf.read_text())
+            if data.get("session_id") == session_id:
+                return sf.parent
+        except Exception:
+            continue
+    return None
+
+
+@router.get("/sessions/{session_id}/messages")
+async def get_messages(session_id: str):
+    """Load persisted chat messages for a session."""
+    root = _find_session_root(session_id)
+    if not root:
+        return {"messages": []}
+    msg_path = root / "messages.json"
+    if not msg_path.exists():
+        return {"messages": []}
+    try:
+        return {"messages": json.loads(msg_path.read_text())}
+    except Exception:
+        return {"messages": []}
+
+
+@router.post("/sessions/{session_id}/messages")
+async def save_messages(session_id: str, req: SaveMessagesRequest):
+    """Persist chat messages for a session."""
+    root = _find_session_root(session_id)
+    if not root:
+        # Fall back: try to find from in-memory session
+        session = get_session(session_id)
+        if session:
+            root = Path(session.work_dir).parent
+        else:
+            raise HTTPException(404, "Session not found")
+    msg_path = root / "messages.json"
+    msg_path.write_text(json.dumps(req.messages, default=str, indent=2))
+    return {"saved": len(req.messages)}
+
+
 # ── Streaming chat ─────────────────────────────────────────────────────
 
 
@@ -470,13 +520,18 @@ def _format_sse(event: dict) -> str:
     return f"data: {json.dumps(event, default=str)}\n\n"
 
 
-@router.get("/sessions/{session_id}/stream")
-async def stream_chat(session_id: str, message: str):
-    """SSE endpoint. message passed as query param.
+class StreamChatRequest(BaseModel):
+    message: str
+
+
+@router.post("/sessions/{session_id}/stream")
+async def stream_chat(session_id: str, req: StreamChatRequest):
+    """SSE endpoint. Message sent as POST body to avoid URL length limits.
 
     Returns a text/event-stream response. Each event is a JSON-encoded
     dict; see MDAgent.stream_run() for the event schema.
     """
+    message = req.message
     session = get_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")

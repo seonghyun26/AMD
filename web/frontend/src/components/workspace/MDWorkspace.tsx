@@ -592,7 +592,7 @@ function DeleteConfirmPopup({
         <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Move to archive?</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           <span className="font-mono text-gray-700 dark:text-gray-300">{name}</span> will be moved to the session&apos;s
-          archive folder. You can recover it manually.
+          archive folder. Use the archive button in the Files tab to restore it.
         </p>
         <div className="flex gap-2 justify-end">
           <button

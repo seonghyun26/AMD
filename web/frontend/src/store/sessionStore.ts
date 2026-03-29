@@ -7,7 +7,7 @@ import type {
   SSEEvent,
   ToolCallBlock,
 } from "@/lib/types";
-import { listSessions } from "@/lib/api";
+import { listSessions, getMessages, saveMessages } from "@/lib/api";
 import { getUsername } from "@/lib/auth";
 
 export interface SessionSummary {
@@ -44,6 +44,8 @@ interface SessionState {
   appendSSEEvent: (event: SSEEvent) => void;
   updateProgress: (progress: SimProgress) => void;
   clearMessages: () => void;
+  loadMessages: (sessionId: string) => Promise<void>;
+  persistMessages: (sessionId: string) => void;
 }
 
 function uuid(): string {
@@ -267,4 +269,21 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   updateProgress: (progress) => set({ simProgress: progress }),
   clearMessages: () => set({ messages: [] }),
+
+  loadMessages: async (sessionId) => {
+    try {
+      const { messages } = await getMessages(sessionId);
+      if (Array.isArray(messages) && messages.length > 0) {
+        set({ messages: messages as ChatMessage[] });
+      }
+    } catch {
+      // Silently fail — no persisted messages yet
+    }
+  },
+
+  persistMessages: (sessionId) => {
+    const { messages } = useSessionStore.getState();
+    if (messages.length === 0) return;
+    saveMessages(sessionId, messages).catch(() => {});
+  },
 }));

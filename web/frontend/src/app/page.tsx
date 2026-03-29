@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, FlaskConical } from "lucide-react";
 import { isAuthenticated } from "@/lib/auth";
 import { useSessionStore } from "@/store/sessionStore";
 import SessionSidebar from "@/components/sidebar/SessionSidebar";
@@ -19,7 +19,7 @@ export default function App() {
   const [showNewSession, setShowNewSession] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
-  const { addSession, fetchSessions } = useSessionStore();
+  const { addSession, fetchSessions, loadMessages, persistMessages, clearMessages } = useSessionStore();
 
   // Auth check — redirect to /login if not authenticated; load session list
   useEffect(() => {
@@ -31,7 +31,23 @@ export default function App() {
     fetchSessions();
   }, [router, fetchSessions]);
 
-  if (!hydrated) return null;
+  const sessionsLoading = useSessionStore((s) => s.sessionsLoading);
+
+  if (!hydrated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <div className="flex flex-col items-center gap-4">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg">
+            <FlaskConical size={28} className="text-white" />
+          </div>
+          <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-sm font-medium">Loading...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleSessionCreated = (id: string, workDir: string, nickname: string) => {
     // MDWorkspace already called addSession with selected_molecule — don't overwrite it here.
@@ -53,8 +69,12 @@ export default function App() {
       <SessionSidebar
         onNewSession={handleNewSession}
         onSelectSession={(id) => {
+          // Persist current session's messages before switching
+          if (sessionId) persistMessages(sessionId);
+          clearMessages();
           setSessionId(id);
           setShowNewSession(false);
+          loadMessages(id);
         }}
         onSessionDeleted={(id) => {
           if (sessionId === id) setSessionId(null);

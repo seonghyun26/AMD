@@ -1,4 +1,5 @@
 import type { SSEEvent } from "./types";
+import { getToken } from "./auth";
 
 /**
  * Async generator that streams SSE events from the backend.
@@ -10,10 +11,17 @@ export async function* streamChat(
   message: string,
   signal: AbortSignal
 ): AsyncGenerator<SSEEvent> {
-  const url = `/api/sessions/${sessionId}/stream?message=${encodeURIComponent(message)}`;
+  const url = `/api/sessions/${sessionId}/stream`;
+  const token = getToken();
   const response = await fetch(url, {
+    method: "POST",
     signal,
-    headers: { Accept: "text/event-stream" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ message }),
   });
 
   if (!response.ok) {
