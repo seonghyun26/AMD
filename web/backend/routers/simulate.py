@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -15,9 +16,16 @@ from web.backend.session_manager import get_session
 
 router = APIRouter()
 
+# GPUs that must never be auto-selected.
+# Set AMD_GPU_DENY_LIST env var as comma-separated indices (e.g. "0,1,2,3").
+# Defaults to GPUs 0-3 which are reserved on this machine.
+_GPU_DENY_LIST: set[str] = set(
+    os.getenv("AMD_GPU_DENY_LIST", "0,1,2,3").split(",")
+)
+
 
 def _auto_detect_gpu() -> str | None:
-    """Return the index of the first idle GPU, or None."""
+    """Return the index of the first idle *allowed* GPU, or None."""
     try:
         r = subprocess.run(
             ["nvidia-smi", "--query-gpu=index,utilization.gpu", "--format=csv,noheader,nounits"],
@@ -29,7 +37,7 @@ def _auto_detect_gpu() -> str | None:
             return None
         for line in r.stdout.strip().splitlines():
             parts = [p.strip() for p in line.split(",")]
-            if len(parts) >= 2 and int(parts[1]) < 10:
+            if len(parts) >= 2 and parts[0] not in _GPU_DENY_LIST and int(parts[1]) < 10:
                 return parts[0]
     except Exception:
         pass

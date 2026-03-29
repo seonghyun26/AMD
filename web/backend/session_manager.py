@@ -1,9 +1,16 @@
-"""Session management: one MDAgent per browser session."""
+"""Session management: one MDAgent per browser session.
+
+Uses an LRU-bounded dict to prevent unbounded memory growth.
+Sessions with active simulations are never evicted.
+Evicted sessions can be transparently restored from disk via restore_session().
+"""
 
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
@@ -55,7 +62,41 @@ class Session:
     agent: object = field(default=None, init=False)
 
 
-_sessions: dict[str, Session] = {}
+_MAX_SESSIONS = int(os.getenv("AMD_MAX_SESSIONS", "50"))
+_sessions: OrderedDict[str, Session] = OrderedDict()
+
+
+def _has_active_simulation(session: Session) -> bool:
+    """Check if a session has a running mdrun process."""
+    try:
+        runner = getattr(session.agent, "_gmx", None)
+        if runner is not None:
+            proc = getattr(runner, "_mdrun_proc", None)
+            if proc is not None and proc.poll() is None:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _evict_if_needed() -> None:
+    """Remove the oldest idle session if we're over the limit."""
+    while len(_sessions) > _MAX_SESSIONS:
+        # Find the oldest session that doesn't have an active simulation
+        evict_key = None
+        for sid, session in _sessions.items():
+            if not _has_active_simulation(session):
+                evict_key = sid
+                break
+        if evict_key is None:
+            break  # All sessions have active simulations — can't evict
+        _sessions.pop(evict_key)
+
+
+def _touch(session_id: str) -> None:
+    """Move a session to the end (most recently used)."""
+    if session_id in _sessions:
+        _sessions.move_to_end(session_id)
 
 
 def create_session(
@@ -83,11 +124,15 @@ def create_session(
     session = Session(session_id=sid, work_dir=work_dir, nickname=nickname, username=username)
     session.agent = MDAgent(cfg=cfg, work_dir=work_dir)
     _sessions[sid] = session
+    _evict_if_needed()
     return session
 
 
 def get_session(session_id: str) -> Session | None:
-    return _sessions.get(session_id)
+    session = _sessions.get(session_id)
+    if session is not None:
+        _touch(session_id)
+    return session
 
 
 def list_sessions(username: str = "") -> list[dict]:
@@ -299,6 +344,7 @@ def restore_session(
 ) -> Session:
     """Return existing in-memory session, or reconstruct it from session-root config.yaml."""
     if session_id in _sessions:
+        _touch(session_id)
         return _sessions[session_id]
 
     from md_agent.agent import MDAgent
@@ -334,6 +380,7 @@ def restore_session(
     )
     session.agent = MDAgent(cfg=cfg, work_dir=work_dir)
     _sessions[session_id] = session
+    _evict_if_needed()
     return session
 
 

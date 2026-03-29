@@ -97,11 +97,14 @@ export async function restoreSession(
   nickname = "",
   username = ""
 ): Promise<void> {
-  await authFetch(`${BASE}/sessions/${sessionId}/restore`, {
+  const res = await authFetch(`${BASE}/sessions/${sessionId}/restore`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ work_dir: workDir, nickname, username }),
-  }).catch(() => {});
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to restore session: ${res.status}`);
+  }
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {

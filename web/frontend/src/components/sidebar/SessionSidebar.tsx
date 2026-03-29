@@ -46,6 +46,7 @@ function SessionItem({
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
   const nick = s.nickname || s.work_dir.split("/").pop() || s.session_id.slice(0, 8);
   const [draft, setDraft] = useState(nick);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -147,13 +148,18 @@ function SessionItem({
       {/* Main content — clickable to select */}
       <div
         className="flex-1 min-w-0 px-3 py-2.5"
-        onClick={() => {
+        onClick={async () => {
           if (editing || confirming) return;
-          onSelect();
-          restoreSession(s.session_id, s.work_dir, s.nickname).catch(() => {});
-          getSessionRunStatus(s.session_id)
-            .then(({ run_status }) => onRunStatusRead(run_status))
-            .catch(() => {});
+          setRestoreError(null);
+          try {
+            await restoreSession(s.session_id, s.work_dir, s.nickname);
+            onSelect();
+            getSessionRunStatus(s.session_id)
+              .then(({ run_status }) => onRunStatusRead(run_status))
+              .catch(() => {});
+          } catch {
+            setRestoreError("Failed to load session — data may be missing or corrupted.");
+          }
         }}
       >
         <div className="flex items-center gap-1.5 mb-0.5">
@@ -187,6 +193,9 @@ function SessionItem({
         </div>
         {!editing && (
           <div className="pl-3 text-[10px] text-gray-400 dark:text-gray-600 font-mono truncate">{s.session_id.slice(0, 8)}…</div>
+        )}
+        {restoreError && (
+          <p className="pl-3 mt-0.5 text-[10px] text-red-400 dark:text-red-500 leading-tight">{restoreError}</p>
         )}
       </div>
 

@@ -162,26 +162,21 @@ def _session_gpu_map() -> dict[int, dict]:
             }
 
     # Also scan session.json files on disk for sessions not in memory
-    outputs_root = Path("outputs")
-    if outputs_root.is_dir():
-        for sf in outputs_root.glob("*/*/session.json"):
-            try:
-                data = json.loads(sf.read_text())
-                if data.get("run_status") != "running":
-                    continue
-                sid = data.get("session_id", "")
-                if sid in _sessions:
-                    continue  # already have it in memory
-                # Check sim_status for PID
-                sim_meta = data.get("sim_status") or {}
-                pid = sim_meta.get("pid")
-                if pid:
-                    pid_to_session[pid] = {
-                        "session_id": sid,
-                        "nickname": data.get("nickname", ""),
-                    }
-            except Exception:
-                continue
+    from web.backend.session_store import read_all_sessions
+
+    for data in read_all_sessions():
+        if data.get("run_status") != "running":
+            continue
+        sid = data.get("session_id", "")
+        if sid in _sessions:
+            continue
+        sim_meta = data.get("sim_status") or {}
+        pid = sim_meta.get("pid")
+        if pid:
+            pid_to_session[pid] = {
+                "session_id": sid,
+                "nickname": data.get("nickname", ""),
+            }
 
     # Build result
     result: dict[int, dict] = {}

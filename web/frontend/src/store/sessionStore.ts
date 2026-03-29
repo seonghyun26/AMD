@@ -120,16 +120,9 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setSessionRunStatus: (sessionId, runStatus) =>
     set((state) => ({
-      sessions: state.sessions.map((s) => {
-        if (s.session_id !== sessionId) return s;
-        // "finished" is a terminal state — no further transitions
-        if (s.run_status === "finished") return s;
-        // "failed" can only transition to "running" (new simulation attempt)
-        if (s.run_status === "failed" && runStatus !== "running") return s;
-        // "paused" can transition to "running" (resume) or "standby" (terminate)
-        if (s.run_status === "paused" && runStatus !== "running" && runStatus !== "standby") return s;
-        return { ...s, run_status: runStatus };
-      }),
+      sessions: state.sessions.map((s) =>
+        s.session_id === sessionId ? { ...s, run_status: runStatus } : s
+      ),
     })),
 
   setSessionResultCards: (sessionId, resultCards) =>

@@ -229,55 +229,45 @@ async def create_session_endpoint(req: CreateSessionRequest):
 
 @router.get("/sessions")
 async def list_sessions_endpoint(username: str = ""):
-    """List sessions by scanning outputs/{username}/*/session.json on disk."""
-    outputs_root = Path("outputs")
-    if username:
-        scan_root = outputs_root / username
-        glob_pattern = "*/session.json"
-    else:
-        scan_root = outputs_root
-        glob_pattern = "*/*/session.json"
+    """List sessions by scanning outputs/{username}/*/session.json on disk.
 
+    This is a pure read — status inference that requires a write is
+    deferred to the per-session run-status endpoint.
+    """
+    from web.backend.session_store import read_all_sessions
     from web.backend.session_manager import infer_run_status_from_disk
 
+    raw = read_all_sessions(username)
     sessions = []
-    if scan_root.is_dir():
-        for sf in scan_root.glob(glob_pattern):
-            try:
-                data = json.loads(sf.read_text())
-                if "session_id" not in data or "work_dir" not in data:
-                    continue
-                if data.get("status") in ("inactive", "deleted"):
-                    continue
-                run_status = data.get("run_status", "standby")
-                # If session.json says "running", infer actual status from md.log (e.g. after refresh)
-                if run_status == "running":
-                    work_dir_resolved = Path(data["work_dir"]).resolve()
-                    session_root = work_dir_resolved.parent
-                    inferred = infer_run_status_from_disk(session_root, work_dir_resolved)
-                    if inferred in ("finished", "failed"):
-                        import time as _time
-
-                        run_status = inferred
-                        data["run_status"] = inferred
-                        data.setdefault("started_at", _time.time())
-                        data.setdefault("finished_at", _time.time())
-                        sf.write_text(json.dumps(data, indent=2))
-                sessions.append(
-                    {
-                        "session_id": data["session_id"],
-                        "work_dir": data["work_dir"],
-                        "nickname": data.get("nickname", ""),
-                        "selected_molecule": data.get("selected_molecule", ""),
-                        "updated_at": data.get("updated_at", ""),
-                        "run_status": run_status,
-                        "started_at": data.get("started_at"),
-                        "finished_at": data.get("finished_at"),
-                        "result_cards": data.get("result_cards", []),
-                    }
-                )
-            except Exception:
-                continue
+    for data in raw:
+        run_status = data.get("run_status", "standby")
+        # Infer actual status from md.log for sessions marked "running"
+        if run_status == "running":
+            work_dir_resolved = Path(data["work_dir"]).resolve()
+            session_root = work_dir_resolved.parent
+            inferred = infer_run_status_from_disk(session_root, work_dir_resolved)
+            if inferred in ("finished", "failed"):
+                run_status = inferred
+                # Persist the inferred status via locked write
+                import time as _time
+                from web.backend.session_store import update_session_json
+                update_session_json(data["session_id"], {
+                    "run_status": inferred,
+                    "finished_at": data.get("finished_at") or _time.time(),
+                })
+        sessions.append(
+            {
+                "session_id": data["session_id"],
+                "work_dir": data["work_dir"],
+                "nickname": data.get("nickname", ""),
+                "selected_molecule": data.get("selected_molecule", ""),
+                "updated_at": data.get("updated_at", ""),
+                "run_status": run_status,
+                "started_at": data.get("started_at"),
+                "finished_at": data.get("finished_at"),
+                "result_cards": data.get("result_cards", []),
+            }
+        )
 
     sessions.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
     return {"sessions": sessions}
@@ -287,33 +277,29 @@ async def list_sessions_endpoint(username: str = ""):
 async def get_session_run_status(session_id: str):
     """Read run_status from session.json on disk. If still 'running', verify via md.log."""
     from web.backend.session_manager import infer_run_status_from_disk
+    from web.backend.session_store import read_session_json, update_session_json
 
-    outputs_root = Path("outputs")
-    for sf in outputs_root.glob("*/*/session.json"):
-        try:
-            data = json.loads(sf.read_text())
-            if data.get("session_id") != session_id:
-                continue
-            run_status = data.get("run_status", "standby")
-            if run_status == "running":
-                work_dir = Path(data["work_dir"]).resolve()
-                inferred = infer_run_status_from_disk(sf.parent, work_dir)
-                if inferred in ("finished", "failed"):
-                    import time as _time
+    data = read_session_json(session_id)
+    if not data:
+        return {"run_status": "standby"}
 
-                    run_status = inferred
-                    data["run_status"] = inferred
-                    data.setdefault("started_at", _time.time())
-                    data.setdefault("finished_at", _time.time())
-                    sf.write_text(json.dumps(data, indent=2))
-            return {
-                "run_status": run_status,
-                "started_at": data.get("started_at"),
-                "finished_at": data.get("finished_at"),
-            }
-        except Exception:
-            continue
-    return {"run_status": "standby"}
+    run_status = data.get("run_status", "standby")
+    if run_status == "running":
+        work_dir = Path(data["work_dir"]).resolve()
+        session_root = work_dir.parent
+        inferred = infer_run_status_from_disk(session_root, work_dir)
+        if inferred in ("finished", "failed"):
+            import time as _time
+            run_status = inferred
+            update_session_json(session_id, {
+                "run_status": inferred,
+                "finished_at": data.get("finished_at") or _time.time(),
+            })
+    return {
+        "run_status": run_status,
+        "started_at": data.get("started_at"),
+        "finished_at": data.get("finished_at"),
+    }
 
 
 class NicknameRequest(BaseModel):
@@ -332,22 +318,12 @@ class ResultCardsRequest(BaseModel):
 async def update_result_cards(session_id: str, req: ResultCardsRequest):
     """Persist which result plot cards are open in session.json."""
     from datetime import datetime
+    from web.backend.session_store import update_session_json
 
-    for sf in Path("outputs").glob("*/*/session.json"):
-        try:
-            data = json.loads(sf.read_text())
-            if data.get("session_id") != session_id:
-                continue
-            data.update(
-                {
-                    "result_cards": req.result_cards,
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-            )
-            sf.write_text(json.dumps(data, indent=2))
-            break
-        except Exception:
-            continue
+    update_session_json(session_id, {
+        "result_cards": req.result_cards,
+        "updated_at": datetime.utcnow().isoformat(),
+    })
     return {"session_id": session_id, "result_cards": req.result_cards}
 
 
@@ -355,45 +331,29 @@ async def update_result_cards(session_id: str, req: ResultCardsRequest):
 async def update_selected_molecule(session_id: str, req: MoleculeSelectRequest):
     """Persist the selected molecule filename in session.json."""
     from datetime import datetime
+    from web.backend.session_store import update_session_json
 
-    for sf in Path("outputs").glob("*/*/session.json"):
-        try:
-            data = json.loads(sf.read_text())
-            if data.get("session_id") != session_id:
-                continue
-            data.update(
-                {
-                    "selected_molecule": req.selected_molecule,
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-            )
-            sf.write_text(json.dumps(data, indent=2))
-            break
-        except Exception:
-            continue
+    update_session_json(session_id, {
+        "selected_molecule": req.selected_molecule,
+        "updated_at": datetime.utcnow().isoformat(),
+    })
     return {"session_id": session_id, "selected_molecule": req.selected_molecule}
 
 
 @router.patch("/sessions/{session_id}/nickname")
 async def update_nickname(session_id: str, req: NicknameRequest):
     from datetime import datetime
+    from web.backend.session_store import update_session_json
 
     nickname = req.nickname.strip()
     # Update the in-memory session if it exists
     session = get_session(session_id)
     if session:
         session.nickname = nickname
-    # Scan disk and update session.json in-place, preserving all existing fields
-    for sf in Path("outputs").glob("*/*/session.json"):
-        try:
-            data = json.loads(sf.read_text())
-            if data.get("session_id") != session_id:
-                continue
-            data.update({"nickname": nickname, "updated_at": datetime.utcnow().isoformat()})
-            sf.write_text(json.dumps(data, indent=2))
-            break
-        except Exception:
-            continue
+    update_session_json(session_id, {
+        "nickname": nickname,
+        "updated_at": datetime.utcnow().isoformat(),
+    })
     return {"session_id": session_id, "nickname": nickname}
 
 
@@ -424,40 +384,31 @@ async def delete_session_endpoint(session_id: str):
 
     moved_to: str | None = None
 
-    # Scan disk directly by session_id and move the session folder to trash.
-    for sf in Path("outputs").glob("*/*/session.json"):
+    # Mark as deleted via locked write, then move folder to trash.
+    from web.backend.session_store import update_session_json, _scan_session_file
+
+    sf = _scan_session_file(session_id)
+    if sf:
         try:
-            data = json.loads(sf.read_text())
-            if data.get("session_id") != session_id:
-                continue
+            update_session_json(session_id, {
+                "status": "deleted",
+                "updated_at": datetime.utcnow().isoformat(),
+            })
 
-            # Mark as deleted in session.json before moving
-            data.update(
-                {
-                    "status": "deleted",
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-            )
-            sf.write_text(json.dumps(data, indent=2))
-
-            # session folder is the parent of session.json
             session_folder = sf.parent
-            # user folder is the parent of the session folder (outputs/{user}/{session}/)
             user_folder = session_folder.parent
 
             trash_dir = user_folder / "trash"
             trash_dir.mkdir(parents=True, exist_ok=True)
 
             dest = trash_dir / session_folder.name
-            # If a folder with the same name already exists in trash, append session_id
             if dest.exists():
                 dest = trash_dir / f"{session_folder.name}_{session_id[:8]}"
 
             shutil.move(str(session_folder), str(dest))
             moved_to = str(dest)
-            break
         except Exception:
-            continue
+            pass
 
     delete_session(session_id)
     return {"deleted": session_id, "simulation_stopped": stopped, "moved_to": moved_to}
@@ -472,14 +423,10 @@ class SaveMessagesRequest(BaseModel):
 
 def _find_session_root(session_id: str) -> Path | None:
     """Find the session root directory (parent of data/) by session_id."""
-    for sf in Path("outputs").glob("*/*/session.json"):
-        try:
-            data = json.loads(sf.read_text())
-            if data.get("session_id") == session_id:
-                return sf.parent
-        except Exception:
-            continue
-    return None
+    from web.backend.session_store import _scan_session_file
+
+    sf = _scan_session_file(session_id)
+    return sf.parent if sf else None
 
 
 @router.get("/sessions/{session_id}/messages")
