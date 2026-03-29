@@ -402,7 +402,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
 
   // ── Popup / modal variant ──────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div
         className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700"
         style={{ width: "75vw", height: "75vh" }}

@@ -299,12 +299,12 @@ PRINT ARG=phi,psi,metad.bias STRIDE=100 FILE=COLVAR
 class CVAgent:
     """LangChain specialist agent for CV selection and PLUMED definition generation."""
 
-    def __init__(self, work_dir: str, session=None) -> None:
+    def __init__(self, work_dir: str, session=None, api_key: str | None = None) -> None:
         self.work_dir = work_dir
         tools = _make_tools(work_dir)
         if session is not None:
             tools.extend(_make_session_config_tools(work_dir, session))
-        self.executor = build_executor(SYSTEM_PROMPT, tools, max_iterations=10)
+        self.executor = build_executor(SYSTEM_PROMPT, tools, max_iterations=10, api_key=api_key)
 
     def run(self, task: str) -> str:
         return sync_run(self.executor, task)

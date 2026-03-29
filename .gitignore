@@ -77,3 +77,4 @@ web/__pycache__/
 package-lock.json
 .pytest_cache/
 */forcefields/*
+*.omc

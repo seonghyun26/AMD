@@ -110,11 +110,11 @@ export default function App() {
           <button
             onClick={() => setRightPanelOpen(true)}
             title="Expand AI Assistant panel"
-            className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600 hover:text-gray-300 transition-colors"
+            className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400 dark:text-gray-600 hover:text-gray-900 dark:hover:text-gray-300 transition-colors"
           >
             <ChevronLeft size={15} />
             <span
-              className="text-[10px] font-semibold uppercase tracking-widest text-gray-600"
+              className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600"
               style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
             >
               AI Assistant

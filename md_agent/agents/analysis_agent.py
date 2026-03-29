@@ -259,10 +259,10 @@ Use concrete numbers from the analysis — avoid vague statements.
 class AnalysisAgent:
     """LangChain specialist agent for MD results analysis."""
 
-    def __init__(self, work_dir: str) -> None:
+    def __init__(self, work_dir: str, api_key: str | None = None) -> None:
         self.work_dir = work_dir
         tools = _make_tools(work_dir)
-        self.executor = build_executor(SYSTEM_PROMPT, tools, max_iterations=12)
+        self.executor = build_executor(SYSTEM_PROMPT, tools, max_iterations=12, api_key=api_key)
 
     def run(self, task: str = "Analyse the simulation results.") -> str:
         return sync_run(self.executor, task)

@@ -16,6 +16,9 @@ const config: Config = {
         background: "var(--background)",
         foreground: "var(--foreground)",
       },
+      zIndex: {
+        '60': '60',
+      },
     },
   },
   plugins: [],

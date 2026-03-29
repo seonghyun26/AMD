@@ -15,9 +15,15 @@ export const metadata: Metadata = {
   icons: { icon: "/icon.svg" },
 };
 
+// Blocking script that sets the theme class before first paint to prevent FOUC.
+const themeInitScript = `(function(){try{var t=localStorage.getItem("amd-theme");if(t==="light"||t==="dark"){document.documentElement.classList.add(t)}else{document.documentElement.classList.add("dark")}}catch(e){document.documentElement.classList.add("dark")}})()`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`dark ${inter.variable}`} suppressHydrationWarning>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className={`h-screen overflow-hidden ${inter.className}`}>
         <ThemeProvider>{children}</ThemeProvider>
       </body>

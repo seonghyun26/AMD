@@ -16,11 +16,12 @@ def build_executor(
     system_prompt: str,
     tools: list,
     max_iterations: int = 12,
+    api_key: str | None = None,
 ) -> AgentExecutor:
     """Create a Claude-backed LangChain AgentExecutor."""
     llm = ChatAnthropic(
         model=MODEL,
-        api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+        api_key=api_key or os.environ.get("ANTHROPIC_API_KEY", ""),
         temperature=1,
         max_tokens=8192,
         streaming=True,

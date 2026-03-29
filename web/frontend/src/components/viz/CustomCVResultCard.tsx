@@ -439,7 +439,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       {/* ── Expanded modal ──────────────────────────────────────────── */}
       {expanded && (
         <div
-          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setExpanded(false)}
         >
           <div
@@ -503,7 +503,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
 
       {/* ── Delete confirmation ──────────────────────────────────────── */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 mb-4">

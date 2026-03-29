@@ -8,7 +8,6 @@ GET /api/agents/{session_id}/cv?input=...         → CVAgent
 from __future__ import annotations
 
 import json
-import os
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -44,19 +43,18 @@ async def run_agent(session_id: str, agent_type: str, input: str = ""):
 
     work_dir = session.work_dir
 
-    # Inject user's stored Anthropic key into the environment if available
+    # Resolve the user's stored Anthropic key (passed directly, not via env)
+    anthropic_key: str | None = None
     if session.username:
         user_keys = get_api_keys(session.username)
-        anthropic_key = user_keys.get("anthropic", "")
-        if anthropic_key:
-            os.environ["ANTHROPIC_API_KEY"] = anthropic_key
+        anthropic_key = user_keys.get("anthropic") or None
 
     async def event_generator():
         try:
             if agent_type == "paper":
                 from md_agent.agents.paper_agent import PaperConfigAgent
 
-                agent = PaperConfigAgent(work_dir=work_dir, session=session)
+                agent = PaperConfigAgent(work_dir=work_dir, session=session, api_key=anthropic_key)
                 async for ev in agent.astream(
                     input or "Please find and extract MD settings from a relevant paper."
                 ):
@@ -65,14 +63,14 @@ async def run_agent(session_id: str, agent_type: str, input: str = ""):
             elif agent_type == "analysis":
                 from md_agent.agents.analysis_agent import AnalysisAgent
 
-                agent = AnalysisAgent(work_dir)
+                agent = AnalysisAgent(work_dir, api_key=anthropic_key)
                 async for ev in agent.astream(input or "Analyse the simulation results."):
                     yield _fmt(ev)
 
             elif agent_type == "cv":
                 from md_agent.agents.cv_agent import CVAgent
 
-                agent = CVAgent(work_dir, session=session)
+                agent = CVAgent(work_dir, session=session, api_key=anthropic_key)
                 async for ev in agent.astream(
                     input or "Read the structure and suggest appropriate CVs for metadynamics."
                 ):

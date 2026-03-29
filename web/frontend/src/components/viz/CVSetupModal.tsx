@@ -318,7 +318,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
     : "";
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
         className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col overflow-hidden"
         style={{ width: "min(1100px, 95vw)", height: "min(680px, 90vh)" }}

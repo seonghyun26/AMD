@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Play, StopCircle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import {
+  X, Play, StopCircle, ChevronDown, ChevronRight, Loader2,
+  Search, FileText, Download, Brain, Database, Save, Settings,
+  PenTool, FolderOpen, BarChart3, Mountain, Zap, Map, Microscope,
+  Dna, RefreshCw, Ruler, TriangleRight, Wrench,
+} from "lucide-react";
 import { streamAgent, type AgentType } from "@/lib/agentStream";
 import { fetchPdb, getFileContent } from "@/lib/api";
 import type { SSEEvent, ToolCallBlock, ThinkingBlock, TextBlock, ErrorBlock } from "@/lib/types";
@@ -44,28 +49,28 @@ function ThinkingRenderer({ block }: { block: { kind: "thinking"; content: strin
   );
 }
 
-const TOOL_ICONS: Record<string, string> = {
-  search_papers: "🔍",
-  fetch_arxiv_paper: "📄",
-  download_and_read_paper: "⬇️",
-  extract_md_settings_from_paper: "🧠",
-  search_rcsb_pdb: "🗄️",
-  download_pdb_to_session: "💾",
-  update_session_config: "⚙️",
-  write_plumed_dat: "📝",
-  list_simulation_files: "📁",
-  read_colvar_stats: "📈",
-  read_hills_stats: "⛰️",
-  read_energy_stats: "⚡",
-  read_log_progress: "📝",
-  read_fes_summary: "🗺️",
-  list_structure_files: "📁",
-  read_atom_list: "🔬",
-  read_residue_list: "🧬",
-  generate_torsion_cv: "🔄",
-  generate_distance_cv: "📏",
-  generate_rmsd_cv: "📐",
-  generate_metadynamics_bias: "⛰️",
+const TOOL_ICONS: Record<string, React.ReactNode> = {
+  search_papers: <Search size={12} />,
+  fetch_arxiv_paper: <FileText size={12} />,
+  download_and_read_paper: <Download size={12} />,
+  extract_md_settings_from_paper: <Brain size={12} />,
+  search_rcsb_pdb: <Database size={12} />,
+  download_pdb_to_session: <Save size={12} />,
+  update_session_config: <Settings size={12} />,
+  write_plumed_dat: <PenTool size={12} />,
+  list_simulation_files: <FolderOpen size={12} />,
+  read_colvar_stats: <BarChart3 size={12} />,
+  read_hills_stats: <Mountain size={12} />,
+  read_energy_stats: <Zap size={12} />,
+  read_log_progress: <FileText size={12} />,
+  read_fes_summary: <Map size={12} />,
+  list_structure_files: <FolderOpen size={12} />,
+  read_atom_list: <Microscope size={12} />,
+  read_residue_list: <Dna size={12} />,
+  generate_torsion_cv: <RefreshCw size={12} />,
+  generate_distance_cv: <Ruler size={12} />,
+  generate_rmsd_cv: <TriangleRight size={12} />,
+  generate_metadynamics_bias: <Mountain size={12} />,
 };
 
 function ToolCallRenderer({
@@ -74,7 +79,7 @@ function ToolCallRenderer({
   block: { kind: "tool_call"; tool_use_id: string; tool_name: string; input: Record<string, unknown>; result?: string; status: "pending" | "done" | "error" };
 }) {
   const [open, setOpen] = useState(false);
-  const icon = TOOL_ICONS[block.tool_name] ?? "🔧";
+  const icon = TOOL_ICONS[block.tool_name] ?? <Wrench size={12} />;
   const statusIcon =
     block.status === "pending" ? <Loader2 size={11} className="animate-spin text-blue-500 dark:text-blue-400" /> :
     block.status === "done"    ? <span className="text-emerald-500 dark:text-emerald-400 text-[10px]">✓</span> :
@@ -87,7 +92,7 @@ function ToolCallRenderer({
         className="flex items-center gap-2 w-full px-3 py-2 hover:bg-gray-100/60 dark:hover:bg-gray-800/60 transition-colors text-left"
       >
         {open ? <ChevronDown size={11} className="text-gray-400 dark:text-gray-500" /> : <ChevronRight size={11} className="text-gray-400 dark:text-gray-500" />}
-        <span>{icon}</span>
+        <span className="text-gray-500 dark:text-gray-400">{icon}</span>
         <span className="font-mono text-gray-700 dark:text-gray-300 flex-1">{block.tool_name}</span>
         {statusIcon}
       </button>
@@ -261,7 +266,7 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
         className={`bg-white dark:bg-gray-900 border ${accentBorder} rounded-2xl flex flex-col shadow-2xl`}
         style={{ width: "min(860px, 92vw)", height: "80vh" }}
@@ -399,7 +404,7 @@ function applyEvent(prev: AgentBlock[], event: SSEEvent): AgentBlock[] {
 // ── Agent icon ─────────────────────────────────────────────────────────
 
 function AgentIcon({ type }: { type: AgentType }) {
-  if (type === "paper") return <span className="text-sm">📄</span>;
-  if (type === "analysis") return <span className="text-sm">🔬</span>;
-  return <span className="text-sm">💡</span>;
+  if (type === "paper") return <FileText size={16} />;
+  if (type === "analysis") return <Microscope size={16} />;
+  return <Brain size={16} />;
 }

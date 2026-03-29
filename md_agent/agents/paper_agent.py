@@ -237,13 +237,13 @@ After extracting settings from a paper, offer to apply them:
 class PaperConfigAgent:
     """LangChain specialist agent that extracts MD settings from papers and downloads PDB files."""
 
-    def __init__(self, work_dir: str = "", session=None) -> None:
+    def __init__(self, work_dir: str = "", session=None, api_key: str | None = None) -> None:
         tools = list(TOOLS) + [search_rcsb_pdb]
         if work_dir:
             tools.append(_make_download_pdb_tool(work_dir))
         if work_dir and session is not None:
             tools.extend(_make_config_tools(work_dir, session))
-        self.executor = build_executor(SYSTEM_PROMPT, tools, max_iterations=12)
+        self.executor = build_executor(SYSTEM_PROMPT, tools, max_iterations=12, api_key=api_key)
 
     def run(self, query: str) -> str:
         """Synchronous run — returns final text output."""

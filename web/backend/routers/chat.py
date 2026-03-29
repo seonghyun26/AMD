@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -483,23 +484,32 @@ async def stream_chat(session_id: str, message: str):
     async def event_generator():
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
+        cancel_event = threading.Event()
 
         # Run the synchronous generator in a thread pool.
-        # We use a wrapper that drains next() calls one at a time.
         gen = session.agent.stream_run(message)
+
+        def _drain_sync():
+            """Pull events from the synchronous generator, checking for cancellation."""
+            try:
+                while not cancel_event.is_set():
+                    try:
+                        event = next(gen)
+                    except StopIteration:
+                        break
+                    loop.call_soon_threadsafe(queue.put_nowait, _format_sse(event))
+                    if event.get("type") in ("agent_done", "error"):
+                        break
+            except GeneratorExit:
+                pass
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
 
         async def drain_agent():
             try:
-                while True:
-                    # next() blocks in the thread pool, won't block event loop
-                    event = await loop.run_in_executor(None, next, gen)
-                    await queue.put(_format_sse(event))
-                    if event.get("type") in ("agent_done", "error"):
-                        break
-            except StopIteration:
-                pass
-            finally:
-                await queue.put(None)  # sentinel
+                await loop.run_in_executor(None, _drain_sync)
+            except Exception:
+                await queue.put(None)
 
         async def poll_progress():
             log_path = str(Path(session.work_dir) / "md.log")
@@ -508,7 +518,7 @@ async def stream_chat(session_id: str, message: str):
                 or session.sim_status.get("total_steps")
                 or 1
             )
-            while True:
+            while not cancel_event.is_set():
                 await asyncio.sleep(10)
                 info = get_log_progress(log_path)
                 if info:
@@ -531,8 +541,15 @@ async def stream_chat(session_id: str, message: str):
                     break
                 yield item
         finally:
+            # Signal cancellation so the thread-pool worker stops
+            cancel_event.set()
             agent_task.cancel()
             progress_task.cancel()
+            # Close the generator to interrupt any blocking API call
+            try:
+                gen.close()
+            except Exception:
+                pass
 
     return StreamingResponse(
         event_generator(),

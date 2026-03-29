@@ -99,11 +99,11 @@ function SessionItem({
       {/* Delete confirmation modal */}
       {confirming && (
         <div
-          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={cancelConfirm}
         >
           <div
-            className="bg-white dark:bg-gray-900 border border-red-300 dark:border-red-800/50 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3">
@@ -367,7 +367,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
   const sysVersion = "0.1.0";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-60 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-[420px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
@@ -626,7 +626,7 @@ function ServerStatusModal({ onClose }: { onClose: () => void }) {
   const diskPct = cpu?.disk_total_gb ? ((cpu.disk_used_gb ?? 0) / cpu.disk_total_gb) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-60 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-[520px] max-h-[85vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
