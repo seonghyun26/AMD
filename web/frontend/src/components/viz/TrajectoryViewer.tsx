@@ -119,6 +119,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const settingsRef                     = useRef<HTMLDivElement>(null);
 
   const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSeeking = useRef(false);
 
   const [exportSettings, setExportSettings] = useState({
     screenshot: { factor: 6, antialias: true,  trim: false, background: "white" as ExportBg },
@@ -237,7 +238,9 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           const traj = trajComp?.trajectory as any;
           trajectoryRef.current = traj;
           if (traj?.signals?.frameChanged) {
-            traj.signals.frameChanged.add((i: number) => setFrame(i));
+            traj.signals.frameChanged.add((i: number) => {
+              if (!isSeeking.current) setFrame(i);
+            });
           }
 
           const initPlayer = (n: number) => {
@@ -336,12 +339,15 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     try {
       playerRef.current?.pause?.();
       setPlaying(false);
-      // Update slider position immediately for smooth UX
+      // Block NGL frameChanged from overwriting the slider during drag
+      isSeeking.current = true;
       setFrame(clamped);
       // Debounce the actual NGL setFrame call (which triggers a server POST)
       if (seekTimerRef.current) clearTimeout(seekTimerRef.current);
       seekTimerRef.current = setTimeout(() => {
         trajectoryRef.current?.setFrame(clamped);
+        // Allow frameChanged signals again after NGL processes the seek
+        setTimeout(() => { isSeeking.current = false; }, 100);
       }, 150);
     } catch { /* ignore */ }
   };

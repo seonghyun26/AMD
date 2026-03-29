@@ -162,26 +162,91 @@ def stop_session_simulation(session_id: str) -> bool:
     return False
 
 
+_tail_cache: dict[str, tuple[float, str]] = {}  # path → (mtime, text)
+
+
 def _tail_text(path: Path, max_bytes: int = 64 * 1024) -> str:
-    """Read the tail of a text file without loading it fully into memory."""
+    """Read the tail of a text file, with mtime-based caching."""
     try:
+        key = str(path)
+        mtime = path.stat().st_mtime
+        cached = _tail_cache.get(key)
+        if cached and cached[0] == mtime:
+            return cached[1]
         with path.open("rb") as fh:
             fh.seek(0, 2)
             size = fh.tell()
             fh.seek(max(0, size - max_bytes))
-            return fh.read().decode("utf-8", errors="replace")
+            text = fh.read().decode("utf-8", errors="replace")
+        _tail_cache[key] = (mtime, text)
+        # Cap cache size to avoid unbounded growth
+        if len(_tail_cache) > 100:
+            oldest = next(iter(_tail_cache))
+            del _tail_cache[oldest]
+        return text
     except Exception:
         return ""
 
 
-def infer_run_status_from_disk(session_root: Path, work_dir: Path) -> str | None:
-    """Infer finished/failed from md.log and config when session is not in memory.
-    Returns 'finished', 'failed', or None if unknown. Used when listing sessions."""
+_infer_cache: dict[str, tuple[float, dict | None]] = {}  # path → (mtime, result)
+
+
+def _infer_status_from_log(
+    log_candidates: list[Path],
+    expected_nsteps: int | None = None,
+    started_after: float = 0.0,
+) -> dict | None:
+    """Shared log-inference logic. Returns {"status": str, "detected_by": str} or None.
+
+    Parameters
+    ----------
+    log_candidates : candidate md.log paths to check (first existing wins)
+    expected_nsteps : target step count for "finished" detection
+    started_after : ignore logs with mtime before this timestamp (0 = no filter)
+    """
     import time as _time
 
+    for log_path in log_candidates:
+        if not log_path.exists():
+            continue
+        try:
+            mtime = log_path.stat().st_mtime
+        except Exception:
+            continue
+        if started_after > 0 and mtime < started_after:
+            continue
+
+        # Return cached result if log hasn't changed
+        cache_key = str(log_path)
+        cached = _infer_cache.get(cache_key)
+        if cached and cached[0] == mtime:
+            return cached[1]
+
+        tail = _tail_text(log_path).lower()
+        result: dict | None = None
+        if "fatal error" in tail or "segmentation fault" in tail:
+            result = {"status": "failed", "detected_by": "log_error"}
+        else:
+            info = parse_gromacs_log_progress(str(log_path))
+            if expected_nsteps is not None and info and int(info.get("step", 0)) >= expected_nsteps:
+                result = {"status": "finished", "detected_by": "step_reached"}
+            elif _time.time() - mtime > 60:
+                # Log hasn't been written to in >60s — process likely died silently.
+                result = {"status": "failed", "detected_by": "stale_log"}
+
+        if result is not None:
+            _infer_cache[cache_key] = (mtime, result)
+            return result
+
+    return None
+
+
+def infer_run_status_from_disk(session_root: Path, work_dir: Path) -> str | None:
+    """Infer finished/failed from md.log and config when session is not in memory.
+    Returns 'finished', 'failed', or None if unknown."""
+    expected_nsteps = None
     try:
         cfg_path = session_root / "config.yaml"
-        expected_nsteps = None
         if cfg_path.exists():
             from omegaconf import OmegaConf
 
@@ -191,77 +256,33 @@ def infer_run_status_from_disk(session_root: Path, work_dir: Path) -> str | None
                 expected_nsteps = int(n)
     except Exception:
         pass
-    log_candidates = [
-        work_dir / "simulation" / "md.log",
-        work_dir / "md.log",
-    ]
-    for log_path in log_candidates:
-        if not log_path.exists():
-            continue
-        tail = _tail_text(log_path).lower()
-        if "fatal error" in tail or "segmentation fault" in tail:
-            return "failed"
-        info = parse_gromacs_log_progress(str(log_path))
-        if expected_nsteps is not None and info and int(info.get("step", 0)) >= expected_nsteps:
-            return "finished"
-        # If the log exists but hasn't been modified in >60s and the simulation
-        # didn't reach the target steps, the process likely died silently.
-        try:
-            mtime = log_path.stat().st_mtime
-            if _time.time() - mtime > 60:
-                return "failed"
-        except Exception:
-            pass
-    return None
+
+    result = _infer_status_from_log(
+        [work_dir / "simulation" / "md.log", work_dir / "md.log"],
+        expected_nsteps=expected_nsteps,
+    )
+    return result["status"] if result else None
 
 
 def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
     """Infer terminal simulation status from output files/log markers."""
-    import time as _time
-
     work_dir = Path(session.work_dir)
     sim_meta = session.sim_status or {}
     started_at = float(sim_meta.get("started_at") or 0.0)
-    # Guard: if no simulation has been started in this session, don't inspect old log files.
     if started_at == 0.0:
         return None
+
     output_prefix = str(sim_meta.get("output_prefix") or "simulation/md")
-    expected_nsteps_raw = sim_meta.get("expected_nsteps")
     try:
-        expected_nsteps = int(expected_nsteps_raw) if expected_nsteps_raw is not None else None
+        expected_nsteps = int(sim_meta["expected_nsteps"]) if sim_meta.get("expected_nsteps") is not None else None
     except Exception:
         expected_nsteps = None
 
-    log_candidates = [
-        work_dir / f"{output_prefix}.log",
-        work_dir / "simulation" / "md.log",
-        work_dir / "md.log",
-    ]
-
-    for log_path in log_candidates:
-        if not log_path.exists():
-            continue
-        try:
-            mtime = log_path.stat().st_mtime
-        except Exception:
-            continue
-        if started_at > 0 and mtime < started_at:
-            continue
-
-        tail = _tail_text(log_path).lower()
-        if "fatal error" in tail or "segmentation fault" in tail:
-            return {"status": "failed", "detected_by": "log_error"}
-
-        info = parse_gromacs_log_progress(str(log_path))
-        if expected_nsteps is not None and info and int(info.get("step", 0)) >= expected_nsteps:
-            return {"status": "finished", "detected_by": "step_reached"}
-
-        # If the log hasn't been written to in >60s and steps didn't reach target,
-        # the process died silently (Docker crash, OOM, etc.)
-        if _time.time() - mtime > 60:
-            return {"status": "failed", "detected_by": "stale_log"}
-
-    return None
+    return _infer_status_from_log(
+        [work_dir / f"{output_prefix}.log", work_dir / "simulation" / "md.log", work_dir / "md.log"],
+        expected_nsteps=expected_nsteps,
+        started_after=started_at,
+    )
 
 
 def get_simulation_status(session_id: str) -> dict:

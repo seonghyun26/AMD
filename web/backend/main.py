@@ -38,9 +38,13 @@ from web.backend.routers import (  # noqa: E402
 
 app = FastAPI(title="AMD Web API", version="0.1.0")
 
+_cors_origins = os.getenv(
+    "AMD_CORS_ORIGINS", "http://localhost:3000,http://localhost:8000"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -50,8 +54,8 @@ app.add_middleware(
 # Paths that do not require authentication
 _PUBLIC_PATHS = {"/api/auth/login", "/health"}
 _PUBLIC_PREFIXES = ("/docs", "/openapi.json", "/redoc")
-# Path fragments that are public (file downloads via <a> tags can't carry auth headers)
-_PUBLIC_FRAGMENTS = ("/files/download",)
+# Path fragments that are public (browser-initiated requests that can't carry auth headers)
+_PUBLIC_FRAGMENTS = ("/files/download", "/ngl-traj/", "/ramachandran.png")
 
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):

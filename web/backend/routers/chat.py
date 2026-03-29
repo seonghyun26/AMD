@@ -209,15 +209,21 @@ async def create_session_endpoint(req: CreateSessionRequest):
     # Write session.json for persistence across server restarts
     from datetime import datetime
 
+    json_path = Path(req.work_dir).parent / "session.json"
     meta = {
         "session_id": session.session_id,
         "nickname": session.nickname,
         "work_dir": session.work_dir,
+        "username": req.username,
         "status": "active",
         "run_status": "standby",
         "updated_at": datetime.utcnow().isoformat(),
     }
-    (Path(req.work_dir).parent / "session.json").write_text(json.dumps(meta, indent=2))
+    json_path.write_text(json.dumps(meta, indent=2))
+
+    # Index in SQLite for fast listing
+    from web.backend.db import upsert_session
+    upsert_session({**meta, "json_path": str(json_path)})
 
     return {
         "session_id": session.session_id,
