@@ -254,7 +254,13 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           trajectoryRef.current = traj;
           if (traj?.signals?.frameChanged) {
             traj.signals.frameChanged.add((i: number) => {
-              if (!isSeeking.current) setFrame(i);
+              if (isSeeking.current) return;
+              // Throttle React state updates to screen refresh rate
+              if (frameUpdateRaf.current != null) return;
+              frameUpdateRaf.current = requestAnimationFrame(() => {
+                frameUpdateRaf.current = null;
+                setFrame(i);
+              });
             });
           }
 
@@ -319,6 +325,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
       if (scriptEl && loadHandler) scriptEl.removeEventListener("load", loadHandler);
       try { playerRef.current?.pause?.(); } catch { /* ignore */ }
       if (seekTimerRef.current) clearTimeout(seekTimerRef.current);
+      if (frameUpdateRaf.current != null) { cancelAnimationFrame(frameUpdateRaf.current); frameUpdateRaf.current = null; }
       ro?.disconnect();
       if (stageRef.current) { stageRef.current.dispose(); stageRef.current = null; }
       componentRef.current    = null;
@@ -334,12 +341,19 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     stageRef.current?.setParameters({ backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
   }, [theme]);
 
+  const frameUpdateRaf = useRef<number | null>(null);
+
   const applySpeed = (player: typeof playerRef.current, speed: number) => {
     if (!player) return;
     const baseTimeout = 80;
-    // For high speeds, reduce timeout and increase step to skip frames
-    const step = speed >= 10 ? Math.max(1, Math.floor(speed / 4)) : 1;
-    const timeout = Math.max(1, Math.round(baseTimeout / Math.min(speed, 10)));
+    // At high speeds, skip frames aggressively instead of shrinking timeout below 16ms (screen refresh).
+    // speed  1 → step 1,  timeout 80   (12 fps)
+    // speed  2 → step 1,  timeout 40   (25 fps)
+    // speed  4 → step 2,  timeout 40   (25 fps, 2x skip = effective 4x)
+    // speed 10 → step 5,  timeout 32   (31 fps, 5x skip = effective ~10x)
+    // speed 100→ step 50, timeout 16   (60 fps, 50x skip = effective ~100x)
+    const step = speed <= 2 ? 1 : Math.max(1, Math.round(speed / 2));
+    const timeout = Math.max(16, Math.round(baseTimeout / Math.min(speed, 5)));
     player.setParameters({ timeout, step });
   };
 

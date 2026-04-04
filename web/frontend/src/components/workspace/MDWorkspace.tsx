@@ -2669,6 +2669,25 @@ function GromacsTab({
                   unit="fs"
                   hint="2 fs is standard."
                 />
+                <SelectField
+                  label="Integrator"
+                  value={String(gromacs.integrator ?? "md")}
+                  onChange={(v) => onChange("gromacs.integrator", v)}
+                  onSave={onSave}
+                  options={[
+                    { value: "md",    label: "md (leap-frog)"       },
+                    { value: "md-vv", label: "md-vv (velocity Verlet)" },
+                    { value: "sd",    label: "sd (stochastic dynamics)" },
+                  ]}
+                />
+                <Field
+                  label="Seed"
+                  type="number"
+                  value={String(gromacs.gen_seed ?? "-1")}
+                  onChange={(v) => onChange("gromacs.gen_seed", Number(v))}
+                  onBlur={onSave}
+                  hint="-1 = random seed."
+                />
               </FieldGrid>
             </Section>
           );
@@ -2774,9 +2793,10 @@ function AdvancedSection({
                 onChange={(v) => onChange("gromacs.coulombtype", v)}
                 onSave={onSave}
                 options={[
-                  { value: "PME",     label: "PME"     },
-                  { value: "cutoff",  label: "Cutoff"  },
-                  { value: "Ewald",   label: "Ewald"   },
+                  { value: "PME",             label: "PME"             },
+                  { value: "Reaction-Field",  label: "Reaction-Field"  },
+                  { value: "cutoff",          label: "Cutoff"          },
+                  { value: "Ewald",           label: "Ewald"           },
                 ]}
               />
               <Field
@@ -2808,7 +2828,7 @@ function AdvancedSection({
                 onSave={onSave}
                 options={[
                   { value: "Verlet", label: "Verlet" },
-                  { value: "group",  label: "Group"  },
+                  { value: "group",  label: "Group (deprecated)" },
                 ]}
               />
               <Field
