@@ -47,6 +47,7 @@ const CVSetupModal = dynamic(() => import("@/components/viz/CVSetupModal"), { ss
 const InlineCVPicker = dynamic(() => import("@/components/viz/InlineCVPicker"), { ssr: false });
 const CustomCVResultCard = dynamic(() => import("@/components/viz/CustomCVResultCard"), { ssr: false });
 import FileUpload from "@/components/files/FileUpload";
+import { useTheme } from "@/lib/theme";
 import { uuid } from "@/lib/utils";
 import { Section, Field, FieldGrid, SelectField, PillTabs } from "./ui";
 import {
@@ -402,13 +403,16 @@ function EnergyCardContent({
   for (const v of yVals) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; sumVal += v; }
   const meanVal = yVals.length > 0 ? sumVal / yVals.length : 0;
 
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const axisBase: any = {
     zeroline: false,
-    color: "#374151",
-    tickfont: { size: compact ? 10 : 11, color: "#6b7280" },
+    color: isDark ? "#374151" : "#9ca3af",
+    tickfont: { size: compact ? 10 : 11, color: isDark ? "#6b7280" : "#6b7280" },
     titlefont: { size: 12, color: cfg.color },
-    gridcolor: "#1f2937",
+    gridcolor: isDark ? "#1f2937" : "#e5e7eb",
     gridwidth: 1,
     showgrid: true,
   };
@@ -432,7 +436,7 @@ function EnergyCardContent({
         yaxis: { ...axisBase, title: cfg.unit as any, nticks: compact ? 5 : 6 },
         showlegend: false,
         hovermode: "x unified",
-        hoverlabel: { bgcolor: "#111827", bordercolor: cfg.color, font: { size: 12, color: "#e5e7eb" } },
+        hoverlabel: { bgcolor: isDark ? "#111827" : "#ffffff", bordercolor: cfg.color, font: { size: 12, color: isDark ? "#e5e7eb" : "#374151" } },
         margin: compact ? { t: 4, l: 50, r: 6, b: 30 } : { t: 8, l: 56, r: 20, b: 40 },
         paper_bgcolor: "transparent",
         plot_bgcolor: "transparent",
@@ -773,14 +777,14 @@ function RamachandranExpandedModal({
                     <div className="flex items-center justify-between">
                       <span className="text-gray-500 dark:text-gray-400">Log scale</span>
                       <button onClick={() => onUpdateSetting("log_scale", !plotSettings.log_scale)}
-                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.log_scale ? "bg-cyan-600" : "bg-gray-700"}`}>
+                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.log_scale ? "bg-cyan-600" : "bg-gray-300 dark:bg-gray-700"}`}>
                         <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.log_scale ? "left-[18px]" : "left-0.5"}`} />
                       </button>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-gray-500 dark:text-gray-400">Show start</span>
                       <button onClick={() => onUpdateSetting("show_start", !plotSettings.show_start)}
-                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.show_start ? "bg-cyan-600" : "bg-gray-700"}`}>
+                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.show_start ? "bg-cyan-600" : "bg-gray-300 dark:bg-gray-700"}`}>
                         <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.show_start ? "left-[18px]" : "left-0.5"}`} />
                       </button>
                     </div>
@@ -987,20 +991,20 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                       <select
                         value={plotSettings.cmap}
                         onChange={(e) => updateSetting("cmap", e.target.value)}
-                        className="flex-1 bg-gray-800 border border-gray-700 rounded-md px-2 py-1 text-gray-200 text-xs focus:outline-none focus:border-cyan-600"
+                        className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1 text-gray-800 dark:text-gray-200 text-xs focus:outline-none focus:border-cyan-600"
                       >
                         {RAMACHANDRAN_CMAPS.map((c) => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
                     </div>
-                    <div className="border-t border-gray-800" />
+                    <div className="border-t border-gray-200 dark:border-gray-800" />
                     {/* Log scale toggle */}
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Log scale</span>
+                      <span className="text-gray-500 dark:text-gray-400">Log scale</span>
                       <button
                         onClick={() => updateSetting("log_scale", !plotSettings.log_scale)}
-                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.log_scale ? "bg-cyan-600" : "bg-gray-700"}`}
+                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.log_scale ? "bg-cyan-600" : "bg-gray-300 dark:bg-gray-700"}`}
                       >
                         <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.log_scale ? "left-[18px]" : "left-0.5"}`} />
                       </button>
@@ -1010,7 +1014,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                       <span className="text-gray-500 dark:text-gray-400">Show start</span>
                       <button
                         onClick={() => updateSetting("show_start", !plotSettings.show_start)}
-                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.show_start ? "bg-cyan-600" : "bg-gray-700"}`}
+                        className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${plotSettings.show_start ? "bg-cyan-600" : "bg-gray-300 dark:bg-gray-700"}`}
                       >
                         <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${plotSettings.show_start ? "left-[18px]" : "left-0.5"}`} />
                       </button>

@@ -50,7 +50,7 @@ export default function ToolCallCard({ block }: { block: ToolCallBlock }) {
     >
       <Collapsible.Trigger className="flex items-center gap-2 p-2.5 w-full text-left cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
         <span className="text-base leading-none">{emoji}</span>
-        <span className="font-mono text-xs text-gray-700 dark:text-gray-300 flex-1">{block.tool_name}</span>
+        <span className="font-mono text-xs text-gray-700 dark:text-gray-300 flex-1 min-w-0 truncate">{block.tool_name}</span>
         <StatusIcon status={block.status} />
         {open ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
       </Collapsible.Trigger>

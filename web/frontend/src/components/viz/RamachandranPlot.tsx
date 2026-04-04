@@ -41,7 +41,7 @@ export default function RamachandranPlot({ sessionId, height = 260 }: Props) {
     <div>
       <div className="flex items-center justify-between px-2 pt-2">
         <p className="text-xs font-medium">Ramachandran Plot</p>
-        <button onClick={() => load(true)} className="text-gray-400 hover:text-gray-600">
+        <button onClick={() => load(true)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
           <RefreshCw size={12} className={status === "loading" ? "animate-spin" : ""} />
         </button>
       </div>

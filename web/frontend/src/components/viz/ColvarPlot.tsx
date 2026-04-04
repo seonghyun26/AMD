@@ -53,7 +53,7 @@ export default function ColvarPlot({ sessionId }: Props) {
     <div>
       <div className="flex items-center justify-between px-2 pt-2">
         <p className="text-xs font-medium">Collective Variables</p>
-        <button onClick={load} className="text-gray-400 hover:text-gray-600">
+        <button onClick={load} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
         </button>
       </div>

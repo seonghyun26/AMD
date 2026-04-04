@@ -26,7 +26,7 @@ export default function SimulationStatus({
 
   if (runStatus === "finished") {
     return (
-      <div className="p-4 text-center text-emerald-300">
+      <div className="p-4 text-center text-emerald-600 dark:text-emerald-300">
         <Activity size={24} className="mx-auto mb-2 opacity-70" />
         <p className="text-sm">MD simulation finished</p>
       </div>
@@ -35,7 +35,7 @@ export default function SimulationStatus({
 
   if (runStatus === "failed") {
     return (
-      <div className="p-4 text-center text-red-300">
+      <div className="p-4 text-center text-red-600 dark:text-red-300">
         <Activity size={24} className="mx-auto mb-2 opacity-70" />
         <p className="text-sm">MD simulation failed{exitCode !== null ? ` (exit ${exitCode})` : ""}</p>
       </div>
