@@ -8,7 +8,7 @@
 
 A local GUI platform that aims to automate molecular dynamics for you. Configure parameters, visualize molecules, launch simulations, and analyze results — all through conversation with Claude or through the web UI, without touching the command line.
 
-<!-- AMD wraps GROMACS and PLUMED behind a Claude Opus-powered agentic loop with 25 tools. Point it at a molecule, pick a method (metadynamics, umbrella sampling, steered MD), and the agent handles the rest: generating MDP and PLUMED input files, running grompp, launching mdrun, monitoring convergence via WandB, and producing free energy surfaces. It can even read a published paper, extract the simulation protocol, and reproduce it. -->
+> **Note:** This project is still under active development. AI agents are currently being implemented and integrated across the platform - expect features, APIs, and behaviors to evolve.
 
 ---
 
