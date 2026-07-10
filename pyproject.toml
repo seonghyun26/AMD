@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "amd-agent"
-version = "0.1.0"
+version = "1.0.0"
 description = "Claude Opus 4.6-powered agent for enhanced-sampling molecular dynamics with GROMACS + PLUMED"
 readme = "README.md"
 requires-python = ">=3.10"
