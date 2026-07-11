@@ -497,6 +497,35 @@ async def stream_chat(session_id: str, req: StreamChatRequest):
     if not session:
         raise HTTPException(404, "Session not found")
 
+    # Route to a real (read-only) Claude Code session when that backbone is selected.
+    backbone = ""
+    try:
+        from web.backend.db import get_api_keys
+
+        backbone = (get_api_keys(getattr(session, "username", "")) or {}).get("_agent_backend", "")
+    except Exception:
+        backbone = ""
+
+    if backbone == "claude_code":
+        from web.backend.claude_code_agent import stream_claude_code
+
+        async def cc_generator():
+            try:
+                async for event in stream_claude_code(session.work_dir, message):
+                    yield _format_sse(event)
+            except Exception as exc:
+                yield _format_sse({"type": "error", "message": str(exc)})
+
+        return StreamingResponse(
+            cc_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
     async def event_generator():
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
