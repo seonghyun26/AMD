@@ -141,8 +141,16 @@ def score_cv(values) -> dict[str, Any]:
 
 
 def rank_cvs(scored: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return candidates sorted best-first by their aggregate ``score``."""
-    return sorted(scored, key=lambda c: c.get("score", 0.0), reverse=True)
+    """Return candidates best-first by aggregate ``score``; unscored (None) last.
+
+    ``dict.get("score", 0.0)`` returns None when the key exists with a None value,
+    which can't be compared to floats — so key on (has_score, score) explicitly.
+    """
+    def _key(c: dict[str, Any]) -> tuple[bool, float]:
+        s = c.get("score")
+        return (s is not None, s if s is not None else float("-inf"))
+
+    return sorted(scored, key=_key, reverse=True)
 
 
 # ── COLVAR I/O ────────────────────────────────────────────────────────

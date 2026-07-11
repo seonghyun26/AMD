@@ -246,3 +246,16 @@ async def score_cv_endpoint(project_id: str, cv_id: str, req: ScoreCVRequest):
         cv_id, {"metrics": metrics, "score": metrics["score"], "origin_sims": origin}
     )
     return {"cv": cv_store.get_cv(cv_id), "metrics": metrics}
+
+
+@router.post("/projects/{project_id}/cv-discovery/run")
+async def run_cv_discovery_endpoint(project_id: str):
+    """Run one CV-discovery iteration: propose CVs, score unscored candidates
+    from the project's simulations, and return the ranked state + next-step plan."""
+    from web.backend import cv_orchestrator
+
+    if not project_store.get_project(project_id):
+        raise HTTPException(404, "Project not found")
+    result = cv_orchestrator.run_iteration(project_id)
+    project_store.touch_project(project_id)
+    return result
