@@ -358,6 +358,10 @@ function EnergyCardContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, loading, sessionId, cfg.xvgPrefix]);
 
+  // Read theme before any conditional return so hook order stays stable (Rules of Hooks).
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   if (loading || extracting) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
@@ -402,9 +406,6 @@ function EnergyCardContent({
   let minVal = Infinity, maxVal = -Infinity, sumVal = 0;
   for (const v of yVals) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; sumVal += v; }
   const meanVal = yVals.length > 0 ? sumVal / yVals.length : 0;
-
-  const { theme } = useTheme();
-  const isDark = theme === "dark";
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const axisBase: any = {
