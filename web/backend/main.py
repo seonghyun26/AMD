@@ -32,10 +32,20 @@ from web.backend.routers import (  # noqa: E402
     config,
     files,
     keys,
+    projects,
     server,
     simulate,
     trajectory,
 )
+
+# Ensure the projects/CV tables exist and legacy sessions are wrapped in projects
+# exactly once (idempotent).
+from web.backend import cv_store as _cv_store  # noqa: E402
+from web.backend import project_store as _project_store  # noqa: E402
+
+_project_store.init_projects_db()
+_cv_store.init_cv_db()
+_project_store.migrate_sessions_to_projects()
 
 app = FastAPI(title="AMD Web API", version="0.1.0")
 
@@ -111,6 +121,7 @@ app.include_router(files.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
 app.include_router(keys.router, prefix="/api")
+app.include_router(projects.router, prefix="/api")
 app.include_router(server.router, prefix="/api")
 app.include_router(simulate.router, prefix="/api")
 app.include_router(trajectory.router, prefix="/api")

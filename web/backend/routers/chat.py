@@ -104,6 +104,7 @@ class CreateSessionRequest(BaseModel):
     work_dir: str
     nickname: str = ""
     username: str = ""
+    project_id: str = ""
     preset: str = "undefined"
     # Individual overrides (ignored when preset is set)
     method: str = ""
@@ -226,6 +227,12 @@ async def create_session_endpoint(req: CreateSessionRequest, request: Request):
     # Index in SQLite for fast listing
     from web.backend.db import upsert_session
     upsert_session({**meta, "json_path": str(json_path)})
+
+    # Attach the new simulation to a project if one was specified.
+    if req.project_id:
+        from web.backend.project_store import assign_simulation
+
+        assign_simulation(session.session_id, req.project_id)
 
     return {
         "session_id": session.session_id,
