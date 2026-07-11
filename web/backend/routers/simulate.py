@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -48,47 +47,48 @@ _COORD_EXTS = {".gro", ".pdb"}
 
 
 def _persist_run_status(session: object, status: str) -> None:
-    """Write run_status to session.json, enforcing the FSM.
+    """Advance run_status via the single locked session.json + index write path.
 
-    Allowed transitions:
+    Enforces the FSM:
       standby  → running, failed
       running  → finished, failed, paused
       paused   → running (resume), standby (terminate)
       failed   → running
       finished → (terminal — no further transitions)
-    """
-    try:
-        work = Path(session.work_dir).resolve()  # type: ignore[attr-defined]
-        session_root = work.parent if work.name == "data" else work
-        meta_path = session_root / "session.json"
-        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-        current = meta.get("run_status", "standby")
 
+    Routing through ``session_store.mutate_session_json`` (fcntl-locked and
+    index-synced) means the SQLite ``sessions`` index no longer drifts to a
+    permanent ``standby``, and concurrent writers can't corrupt session.json.
+    """
+    from datetime import datetime
+
+    from web.backend.session_store import mutate_session_json
+
+    def _apply(meta: dict) -> dict | None:
+        current = meta.get("run_status", "standby")
         if current == status:
-            return
-        # "finished" is a terminal state — no further transitions allowed
+            return None
         if current == "finished":
-            return
-        # "failed" can only transition to "running" (new simulation attempt)
+            return None
         if current == "failed" and status != "running":
-            return
-        # "paused" can transition to "running" (resume) or "standby" (terminate)
+            return None
         if current == "paused" and status not in ("running", "standby"):
-            return
+            return None
 
         meta["run_status"] = status
-        # Record wall-time timestamps
         if status == "running":
-            # Only set started_at on fresh start, not on resume
-            if current != "paused":
+            if current != "paused":  # fresh start, not a resume
                 meta["started_at"] = time.time()
-            meta.pop("finished_at", None)
+            meta["finished_at"] = None  # explicit None so the index clears too
         elif status == "paused":
             meta["paused_at"] = time.time()
         elif status in ("finished", "failed"):
             meta.setdefault("finished_at", time.time())
+        meta["updated_at"] = datetime.utcnow().isoformat()
+        return meta
 
-        meta_path.write_text(json.dumps(meta, indent=2))
+    try:
+        mutate_session_json(session.session_id, _apply)  # type: ignore[attr-defined]
     except Exception:
         pass
 
