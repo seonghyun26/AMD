@@ -210,7 +210,7 @@ IMPORTANT:
 - dt in ps (convert from fs if needed: 2 fs = 0.002 ps)
 - Temperature in Kelvin, pressure in bar
 - Distance in nm, energy in kJ/mol (note if paper uses kcal/mol or Angstrom)
-- If simulation length is given in ns, convert to steps: nsteps = length_ns * 1e6 / dt_ps
+- If simulation length is given in ns, convert to steps: nsteps = length_ns * 1000 / dt_ps
 
 Paper text:
 {text}
