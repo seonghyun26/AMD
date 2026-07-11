@@ -53,6 +53,8 @@ web = [
     "uvicorn[standard]>=0.30.0",
     "python-multipart>=0.0.9",
     "matplotlib>=3.7.0",
+    # Claude Code chat backbone (read-only, subscription-authenticated)
+    "claude-agent-sdk>=0.2.0",
 ]
 
 [project.scripts]
