@@ -102,15 +102,41 @@ class TestSimulationAssociation:
 
 
 class TestMigration:
-    def test_wraps_orphans_idempotently(self, temp_db):
+    def test_orphans_go_to_one_test_project_per_user(self, temp_db):
         _make_session("s1", username="alice", nickname="My Run")
-        _make_session("s2", username="bob", nickname="")
-        assert project_store.migrate_sessions_to_projects() == 2
+        _make_session("s2", username="alice", nickname="Other")
+        _make_session("s3", username="bob")
+        assert project_store.migrate_sessions_to_projects() == 3
         assert project_store.migrate_sessions_to_projects() == 0  # idempotent
+
         alice = project_store.list_projects("alice")
         assert len(alice) == 1
-        assert alice[0]["name"] == "My Run"
-        assert alice[0]["simulation_count"] == 1
+        assert alice[0]["name"] == "test"
+        assert alice[0]["simulation_count"] == 2  # both alice sims in one 'test'
+        bob = project_store.list_projects("bob")
+        assert len(bob) == 1 and bob[0]["name"] == "test" and bob[0]["simulation_count"] == 1
+
+    def test_migration_leaves_user_projects_untouched(self, temp_db):
+        real = project_store.create_project(name="Real Project", username="alice")
+        _make_session("s1", username="alice", project_id=real["project_id"])
+        _make_session("s2", username="alice")  # project-less → should go to 'test'
+        assert project_store.migrate_sessions_to_projects() == 1
+        names = {p["name"] for p in project_store.list_projects("alice")}
+        assert names == {"Real Project", "test"}
+
+    def test_consolidate_collapses_per_session_projects(self, temp_db):
+        # Simulate the old scheme: each session wrapped in its own project.
+        p1 = project_store.create_project(name="run1", username="alice")
+        p2 = project_store.create_project(name="run2", username="alice")
+        _make_session("s1", username="alice", project_id=p1["project_id"])
+        _make_session("s2", username="alice", project_id=p2["project_id"])
+
+        res = project_store.consolidate_into_test_project()
+        assert res["moved"] == 2
+        assert res["deleted_projects"] == 2  # run1/run2 now empty
+        projs = project_store.list_projects("alice")
+        assert [p["name"] for p in projs] == ["test"]
+        assert projs[0]["simulation_count"] == 2
 
 
 class TestCVStore:

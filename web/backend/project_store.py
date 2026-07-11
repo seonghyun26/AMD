@@ -211,28 +211,93 @@ def _count_simulations(project_id: str) -> int:
 # ── One-time migration of legacy (project-less) sessions ──────────────
 
 
-def migrate_sessions_to_projects() -> int:
-    """Wrap every project-less session in its own auto-created project.
+_LEGACY_PROJECT_NAME = "test"
 
-    Idempotent: only sessions with an empty ``project_id`` are affected, so
-    re-running does nothing.  Returns the number of projects created.
+
+def _get_or_create_test_project(username: str) -> dict[str, Any]:
+    """Return the user's single ``test`` project, creating it if absent."""
+    with db._conn() as con:
+        con.row_factory = sqlite3.Row
+        row = con.execute(
+            "SELECT * FROM projects WHERE username = ? AND name = ? AND status != 'deleted' "
+            "ORDER BY created_at LIMIT 1",
+            (username, _LEGACY_PROJECT_NAME),
+        ).fetchone()
+    if row:
+        return dict(row)
+    return create_project(
+        name=_LEGACY_PROJECT_NAME,
+        username=username,
+        description="Home for pre-existing simulations.",
+    )
+
+
+def migrate_sessions_to_projects() -> int:
+    """Assign every project-less session to its user's single ``test`` project.
+
+    Forward-safe and idempotent: only sessions with an empty ``project_id`` are
+    touched, so user-created projects are never disturbed. Populates the session
+    index from disk first so on-disk sessions aren't missed. Returns the number
+    of sessions assigned.
     """
+    try:
+        from web.backend.session_store import read_all_sessions
+
+        read_all_sessions()  # ensure on-disk sessions are indexed before wrapping
+    except Exception:
+        pass
+
     with db._conn() as con:
         con.row_factory = sqlite3.Row
         orphans = con.execute(
-            "SELECT session_id, nickname, username, selected_molecule "
-            "FROM sessions WHERE (project_id IS NULL OR project_id = '') "
-            "AND status != 'deleted'"
+            "SELECT session_id, username FROM sessions "
+            "WHERE (project_id IS NULL OR project_id = '') AND status != 'deleted'"
         ).fetchall()
 
-    created = 0
+    moved = 0
+    test_ids: dict[str, str] = {}
     for row in orphans:
-        name = (row["nickname"] or "").strip() or "Untitled Project"
-        project = create_project(
-            name=name,
-            username=row["username"] or "",
-            molecule=row["selected_molecule"] or "",
-        )
-        assign_simulation(row["session_id"], project["project_id"])
-        created += 1
-    return created
+        user = row["username"] or ""
+        if user not in test_ids:
+            test_ids[user] = _get_or_create_test_project(user)["project_id"]
+        assign_simulation(row["session_id"], test_ids[user])
+        moved += 1
+    return moved
+
+
+def consolidate_into_test_project() -> dict[str, Any]:
+    """ONE-TIME: collapse every non-deleted session into its user's ``test``
+    project and delete the now-empty other projects.
+
+    Use this to migrate away from an earlier per-session auto-project scheme.
+    NOT called at startup (it would yank user-created projects into ``test``).
+    """
+    with db._conn() as con:
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT session_id, username, project_id FROM sessions WHERE status != 'deleted'"
+        ).fetchall()
+
+    moved = 0
+    test_ids: dict[str, str] = {}
+    for row in rows:
+        user = row["username"] or ""
+        if user not in test_ids:
+            test_ids[user] = _get_or_create_test_project(user)["project_id"]
+        if row["project_id"] != test_ids[user]:
+            assign_simulation(row["session_id"], test_ids[user])
+            moved += 1
+
+    keep = set(test_ids.values())
+    with db._conn() as con:
+        con.row_factory = sqlite3.Row
+        projects = con.execute(
+            "SELECT project_id FROM projects WHERE status != 'deleted'"
+        ).fetchall()
+    deleted = 0
+    for p in projects:
+        pid = p["project_id"]
+        if pid not in keep and _count_simulations(pid) == 0:
+            delete_project(pid)
+            deleted += 1
+    return {"moved": moved, "deleted_projects": deleted, "test_projects": sorted(keep)}
