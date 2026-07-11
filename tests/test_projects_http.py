@@ -78,3 +78,42 @@ def test_simulation_assignment_over_http(client):
     ).status_code == 200
     sims = client.get(f"/api/projects/{pid}/simulations", headers=alice).json()["simulations"]
     assert [s["session_id"] for s in sims] == ["s1"]
+
+
+def test_cv_discovery_propose_persists(client):
+    alice = _auth("alice")
+    pid = client.post(
+        "/api/projects", json={"name": "P", "system": "ala_dipeptide"}, headers=alice
+    ).json()["project"]["project_id"]
+    r = client.post(f"/api/projects/{pid}/cv-discovery/propose", headers=alice)
+    assert r.status_code == 200
+    assert {c["name"] for c in r.json()["proposed"]} == {"phi", "psi"}
+    cvs = client.get(f"/api/projects/{pid}/cvs", headers=alice).json()["cvs"]
+    assert {c["name"] for c in cvs} == {"phi", "psi"}
+
+
+def test_cv_discovery_score_updates_candidate(client, tmp_path):
+    alice = _auth("alice")
+    pid = client.post(
+        "/api/projects", json={"name": "P", "system": "ala_dipeptide"}, headers=alice
+    ).json()["project"]["project_id"]
+    # A project simulation whose COLVAR shows phi transitioning between two basins.
+    wd = tmp_path / "s1data"
+    wd.mkdir()
+    rows = "".join(f"{i} {v} 0.0\n" for i, v in enumerate([-2.5, -2.5, 2.5, 2.5] * 20))
+    (wd / "COLVAR").write_text("#! FIELDS time phi psi\n" + rows)
+    db.upsert_session(
+        {"session_id": "s1", "work_dir": str(wd), "username": "alice", "status": "active",
+         "run_status": "finished", "updated_at": "x", "json_path": ""}
+    )
+    project_store.assign_simulation("s1", pid)
+    cv = cv_store.create_cv(pid, name="phi", cv_type="TORSION")
+
+    r = client.post(
+        f"/api/projects/{pid}/cvs/{cv['cv_id']}/score", json={"session_id": "s1"}, headers=alice
+    )
+    assert r.status_code == 200
+    metrics = r.json()["metrics"]
+    assert metrics["n_transitions"] > 10
+    assert r.json()["cv"]["score"] == metrics["score"]
+    assert "s1" in r.json()["cv"]["origin_sims"]

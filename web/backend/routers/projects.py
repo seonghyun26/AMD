@@ -7,6 +7,8 @@ routes are additive — existing ``/sessions/*`` endpoints keep working.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -170,3 +172,77 @@ async def delete_cv_endpoint(project_id: str, cv_id: str):
         raise HTTPException(404, "CV candidate not found")
     cv_store.delete_cv(cv_id)
     return {"deleted": cv_id}
+
+
+# ── CV discovery (heuristic v1) ───────────────────────────────────────
+
+
+class ScoreCVRequest(BaseModel):
+    session_id: str
+
+
+@router.post("/projects/{project_id}/cv-discovery/propose")
+async def propose_cvs_endpoint(project_id: str):
+    """Propose candidate CVs for the project's system and persist them.
+
+    Heuristic v1: curated CVs for known systems (e.g. alanine dipeptide → φ/ψ).
+    """
+    from md_agent.cv_discovery import propose_cvs
+
+    project = project_store.get_project(project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    hint = (project.get("system") or project.get("molecule") or "").strip()
+    proposed = propose_cvs(system=hint)
+    created = [
+        cv_store.create_cv(
+            project_id=project_id,
+            name=cv["name"],
+            cv_type=cv.get("type", ""),
+            definition=json.dumps(cv),
+            status="candidate",
+        )
+        for cv in proposed
+    ]
+    if created:
+        project_store.touch_project(project_id)
+    return {
+        "proposed": created,
+        "system": hint,
+        "message": None if created else f"No heuristic CVs for system '{hint or 'unknown'}'.",
+    }
+
+
+@router.post("/projects/{project_id}/cvs/{cv_id}/score")
+async def score_cv_endpoint(project_id: str, cv_id: str, req: ScoreCVRequest):
+    """Score a CV candidate from a project simulation's COLVAR; store the metrics."""
+    from md_agent.cv_discovery import read_colvar_column, score_cv
+    from web.backend.db import get_session_indexed
+
+    existing = cv_store.get_cv(cv_id)
+    if not existing or existing.get("project_id") != project_id:
+        raise HTTPException(404, "CV candidate not found")
+
+    sess = get_session_indexed(req.session_id)
+    if not sess or not sess.get("work_dir"):
+        raise HTTPException(404, "Simulation not found")
+    # Only score against a simulation that belongs to this project.
+    if sess.get("project_id") != project_id:
+        raise HTTPException(403, "Simulation is not part of this project")
+
+    work_dir = Path(sess["work_dir"])
+    colvar = next(
+        (c for c in (work_dir / "simulation" / "COLVAR", work_dir / "COLVAR") if c.exists()),
+        None,
+    )
+    if colvar is None:
+        raise HTTPException(400, "No COLVAR file found for this simulation")
+
+    values = read_colvar_column(str(colvar), existing["name"])
+    metrics = score_cv(values)
+    origin = list(dict.fromkeys([*existing.get("origin_sims", []), req.session_id]))
+    cv_store.update_cv(
+        cv_id, {"metrics": metrics, "score": metrics["score"], "origin_sims": origin}
+    )
+    return {"cv": cv_store.get_cv(cv_id), "metrics": metrics}
