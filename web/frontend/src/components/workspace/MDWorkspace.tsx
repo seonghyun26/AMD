@@ -93,6 +93,7 @@ import {
   getColvar,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
+import { useProjectStore } from "@/store/projectStore";
 
 // ── Helpers, constants, and UI primitives imported from ./helpers and ./ui ──
 
@@ -3934,6 +3935,7 @@ function NewSessionForm({
   const [gromacs, setGromacs] = useState("vacuum");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3950,6 +3952,7 @@ function NewSessionForm({
         preset,
         system,
         gromacs,
+        projectId: activeProjectId ?? undefined,
       });
       onCreated(session_id, work_dir, savedNick, seeded_files ?? []);
     } catch (err) {

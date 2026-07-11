@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Bot, CircleCheck, CircleX } from "lucide-react";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Bot, CircleCheck, CircleX, FolderOpen, FolderPlus, ArrowLeft } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
+import { useProjectStore } from "@/store/projectStore";
 import { logout, getUsername } from "@/lib/auth";
 import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, type ServerStatus, type GpuInfo } from "@/lib/api";
 import { useRouter } from "next/navigation";
@@ -850,18 +851,113 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
   );
 }
 
+// ── Project list item ─────────────────────────────────────────────────
+
+function ProjectItem({
+  p,
+  onOpen,
+  onDeleted,
+}: {
+  p: { project_id: string; name: string; simulation_count?: number };
+  onOpen: () => void;
+  onDeleted: () => Promise<void>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  return (
+    <>
+      {confirming && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-500 dark:text-red-400 flex-shrink-0">
+                <Trash2 size={16} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Delete project?</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  <span className="text-gray-700 dark:text-gray-300 font-medium">{p.name}</span>
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Simulations are kept — only the grouping is removed.</p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm transition-colors"
+              >
+                <X size={13} /> Cancel
+              </button>
+              <button
+                onClick={async (e) => { e.stopPropagation(); setDeleting(true); await onDeleted(); }}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+              >
+                <Check size={13} /> {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="group relative w-full rounded-lg transition-colors cursor-pointer flex overflow-hidden text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-200">
+        <div className="flex-1 min-w-0 px-3 py-2.5" onClick={onOpen}>
+          <div className="flex items-center gap-2">
+            <FolderOpen size={13} className="flex-shrink-0 text-blue-500/70" />
+            <span className="text-xs font-medium truncate flex-1">{p.name}</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-600 flex-shrink-0 tabular-nums">{p.simulation_count ?? 0}</span>
+          </div>
+        </div>
+        <div className="opacity-0 group-hover:opacity-100 flex flex-shrink-0 transition-opacity border-l border-gray-200/60 dark:border-gray-700/40">
+          <button
+            onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
+            className="flex items-center justify-center w-7 text-gray-400 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            title="Delete project"
+          >
+            <Trash2 size={10} />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Main sidebar ───────────────────────────────────────────────────────
 
 export default function SessionSidebar({ onNewSession, onSelectSession, onSessionDeleted }: Props) {
   const router = useRouter();
-  const { sessions, sessionsLoading, sessionId, fetchSessions, switchSession, updateSessionNickname, removeSession, setSessionRunStatus } =
+  const { sessions, sessionsLoading, sessionId, fetchSimulations, switchSession, updateSessionNickname, removeSession, setSessionRunStatus } =
     useSessionStore();
+  const { projects, activeProjectId, projectsLoading, fetchProjects, setActiveProject, createAndSelect, deleteProjectById } =
+    useProjectStore();
   const username = getUsername();
   const [collapsed, setCollapsed] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
 
   useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
+    fetchProjects();
+  }, [fetchProjects]);
+  useEffect(() => {
+    if (activeProjectId) fetchSimulations(activeProjectId);
+  }, [activeProjectId, fetchSimulations]);
+
+  const activeProject = projects.find((p) => p.project_id === activeProjectId) || null;
+
+  const submitNewProject = async () => {
+    const name = newName.trim();
+    if (!name) { setCreating(false); return; }
+    await createAndSelect(name);
+    setNewName("");
+    setCreating(false);
+  };
 
   const handleLogout = () => {
     logout();
@@ -911,55 +1007,125 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
         </button>
       </div>
 
-      {/* New session button */}
-      <div className="px-3 py-2.5 flex-shrink-0">
-        <button
-          onClick={onNewSession}
-          className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
-        >
-          <Plus size={12} />
-          <span className="text-xs font-medium">New Session</span>
-        </button>
-      </div>
+      {activeProjectId === null ? (
+        /* ── Projects view ── */
+        <>
+          <div className="px-3 py-2.5 flex-shrink-0">
+            {creating ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") submitNewProject();
+                    if (e.key === "Escape") { setCreating(false); setNewName(""); }
+                  }}
+                  placeholder="Project name"
+                  className="flex-1 min-w-0 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button onClick={submitNewProject} className="text-emerald-500 hover:text-emerald-400 flex-shrink-0"><Check size={13} /></button>
+                <button onClick={() => { setCreating(false); setNewName(""); }} className="text-gray-400 hover:text-gray-600 flex-shrink-0"><X size={13} /></button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setCreating(true)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
+              >
+                <FolderPlus size={12} />
+                <span className="text-xs font-medium">New Project</span>
+              </button>
+            )}
+          </div>
 
-      {/* Sessions list */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
-        {sessionsLoading && sessions.length === 0 ? (
-          <div className="px-1 py-2">
-            <div className="flex items-center gap-2 px-2 mb-3">
-              <Loader2 size={11} className="animate-spin text-gray-400" />
-              <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading sessions…</span>
+          <div className="flex-1 overflow-y-auto px-2 pb-2">
+            <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-600 px-3 pt-1 pb-1.5">Projects</p>
+            {projectsLoading && projects.length === 0 ? (
+              <div className="flex items-center gap-2 px-3 py-2">
+                <Loader2 size={11} className="animate-spin text-gray-400" />
+                <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading projects…</span>
+              </div>
+            ) : projects.length === 0 ? (
+              <p className="text-[11px] text-gray-400 dark:text-gray-600 px-3 py-2">No projects yet</p>
+            ) : (
+              <div className="space-y-0.5">
+                {projects.map((p) => (
+                  <ProjectItem
+                    key={p.project_id}
+                    p={p}
+                    onOpen={() => setActiveProject(p.project_id)}
+                    onDeleted={() => deleteProjectById(p.project_id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        /* ── Simulations view (inside a project) ── */
+        <>
+          <div className="px-3 pt-2.5 pb-2 flex-shrink-0 border-b border-gray-100 dark:border-gray-800/60">
+            <button
+              onClick={() => setActiveProject(null)}
+              className="flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-colors mb-1.5"
+            >
+              <ArrowLeft size={12} /> Projects
+            </button>
+            <div className="flex items-center gap-1.5 px-0.5">
+              <FolderOpen size={13} className="text-blue-500/70 flex-shrink-0" />
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{activeProject?.name ?? "Project"}</span>
             </div>
-            <div className="space-y-1 animate-pulse">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-lg bg-gray-100 dark:bg-gray-800/60 px-3 py-2.5">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <div className="w-2 h-2 rounded-full bg-gray-200 dark:bg-gray-700" />
-                    <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
-                  </div>
-                  <div className="pl-3 h-2.5 w-16 bg-gray-100 dark:bg-gray-800 rounded" />
+          </div>
+
+          <div className="px-3 py-2.5 flex-shrink-0">
+            <button
+              onClick={onNewSession}
+              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
+            >
+              <Plus size={12} />
+              <span className="text-xs font-medium">New Session</span>
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-2 pb-2">
+            {sessionsLoading && sessions.length === 0 ? (
+              <div className="px-1 py-2">
+                <div className="flex items-center gap-2 px-2 mb-3">
+                  <Loader2 size={11} className="animate-spin text-gray-400" />
+                  <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading simulations…</span>
                 </div>
-              ))}
-            </div>
+                <div className="space-y-1 animate-pulse">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="rounded-lg bg-gray-100 dark:bg-gray-800/60 px-3 py-2.5">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="w-2 h-2 rounded-full bg-gray-200 dark:bg-gray-700" />
+                        <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
+                      </div>
+                      <div className="pl-3 h-2.5 w-16 bg-gray-100 dark:bg-gray-800 rounded" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : sessions.length === 0 ? (
+              <p className="text-[11px] text-gray-400 dark:text-gray-600 px-3 py-2">No simulations yet</p>
+            ) : (
+              <div className="space-y-0.5">
+                {sessions.map((s) => (
+                  <SessionItem
+                    key={s.session_id}
+                    s={s}
+                    isActive={s.session_id === sessionId}
+                    onSelect={() => { switchSession(s.session_id, s.work_dir); onSelectSession?.(s.session_id); }}
+                    onSaved={(nick) => updateSessionNickname(s.session_id, nick)}
+                    onDeleted={() => { removeSession(s.session_id); onSessionDeleted?.(s.session_id); }}
+                    onRunStatusRead={(rs) => setSessionRunStatus(s.session_id, rs as "standby" | "running" | "finished" | "failed")}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        ) : sessions.length === 0 ? (
-          <p className="text-[11px] text-gray-400 dark:text-gray-600 px-3 py-2">No sessions yet</p>
-        ) : (
-          <div className="space-y-0.5">
-            {sessions.map((s) => (
-              <SessionItem
-                key={s.session_id}
-                s={s}
-                isActive={s.session_id === sessionId}
-                onSelect={() => { switchSession(s.session_id, s.work_dir); onSelectSession?.(s.session_id); }}
-                onSaved={(nick) => updateSessionNickname(s.session_id, nick)}
-                onDeleted={() => { removeSession(s.session_id); onSessionDeleted?.(s.session_id); }}
-                onRunStatusRead={(rs) => setSessionRunStatus(s.session_id, rs as "standby" | "running" | "finished" | "failed")}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+        </>
+      )}
 
       <ProfileSection username={username ?? "user"} onLogout={handleLogout} />
     </aside>

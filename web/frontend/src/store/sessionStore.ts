@@ -7,7 +7,7 @@ import type {
   SSEEvent,
   ToolCallBlock,
 } from "@/lib/types";
-import { listSessions, getMessages, saveMessages } from "@/lib/api";
+import { listSessions, listProjectSimulations, getMessages, saveMessages } from "@/lib/api";
 import { getUsername } from "@/lib/auth";
 import { uuid } from "@/lib/utils";
 
@@ -35,6 +35,7 @@ interface SessionState {
   setSession: (id: string, config: SessionConfig) => void;
   switchSession: (id: string, workDir: string) => void;
   fetchSessions: () => Promise<void>;
+  fetchSimulations: (projectId: string) => Promise<void>;
   addSession: (s: SessionSummary) => void;
   removeSession: (sessionId: string) => void;
   updateSessionNickname: (sessionId: string, nickname: string) => void;
@@ -79,6 +80,17 @@ export const useSessionStore = create<SessionState>((set) => ({
       set({ sessionsLoading: true });
       const { sessions } = await listSessions(getUsername());
       set({ sessions, sessionsLoading: false });
+    } catch {
+      set({ sessionsLoading: false });
+    }
+  },
+
+  // Load only the simulations belonging to a project (the projects-first nav).
+  fetchSimulations: async (projectId) => {
+    try {
+      set({ sessionsLoading: true });
+      const { simulations } = await listProjectSimulations(projectId);
+      set({ sessions: simulations as SessionSummary[], sessionsLoading: false });
     } catch {
       set({ sessionsLoading: false });
     }

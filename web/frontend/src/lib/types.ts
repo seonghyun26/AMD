@@ -71,3 +71,17 @@ export interface ConfigOptions {
   gromacs: string[];
   plumed_cvs: string[];
 }
+
+export interface Project {
+  project_id: string;
+  name: string;
+  username: string;
+  description?: string;
+  molecule?: string;
+  system?: string;
+  goal?: string;
+  status?: string;
+  simulation_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}

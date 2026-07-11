@@ -1,4 +1,4 @@
-import type { ConfigOptions, SessionConfig } from "./types";
+import type { ConfigOptions, Project, SessionConfig } from "./types";
 import { getToken } from "./auth";
 
 const BASE = "/api";
@@ -54,7 +54,7 @@ async function json<T>(res: Response): Promise<T> {
 // ── Sessions ──────────────────────────────────────────────────────────
 
 export async function createSession(
-  params: { workDir: string; nickname: string; username: string; preset: string; system?: string; state?: string; gromacs?: string }
+  params: { workDir: string; nickname: string; username: string; preset: string; system?: string; state?: string; gromacs?: string; projectId?: string }
 ): Promise<{ session_id: string; work_dir: string; nickname: string; seeded_files: string[] }> {
   const res = await authFetch(`${BASE}/sessions`, {
     method: "POST",
@@ -67,9 +67,63 @@ export async function createSession(
       system: params.system ?? "",
       state: params.state ?? "",
       gromacs: params.gromacs ?? "",
+      project_id: params.projectId ?? "",
     }),
   });
   return json(res);
+}
+
+// ── Projects ──────────────────────────────────────────────────────────
+
+export interface ProjectSimulation {
+  session_id: string;
+  work_dir: string;
+  nickname: string;
+  run_status?: "standby" | "running" | "finished" | "failed" | "paused";
+  selected_molecule?: string;
+  updated_at?: string;
+  result_cards?: unknown[];
+}
+
+export async function listProjects(username: string): Promise<{ projects: Project[] }> {
+  return json(await authFetch(`${BASE}/projects?username=${encodeURIComponent(username)}`));
+}
+
+export async function createProject(params: {
+  name: string; username: string; system?: string; molecule?: string; goal?: string;
+}): Promise<{ project: Project }> {
+  const res = await authFetch(`${BASE}/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: params.name,
+      username: params.username,
+      system: params.system ?? "",
+      molecule: params.molecule ?? "",
+      goal: params.goal ?? "",
+    }),
+  });
+  return json(res);
+}
+
+export async function updateProjectName(projectId: string, name: string): Promise<{ project: Project }> {
+  const res = await authFetch(`${BASE}/projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return json(res);
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  const res = await authFetch(`${BASE}/projects/${projectId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+}
+
+export async function listProjectSimulations(
+  projectId: string
+): Promise<{ simulations: ProjectSimulation[] }> {
+  return json(await authFetch(`${BASE}/projects/${projectId}/simulations`));
 }
 
 export async function listSessions(username: string): Promise<{

@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { ChevronLeft, ChevronRight, Loader2, FlaskConical } from "lucide-react";
 import { isAuthenticated } from "@/lib/auth";
 import { useSessionStore } from "@/store/sessionStore";
+import { useProjectStore } from "@/store/projectStore";
 import SessionSidebar from "@/components/sidebar/SessionSidebar";
 import MDWorkspace from "@/components/workspace/MDWorkspace";
 const ChatWindow = dynamic(() => import("@/components/chat/ChatWindow"), { ssr: false });
@@ -19,17 +20,18 @@ export default function App() {
   const [showNewSession, setShowNewSession] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
-  const { addSession, fetchSessions, loadMessages, persistMessages, clearMessages } = useSessionStore();
+  const { fetchSimulations, loadMessages, persistMessages, clearMessages } = useSessionStore();
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
-  // Auth check — redirect to /login if not authenticated; load session list
+  // Auth check — redirect to /login if not authenticated. Projects and their
+  // simulations are loaded by the sidebar (projects-first navigation).
   useEffect(() => {
     if (!isAuthenticated()) {
       router.replace("/login");
       return;
     }
     setHydrated(true);
-    fetchSessions();
-  }, [router, fetchSessions]);
+  }, [router]);
 
   const sessionsLoading = useSessionStore((s) => s.sessionsLoading);
 
@@ -53,7 +55,7 @@ export default function App() {
     // MDWorkspace already called addSession with selected_molecule — don't overwrite it here.
     setSessionId(id);
     setShowNewSession(false);
-    fetchSessions();
+    if (activeProjectId) fetchSimulations(activeProjectId);
   };
 
   const handleNewSession = () => {
