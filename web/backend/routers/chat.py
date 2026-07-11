@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -115,8 +115,10 @@ class CreateSessionRequest(BaseModel):
 
 
 @router.post("/sessions")
-async def create_session_endpoint(req: CreateSessionRequest):
+async def create_session_endpoint(req: CreateSessionRequest, request: Request):
     """Create a new agent session. Returns session_id + list of seeded files."""
+    # Bind the session to the authenticated user, not a client-supplied name.
+    username = getattr(request.state, "username", "") or req.username
     Path(req.work_dir).mkdir(parents=True, exist_ok=True)
 
     # Resolve config from preset; individual fields override if provided
@@ -172,7 +174,7 @@ async def create_session_endpoint(req: CreateSessionRequest):
     session = create_session(
         work_dir=req.work_dir,
         nickname=req.nickname,
-        username=req.username,
+        username=username,
         method=method,
         system=hydra_system,
         gromacs=gromacs,
@@ -214,7 +216,7 @@ async def create_session_endpoint(req: CreateSessionRequest):
         "session_id": session.session_id,
         "nickname": session.nickname,
         "work_dir": session.work_dir,
-        "username": req.username,
+        "username": username,
         "status": "active",
         "run_status": "standby",
         "updated_at": datetime.utcnow().isoformat(),
@@ -234,14 +236,14 @@ async def create_session_endpoint(req: CreateSessionRequest):
 
 
 @router.get("/sessions")
-async def list_sessions_endpoint(username: str = ""):
-    """List sessions by scanning outputs/{username}/*/session.json on disk.
-
-    This is a pure read — status inference that requires a write is
-    deferred to the per-session run-status endpoint.
+async def list_sessions_endpoint(request: Request):
+    """List the authenticated user's sessions (scoped to the JWT identity so one
+    user cannot enumerate another's). Pure read — status inference that requires
+    a write is deferred to the per-session run-status endpoint.
     """
-    from web.backend.session_store import read_all_sessions
+    username = getattr(request.state, "username", "") or ""
     from web.backend.session_manager import infer_run_status_from_disk
+    from web.backend.session_store import read_all_sessions
 
     raw = read_all_sessions(username)
     sessions = []
@@ -254,13 +256,9 @@ async def list_sessions_endpoint(username: str = ""):
             inferred = infer_run_status_from_disk(session_root, work_dir_resolved)
             if inferred in ("finished", "failed"):
                 run_status = inferred
-                # Persist the inferred status via locked write
-                import time as _time
-                from web.backend.session_store import update_session_json
-                update_session_json(data["session_id"], {
-                    "run_status": inferred,
-                    "finished_at": data.get("finished_at") or _time.time(),
-                })
+                # Read-only listing: do NOT persist here. Concurrent list calls
+                # (polling, multiple tabs) would race on the same session.json.
+                # The per-session run-status endpoint owns the persist.
         sessions.append(
             {
                 "session_id": data["session_id"],
@@ -324,6 +322,7 @@ class ResultCardsRequest(BaseModel):
 async def update_result_cards(session_id: str, req: ResultCardsRequest):
     """Persist which result plot cards are open in session.json."""
     from datetime import datetime
+
     from web.backend.session_store import update_session_json
 
     update_session_json(session_id, {
@@ -337,6 +336,7 @@ async def update_result_cards(session_id: str, req: ResultCardsRequest):
 async def update_selected_molecule(session_id: str, req: MoleculeSelectRequest):
     """Persist the selected molecule filename in session.json."""
     from datetime import datetime
+
     from web.backend.session_store import update_session_json
 
     update_session_json(session_id, {
@@ -349,6 +349,7 @@ async def update_selected_molecule(session_id: str, req: MoleculeSelectRequest):
 @router.patch("/sessions/{session_id}/nickname")
 async def update_nickname(session_id: str, req: NicknameRequest):
     from datetime import datetime
+
     from web.backend.session_store import update_session_json
 
     nickname = req.nickname.strip()
@@ -391,7 +392,7 @@ async def delete_session_endpoint(session_id: str):
     moved_to: str | None = None
 
     # Mark as deleted via locked write, then move folder to trash.
-    from web.backend.session_store import update_session_json, _scan_session_file
+    from web.backend.session_store import _scan_session_file, update_session_json
 
     sf = _scan_session_file(session_id)
     if sf:

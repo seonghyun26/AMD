@@ -190,11 +190,17 @@ export async function uploadFile(
 }
 
 export function downloadUrl(sessionId: string, path: string): string {
-  return `${BASE}/sessions/${sessionId}/files/download?path=${encodeURIComponent(path)}`;
+  // Browser <a>/<img> requests can't send the Authorization header, so pass the
+  // JWT as a query param — the backend accepts either (see JWTAuthMiddleware).
+  const t = getToken();
+  const tok = t ? `&token=${encodeURIComponent(t)}` : "";
+  return `${BASE}/sessions/${sessionId}/files/download?path=${encodeURIComponent(path)}${tok}`;
 }
 
 export function downloadZipUrl(sessionId: string): string {
-  return `${BASE}/sessions/${sessionId}/files/download-zip`;
+  const t = getToken();
+  const tok = t ? `?token=${encodeURIComponent(t)}` : "";
+  return `${BASE}/sessions/${sessionId}/files/download-zip${tok}`;
 }
 
 export async function deleteFile(sessionId: string, path: string): Promise<{ archived: string }> {
@@ -280,6 +286,8 @@ export function getRamachandranImageUrl(
     if (settings.log_scale !== undefined) params.set("log_scale", String(settings.log_scale));
     if (settings.show_start !== undefined) params.set("show_start", String(settings.show_start));
   }
+  const t = getToken();
+  if (t) params.set("token", t);  // <img>/fetch can't send the auth header
   const qs = params.size ? `?${params}` : "";
   return `${BASE}/sessions/${sessionId}/analysis/ramachandran.png${qs}`;
 }
