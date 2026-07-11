@@ -405,8 +405,13 @@ async def validate_checkpoint(session_id: str, filename: str):
     if not session:
         raise HTTPException(404, "Session not found")
 
-    work_dir = Path(session.work_dir)
-    ckpt_path = work_dir / filename
+    work_dir = Path(session.work_dir).resolve()
+    # `filename` is an untrusted query param and torch.jit.load/torch.load
+    # deserialise it (pickle / TorchScript), so a traversal here is RCE on
+    # arbitrary server files. Constrain the resolved path to the work_dir.
+    ckpt_path = (work_dir / filename).resolve()
+    if not ckpt_path.is_relative_to(work_dir):
+        raise HTTPException(400, "Invalid checkpoint path")
     if not ckpt_path.exists():
         return {
             "valid": False,

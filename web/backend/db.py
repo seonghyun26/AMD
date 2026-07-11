@@ -12,7 +12,6 @@ Hash format  (colon-separated, all fields in the hash string):
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import os
 import secrets
@@ -26,12 +25,9 @@ from cryptography.fernet import Fernet, InvalidToken
 DB_PATH = Path(os.getenv("AMD_DB_PATH", str(Path.home() / ".amd" / "users.db")))
 _ITERATIONS = 260_000
 
-# Default users seeded on first run.
-_DEFAULT_USERS: list[tuple[str, str]] = [
-    ("admin", "amd123"),
-    ("hyun", "1126"),
-    ("debug", "1234"),
-]
+# No credentials are hardcoded. On a fresh database a single admin user is
+# bootstrapped from the AMD_ADMIN_USER / AMD_ADMIN_PASSWORD env vars (see init_db);
+# create further users with add_user().
 
 # ── API-key encryption ────────────────────────────────────────────────
 
@@ -146,22 +142,40 @@ def init_db() -> None:
             con.execute("ALTER TABLE sessions ADD COLUMN result_cards TEXT NOT NULL DEFAULT '[]'")
         except Exception:
             pass  # column already exists
-        for username, password in _DEFAULT_USERS:
-            exists = con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
+        # Bootstrap a single admin from env vars on a fresh DB only (no hardcoded creds).
+        admin_user = os.getenv("AMD_ADMIN_USER")
+        admin_pass = os.getenv("AMD_ADMIN_PASSWORD")
+        if admin_user and admin_pass:
+            exists = con.execute(
+                "SELECT 1 FROM users WHERE username = ?", (admin_user,)
+            ).fetchone()
             if not exists:
                 con.execute(
                     "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                    (username, _hash_password(password)),
+                    (admin_user, _hash_password(admin_pass)),
                 )
 
 
+# Precomputed hash of a random secret. Verifying against it on the unknown-user
+# path spends the same PBKDF2 time as a real check, so login latency does not leak
+# whether a username exists.
+_DUMMY_HASH = _hash_password(secrets.token_hex(16))
+
+
 def verify_user(username: str, password: str) -> bool:
-    """Return True if the username/password pair is valid."""
+    """Return True if the username/password pair is valid.
+
+    On an unknown username, runs a dummy verification so response time does not
+    reveal whether the account exists (timing-attack mitigation).
+    """
     with _conn() as con:
         row = con.execute(
             "SELECT password_hash FROM users WHERE username = ?", (username,)
         ).fetchone()
-    return _verify_password(password, row[0]) if row else False
+    if row:
+        return _verify_password(password, row[0])
+    _verify_password(password, _DUMMY_HASH)
+    return False
 
 
 def get_api_keys(username: str) -> dict[str, str]:
