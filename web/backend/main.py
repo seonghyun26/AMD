@@ -25,6 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from web.backend import authz  # noqa: E402
 from web.backend.jwt_auth import verify_token  # noqa: E402
 from web.backend.routers import (  # noqa: E402
+    account,
     agents,
     analysis,
     assistant,
@@ -116,6 +117,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(JWTAuthMiddleware)
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(account.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
 app.include_router(assistant.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")

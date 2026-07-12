@@ -1,24 +1,60 @@
 "use client";
 
+import { useMemo, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/lib/types";
+import { useSessionStore } from "@/store/sessionStore";
+import UserAvatar from "@/components/common/UserAvatar";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolCallCard from "./ToolCallCard";
 
+/** Underline `@simulation` mentions in a sent user message. Matches against the
+ *  project's known simulation names (longest first) so names with spaces work. */
+function renderMentions(text: string, names: string[]): ReactNode {
+  if (!text.includes("@") || names.length === 0) return text;
+  const sorted = [...names].filter(Boolean).sort((a, b) => b.length - a.length);
+  const out: ReactNode[] = [];
+  let buf = "";
+  let i = 0;
+  const flush = () => { if (buf) { out.push(buf); buf = ""; } };
+  while (i < text.length) {
+    if (text[i] === "@") {
+      const rest = text.slice(i + 1);
+      const hit = sorted.find((n) => rest.startsWith(n));
+      if (hit) {
+        flush();
+        out.push(
+          <span key={i} className="underline decoration-white/60 underline-offset-2 font-medium">
+            @{hit}
+          </span>,
+        );
+        i += 1 + hit.length;
+        continue;
+      }
+    }
+    buf += text[i];
+    i += 1;
+  }
+  flush();
+  return out;
+}
+
 export default function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
+  const sessions = useSessionStore((s) => s.sessions);
+  const names = useMemo(() => sessions.map((s) => s.nickname).filter(Boolean), [sessions]);
 
   return (
     <div className={`flex gap-3 px-4 py-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
       {/* Avatar */}
-      <div
-        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-          isUser ? "bg-blue-600" : "bg-gradient-to-br from-orange-400 to-rose-500"
-        }`}
-      >
-        {isUser ? "U" : "AI"}
-      </div>
+      {isUser ? (
+        <UserAvatar size={32} fallback="icon" className="rounded-full bg-blue-600 text-white text-xs font-bold" />
+      ) : (
+        <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br from-orange-400 to-rose-500">
+          AI
+        </div>
+      )}
 
       {/* Content */}
       <div className={`max-w-[80%] min-w-0 space-y-1 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
@@ -40,7 +76,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
                         {block.title}
                       </div>
                     )}
-                    <p className="whitespace-pre-wrap break-words">{block.content}</p>
+                    <p className="whitespace-pre-wrap break-words">{renderMentions(block.content, names)}</p>
                   </div>
                 ) : (
                   <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:whitespace-pre-wrap [&_pre]:break-all prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-orange-600 dark:prose-code:text-orange-400">

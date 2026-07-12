@@ -34,6 +34,8 @@ interface SessionState {
    *  be auto-sent by the AI assistant panel. Consumed once by ChatInput. The
    *  optional title is shown as a header above the message in the chat. */
   pendingPrompt: { text: string; title?: string } | null;
+  /** Bumped after an avatar upload/removal to cache-bust <img> everywhere. */
+  avatarVersion: number;
 
   // Actions
   setSession: (id: string, config: SessionConfig) => void;
@@ -56,6 +58,8 @@ interface SessionState {
   persistAssistant: (projectId: string | null) => void;
   requestAssistant: (text: string, title?: string) => void;
   consumePendingPrompt: () => void;
+  clearAssistant: (projectId: string | null) => void;
+  bumpAvatar: () => void;
 }
 
 function newAssistantMessage(): ChatMessage {
@@ -77,6 +81,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   sessions: [],
   sessionsLoading: true,
   pendingPrompt: null,
+  avatarVersion: 1,
 
   // Selecting/creating a simulation must NOT clear `messages` — those now hold the
   // project-level assistant conversation, which is independent of sim selection.
@@ -318,4 +323,13 @@ export const useSessionStore = create<SessionState>((set) => ({
   // up (ChatInput) and auto-sends it, and page.tsx opens the panel.
   requestAssistant: (text, title) => set({ pendingPrompt: { text, title } }),
   consumePendingPrompt: () => set({ pendingPrompt: null }),
+
+  // Clear the current assistant conversation locally AND on the server (persist
+  // an empty list) so it stays empty across reloads.
+  clearAssistant: (projectId) => {
+    set({ messages: [], isStreaming: false });
+    saveAssistantMessages(projectId, []).catch(() => {});
+  },
+
+  bumpAvatar: () => set((s) => ({ avatarVersion: s.avatarVersion + 1 })),
 }));

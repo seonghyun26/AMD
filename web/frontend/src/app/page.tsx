@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight, Loader2, FlaskConical } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, FlaskConical, Trash2 } from "lucide-react";
 import { isAuthenticated } from "@/lib/auth";
 import { useSessionStore } from "@/store/sessionStore";
 import { useProjectStore } from "@/store/projectStore";
@@ -68,8 +68,9 @@ export default function App() {
     document.addEventListener("mouseup", onUp);
   };
 
-  const { fetchSimulations, loadAssistant } = useSessionStore();
+  const { fetchSimulations, loadAssistant, clearAssistant, messages, isStreaming } = useSessionStore();
   const pendingPrompt = useSessionStore((s) => s.pendingPrompt);
+  const [confirmClear, setConfirmClear] = useState(false);
   const { projects, activeProjectId, setActiveProject } = useProjectStore();
 
   useEffect(() => {
@@ -168,13 +169,31 @@ export default function App() {
                   </p>
                 )}
               </div>
-              <button
-                onClick={closeChat}
-                title="Close panel"
-                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
-              >
-                <ChevronRight size={15} />
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => {
+                    if (confirmClear) { clearAssistant(activeProjectId); setConfirmClear(false); }
+                    else { setConfirmClear(true); window.setTimeout(() => setConfirmClear(false), 3000); }
+                  }}
+                  disabled={messages.length === 0 || isStreaming}
+                  title="Clear conversation"
+                  className={`inline-flex items-center gap-1 rounded-lg transition-colors disabled:opacity-30 disabled:pointer-events-none ${
+                    confirmClear
+                      ? "px-2 py-1 text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40"
+                      : "p-1.5 text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  <Trash2 size={15} />
+                  {confirmClear && <span>Clear?</span>}
+                </button>
+                <button
+                  onClick={closeChat}
+                  title="Close panel"
+                  className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-hidden flex flex-col min-h-0">
               <ChatWindow />

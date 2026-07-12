@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Bot, CircleCheck, CircleX, FolderOpen, FolderPlus, ArrowLeft } from "lucide-react";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Bot, CircleCheck, CircleX, FolderOpen, FolderPlus, ArrowLeft, Upload } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { useProjectStore } from "@/store/projectStore";
 import { logout, getUsername } from "@/lib/auth";
-import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, type ServerStatus, type GpuInfo } from "@/lib/api";
+import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, uploadAvatar, deleteAvatar, type ServerStatus, type GpuInfo } from "@/lib/api";
+import UserAvatar from "@/components/common/UserAvatar";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/theme";
 
@@ -398,6 +399,40 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
   const gmxImage = "gromacs-plumed:latest";
   const sysVersion = "0.1.0";
 
+  const bumpAvatar = useSessionStore((s) => s.bumpAvatar);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setAvatarError(null);
+    setAvatarBusy(true);
+    try {
+      await uploadAvatar(file);
+      bumpAvatar();
+    } catch (err) {
+      setAvatarError((err as Error).message || "Upload failed");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setAvatarError(null);
+    setAvatarBusy(true);
+    try {
+      await deleteAvatar();
+      bumpAvatar();
+    } catch {
+      setAvatarError("Could not remove photo");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
@@ -422,14 +457,36 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</h4>
             <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold shadow">
-                {username[0]?.toUpperCase() ?? "?"}
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{username}</div>
+              <UserAvatar size={44} fallback="initial" className="rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-base font-semibold shadow" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{username}</div>
                 <div className="text-[10px] text-gray-400 dark:text-gray-500">Signed in</div>
               </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={handleAvatarPick}
+              />
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={avatarBusy}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              >
+                {avatarBusy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                Photo
+              </button>
+              <button
+                onClick={handleAvatarRemove}
+                disabled={avatarBusy}
+                title="Remove photo"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
+            {avatarError && <p className="text-[11px] text-red-500 dark:text-red-400 px-1">{avatarError}</p>}
           </div>
 
           {/* ── API Keys ── */}

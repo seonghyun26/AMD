@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { FlaskConical, Settings, Monitor, LogOut, FolderOpen, Menu, MessageSquare, ArrowLeft } from "lucide-react";
 import { getUsername, logout } from "@/lib/auth";
 import { SettingsModal, ServerStatusModal } from "@/components/sidebar/SessionSidebar";
+import UserAvatar from "@/components/common/UserAvatar";
+import { useProjectStore } from "@/store/projectStore";
 import type { Project } from "@/lib/types";
 
 export default function TopBar({
@@ -20,10 +22,23 @@ export default function TopBar({
 }) {
   const router = useRouter();
   const username = getUsername() || "user";
+  const renameProject = useProjectStore((s) => s.renameProject);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [serverOpen, setServerOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const skipSave = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const saveName = () => {
+    if (skipSave.current) { skipSave.current = false; setEditingName(false); return; }
+    setEditingName(false);
+    const name = nameDraft.trim();
+    if (activeProject && name && name !== activeProject.name) {
+      renameProject(activeProject.project_id, name);
+    }
+  };
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -65,7 +80,27 @@ export default function TopBar({
         {activeProject ? (
           <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200 truncate min-w-0">
             <FolderOpen size={14} className="text-blue-500/70 flex-shrink-0" />
-            {activeProject.name}
+            {editingName ? (
+              <input
+                autoFocus
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveName();
+                  if (e.key === "Escape") { skipSave.current = true; setEditingName(false); }
+                }}
+                onBlur={saveName}
+                className="min-w-0 w-44 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            ) : (
+              <button
+                onClick={() => { setNameDraft(activeProject.name); setEditingName(true); }}
+                title="Rename project"
+                className="truncate hover:underline decoration-dotted underline-offset-2"
+              >
+                {activeProject.name}
+              </button>
+            )}
           </span>
         ) : (
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 hidden sm:inline">Projects</span>
@@ -83,10 +118,10 @@ export default function TopBar({
         <div ref={ref} className="relative">
           <button
             onClick={() => setMenuOpen((v) => !v)}
-            className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold shadow hover:opacity-90 transition-opacity"
+            className="rounded-full shadow hover:opacity-90 transition-opacity"
             title={username}
           >
-            {username[0]?.toUpperCase() ?? "?"}
+            <UserAvatar size={32} fallback="initial" className="rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-sm font-semibold" />
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden z-50">

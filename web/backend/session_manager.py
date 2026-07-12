@@ -351,9 +351,18 @@ def get_simulation_status(session_id: str) -> dict:
                 if inferred and inferred["status"] in {"finished", "failed"}:
                     status = {"running": False, **inferred}
                 else:
+                    # A successful mdrun always writes its md.log. Treat a zero
+                    # exit code with NO log produced as a failure (the process
+                    # died at/near launch without running) rather than "finished".
+                    op = str((session.sim_status or {}).get("output_prefix") or "simulation/md")
+                    _wd = Path(session.work_dir)
+                    has_log = any(
+                        (_wd / c).exists()
+                        for c in (f"{op}.log", "simulation/md.log", "md.log")
+                    )
                     status = {
                         "running": False,
-                        "status": "finished" if rc == 0 else "failed",
+                        "status": "finished" if (rc == 0 and has_log) else "failed",
                     }
                 status["pid"] = proc.pid
                 status["exit_code"] = rc

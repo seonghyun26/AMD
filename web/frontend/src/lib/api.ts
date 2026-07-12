@@ -142,6 +142,29 @@ export async function saveAssistantMessages(projectId: string | null, messages: 
   });
 }
 
+// ── Account avatar ────────────────────────────────────────────────────
+
+/** Authed image URL for the current user's avatar. `version` busts the cache
+ *  after an upload. Uses ?token= because <img> can't send an auth header. */
+export function avatarUrl(version: number): string {
+  return `${BASE}/account/avatar?token=${encodeURIComponent(getToken())}&v=${version}`;
+}
+
+export async function uploadAvatar(file: File): Promise<void> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await authFetch(`${BASE}/account/avatar`, { method: "POST", body: fd });
+  if (!res.ok) {
+    let msg = "Upload failed";
+    try { msg = (await res.json()).detail || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+}
+
+export async function deleteAvatar(): Promise<void> {
+  await authFetch(`${BASE}/account/avatar`, { method: "DELETE" });
+}
+
 export async function listSessions(username: string): Promise<{
   sessions: {
     session_id: string;

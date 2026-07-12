@@ -4292,14 +4292,29 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         if (cancelled) return;
         // Re-check after async gap — reset effect may have updated status to "failed" or "paused"
         if ((simRunStatusRef.current as string) === "failed" || (simRunStatusRef.current as string) === "paused") return;
-        const mappedStatus: "standby" | "running" | "finished" | "failed" | "paused" =
-          status.status === "finished" ? "finished"
-            : status.status === "failed" ? "failed"
-            : (status.status as string) === "paused" ? "paused"
-            : status.running ? "running"
-            : simRunStatusRef.current === "running"
-              ? (status.exit_code != null && status.exit_code !== 0 ? "failed" : "finished")
-            : "standby";
+        let mappedStatus: "standby" | "running" | "finished" | "failed" | "paused";
+        if (status.status === "finished") mappedStatus = "finished";
+        else if (status.status === "failed") mappedStatus = "failed";
+        else if ((status.status as string) === "paused") mappedStatus = "paused";
+        else if (status.running) mappedStatus = "running";
+        else if (simRunStatusRef.current === "running") {
+          if (status.exit_code != null && status.exit_code !== 0) {
+            mappedStatus = "failed";
+          } else {
+            // Backend gave no terminal verdict and the exit code is 0/unknown —
+            // don't assume success. Trust the run_status the pipeline persisted
+            // (it detects real failures, e.g. a run that produced no output).
+            const persisted = await getSessionRunStatus(sessionId).catch(() => null);
+            if (cancelled) return;
+            const rs = persisted?.run_status;
+            mappedStatus =
+              rs === "finished" || rs === "failed" || rs === "paused"
+                ? rs
+                : status.exit_code === 0 ? "finished" : "running";
+          }
+        } else {
+          mappedStatus = "standby";
+        }
         setSimRunStatus(mappedStatus);
         if (mappedStatus === "failed") setSimExitCode(status.exit_code ?? null);
         if (mappedStatus === "finished") { setSimExitCode(status.exit_code ?? 0); setSimFinishedAt((prev) => prev ?? (status.finished_at ? status.finished_at * 1000 : Date.now())); }
