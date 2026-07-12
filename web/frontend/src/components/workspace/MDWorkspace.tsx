@@ -2034,7 +2034,8 @@ function ProgressTab({
               onClick={() => {
                 const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
                 useSessionStore.getState().requestAssistant(
-                  `Analyze the results of the "${nick}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`
+                  `Analyze the results of the "${nick}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`,
+                  "Analyze results"
                 );
               }}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
@@ -2306,7 +2307,13 @@ function MoleculeTab({
         action={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setAgentOpen(true)}
+              onClick={() => {
+                const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
+                useSessionStore.getState().requestAssistant(
+                  `Help me pick a molecular system for the "${nick}" simulation. List the structure/topology input files already present, identify what system is set up, and suggest suitable PDB structures (with IDs) if something is missing.`,
+                  "Find a molecular system"
+                );
+              }}
               className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-100/40 dark:hover:bg-blue-900/30 transition-colors font-medium"
             >
               <Bot size={12} />
@@ -2568,7 +2575,8 @@ function GromacsTab({
                 onClick={() => {
                   const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
                   useSessionStore.getState().requestAssistant(
-                    `Review the GROMACS parameters configured for the "${nick}" simulation (see its config.yaml / .mdp) and suggest sensible values or flag anything unusual for this system — thermostat, timestep, cutoffs, electrostatics, constraints and run length.`
+                    `Review the GROMACS parameters configured for the "${nick}" simulation (see its config.yaml / .mdp) and suggest sensible values or flag anything unusual for this system — thermostat, timestep, cutoffs, electrostatics, constraints and run length.`,
+                    "Suggest GROMACS settings"
                   );
                 }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
@@ -3322,7 +3330,8 @@ function MethodTab({
                 onClick={() => {
                   const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
                   useSessionStore.getState().requestAssistant(
-                    `Suggest good collective variables (CVs) for the "${nick}" simulation given its molecular system and enhanced-sampling method. For each CV, give the PLUMED-style definition (1-based atom indices) and explain why it is informative.`
+                    `Suggest good collective variables (CVs) for the "${nick}" simulation given its molecular system and enhanced-sampling method. For each CV, give the PLUMED-style definition (1-based atom indices) and explain why it is informative.`,
+                    "Suggest CVs"
                   );
                 }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"

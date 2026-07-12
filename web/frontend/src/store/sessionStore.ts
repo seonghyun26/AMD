@@ -31,8 +31,9 @@ interface SessionState {
   sessions: SessionSummary[];
   sessionsLoading: boolean;
   /** A prompt queued by a workspace shortcut (e.g. "Analyze", "Suggest CVs") to
-   *  be auto-sent by the AI assistant panel. Consumed once by ChatInput. */
-  pendingPrompt: string | null;
+   *  be auto-sent by the AI assistant panel. Consumed once by ChatInput. The
+   *  optional title is shown as a header above the message in the chat. */
+  pendingPrompt: { text: string; title?: string } | null;
 
   // Actions
   setSession: (id: string, config: SessionConfig) => void;
@@ -45,7 +46,7 @@ interface SessionState {
   setSessionMolecule: (sessionId: string, molecule: string) => void;
   setSessionRunStatus: (sessionId: string, runStatus: SessionSummary["run_status"]) => void;
   setSessionResultCards: (sessionId: string, resultCards: unknown[]) => void;
-  addUserMessage: (text: string) => void;
+  addUserMessage: (text: string, title?: string) => void;
   appendSSEEvent: (event: SSEEvent) => void;
   updateProgress: (progress: SimProgress) => void;
   clearMessages: () => void;
@@ -53,7 +54,7 @@ interface SessionState {
   persistMessages: (sessionId: string) => void;
   loadAssistant: (projectId: string | null) => Promise<void>;
   persistAssistant: (projectId: string | null) => void;
-  requestAssistant: (text: string) => void;
+  requestAssistant: (text: string, title?: string) => void;
   consumePendingPrompt: () => void;
 }
 
@@ -145,14 +146,14 @@ export const useSessionStore = create<SessionState>((set) => ({
       ),
     })),
 
-  addUserMessage: (text) =>
+  addUserMessage: (text, title) =>
     set((state) => ({
       messages: [
         ...state.messages,
         {
           id: uuid(),
           role: "user",
-          blocks: [{ kind: "text", content: text }],
+          blocks: [{ kind: "text", content: text, ...(title ? { title } : {}) }],
           timestamp: Date.now(),
         },
       ],
@@ -315,6 +316,6 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   // Workspace shortcut buttons queue a prompt here; the assistant panel picks it
   // up (ChatInput) and auto-sends it, and page.tsx opens the panel.
-  requestAssistant: (text) => set({ pendingPrompt: text }),
+  requestAssistant: (text, title) => set({ pendingPrompt: { text, title } }),
   consumePendingPrompt: () => set({ pendingPrompt: null }),
 }));

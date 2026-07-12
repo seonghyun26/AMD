@@ -49,11 +49,11 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
     if (hi > matches.length - 1) setHi(0);
   }, [matches.length, hi]);
 
-  const doSend = async (text: string) => {
+  const doSend = async (text: string, title?: string) => {
     if (!text.trim() || isStreaming) return;
     setValue("");
     setMentionOpen(false);
-    addUserMessage(text);
+    addUserMessage(text, title);
     abortRef.current = new AbortController();
     try {
       for await (const event of streamAssistant(projectId, text, abortRef.current.signal)) {
@@ -128,7 +128,7 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
   useEffect(() => {
     if (!pendingPrompt) return;
     consumePendingPrompt();
-    if (!isStreaming) doSend(pendingPrompt);
+    if (!isStreaming) doSend(pendingPrompt.text, pendingPrompt.title);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingPrompt]);
 

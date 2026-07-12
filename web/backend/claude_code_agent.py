@@ -16,9 +16,17 @@ Output: yields SSE-shaped event dicts matching the existing chat protocol
 from __future__ import annotations
 
 import dataclasses
+import json
+import shlex
+import shutil
+import subprocess
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
+
+_TMUX = shutil.which("tmux")
+_LIVE_LOG = ".assistant-live.log"
 
 # Read-only toolset — everything else is denied by permission_mode="dontAsk".
 _READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]
@@ -45,6 +53,31 @@ def _subprocess_env() -> dict[str, str]:
     return {"ANTHROPIC_API_KEY": "", "ANTHROPIC_AUTH_TOKEN": ""}
 
 
+def _ensure_tmux_session(name: str, logfile: Path) -> bool:
+    """Ensure a **persistent** tmux session *name* exists, running ``tail -F`` on
+    *logfile*, so the user can ``tmux attach -t <name>`` and watch the assistant
+    work live. The session outlives individual queries. Returns False (no-op) if
+    tmux is unavailable or anything goes wrong — observation is best-effort and
+    must never break the chat stream."""
+    if not _TMUX:
+        return False
+    try:
+        logfile.parent.mkdir(parents=True, exist_ok=True)
+        logfile.touch(exist_ok=True)
+        exists = subprocess.run(
+            [_TMUX, "has-session", "-t", name], capture_output=True
+        )
+        if exists.returncode != 0:
+            subprocess.run(
+                [_TMUX, "new-session", "-d", "-s", name,
+                 f"tail -F {shlex.quote(str(logfile))}"],
+                capture_output=True, check=False,
+            )
+        return True
+    except Exception:
+        return False
+
+
 def _build_options(work_dir: str):
     """Construct read-only ClaudeAgentOptions rooted at *work_dir* (fields filtered
     to those the installed SDK actually supports)."""
@@ -67,14 +100,24 @@ def _build_options(work_dir: str):
     return ClaudeAgentOptions(**{k: v for k, v in desired.items() if k in valid})
 
 
-async def stream_claude_code(work_dir: str, message: str) -> AsyncIterator[dict[str, Any]]:
+async def stream_claude_code(
+    work_dir: str, message: str, tmux_name: str | None = None
+) -> AsyncIterator[dict[str, Any]]:
     """Stream a read-only Claude Code session rooted at *work_dir*, yielding
-    SSE event dicts for *message*."""
+    SSE event dicts for *message*.
+
+    If *tmux_name* is given, a persistent tmux session of that name mirrors a
+    human-readable transcript (prompt, streamed text, and — unlike the chat — the
+    Read/Grep/Glob tool calls) so the user can ``tmux attach -t <name>`` and
+    observe the assistant working."""
     try:
         from claude_agent_sdk import (
             ClaudeSDKClient,
             ResultMessage,
             TextBlock,
+            ThinkingBlock,
+            ToolResultBlock,
+            ToolUseBlock,
         )
     except Exception as exc:  # SDK not installed / import failure
         yield {
@@ -84,21 +127,58 @@ async def stream_claude_code(work_dir: str, message: str) -> AsyncIterator[dict[
         }
         return
 
+    # ── tmux transcript mirror (best-effort, never fatal) ──────────────
+    log_fh = None
+    if tmux_name:
+        logfile = Path(work_dir) / _LIVE_LOG
+        if _ensure_tmux_session(tmux_name, logfile):
+            try:
+                log_fh = open(logfile, "a", encoding="utf-8")  # noqa: SIM115
+            except Exception:
+                log_fh = None
+
+    def mirror(text: str) -> None:
+        if log_fh:
+            try:
+                log_fh.write(text)
+                log_fh.flush()
+            except Exception:
+                pass
+
+    mirror(f"\n{'=' * 72}\n▶ {time.strftime('%Y-%m-%d %H:%M:%S')}  you: {message}\n{'=' * 72}\n")
+
     try:
         options = _build_options(work_dir)
         async with ClaudeSDKClient(options=options) as client:
             await client.query(message)
             async for msg in client.receive_response():
                 # Blocks can arrive on assistant messages (text/thinking/tool_use)
-                # or user messages (tool_result); handle any message with content.
-                # Only surface the assistant's text — thinking blocks and tool
-                # (Glob/Read/Grep) events are intentionally suppressed to keep the
-                # chat uncluttered.
+                # or user messages (tool_result). Only the assistant's TEXT is
+                # surfaced to the chat; thinking and tool events are suppressed
+                # there but mirrored to the tmux transcript for observation.
                 for block in getattr(msg, "content", None) or []:
                     if isinstance(block, TextBlock) and block.text:
                         yield {"type": "text_delta", "text": block.text}
+                        mirror(block.text)
+                    elif isinstance(block, ThinkingBlock):
+                        thought = getattr(block, "thinking", "") or ""
+                        if thought:
+                            mirror(f"\n  🧠 {thought}\n")
+                    elif isinstance(block, ToolUseBlock):
+                        tool_in = json.dumps(getattr(block, "input", {}), default=str)
+                        mirror(f"\n  🔧 {getattr(block, 'name', 'tool')}({tool_in[:400]})\n")
+                    elif isinstance(block, ToolResultBlock):
+                        mirror("  ✓ tool result\n")
                 if isinstance(msg, ResultMessage):
+                    mirror("\n— done —\n")
                     yield {"type": "agent_done", "final_text": ""}
                     return
     except Exception as exc:
+        mirror(f"\n[error] {exc}\n")
         yield {"type": "error", "message": f"Claude Code session error: {exc}"}
+    finally:
+        if log_fh:
+            try:
+                log_fh.close()
+            except Exception:
+                pass

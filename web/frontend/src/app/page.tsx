@@ -159,6 +159,14 @@ export default function App() {
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">AI Assistant</h2>
                 <p className="text-xs text-gray-500 mt-0.5 truncate">{activeProject ? activeProject.name : "General"}</p>
+                {activeProject && (
+                  <p
+                    className="text-[10px] font-mono text-gray-400 dark:text-gray-600 mt-0.5 truncate"
+                    title="Attach in a terminal to watch the assistant work live"
+                  >
+                    tmux attach -t amd-{activeProject.project_id.replace(/^proj_/, "").replace(/[^A-Za-z0-9_-]/g, "") || "project"}
+                  </p>
+                )}
               </div>
               <button
                 onClick={closeChat}

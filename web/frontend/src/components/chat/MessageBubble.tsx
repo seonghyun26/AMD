@@ -34,7 +34,14 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
                 }`}
               >
                 {isUser ? (
-                  <p className="whitespace-pre-wrap break-words">{block.content}</p>
+                  <div>
+                    {block.title && (
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-100/90 mb-1 pb-1 border-b border-white/20">
+                        {block.title}
+                      </div>
+                    )}
+                    <p className="whitespace-pre-wrap break-words">{block.content}</p>
+                  </div>
                 ) : (
                   <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:whitespace-pre-wrap [&_pre]:break-all prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-orange-600 dark:prose-code:text-orange-400">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>

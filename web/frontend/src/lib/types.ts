@@ -26,7 +26,7 @@ export type SSEEvent =
 
 export type MessageRole = "user" | "assistant";
 
-export type TextBlock = { kind: "text"; content: string };
+export type TextBlock = { kind: "text"; content: string; title?: string };
 export type ThinkingBlock = { kind: "thinking"; content: string; collapsed: boolean };
 export type ToolCallBlock = {
   kind: "tool_call";

@@ -13,6 +13,7 @@ of the per-simulation backbone selector.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -43,6 +44,17 @@ def _general_dir(username: str) -> Path:
     return d
 
 
+def project_code(project_id: str) -> str:
+    """Short, unique, CLI-safe code for a project (drops the ``proj_`` prefix)."""
+    raw = project_id[5:] if project_id.startswith("proj_") else project_id
+    return re.sub(r"[^A-Za-z0-9_-]", "", raw) or "project"
+
+
+def project_tmux_name(project_id: str) -> str:
+    """tmux session name for a project's assistant: ``amd-{code}``."""
+    return f"amd-{project_code(project_id)}"
+
+
 def _read_messages(path: Path) -> list:
     if path.exists():
         try:
@@ -52,12 +64,12 @@ def _read_messages(path: Path) -> list:
     return []
 
 
-def _stream(work_dir: str, message: str) -> StreamingResponse:
+def _stream(work_dir: str, message: str, tmux_name: str | None = None) -> StreamingResponse:
     from web.backend.claude_code_agent import stream_claude_code
 
     async def gen():
         try:
-            async for event in stream_claude_code(work_dir, message):
+            async for event in stream_claude_code(work_dir, message, tmux_name):
                 yield _sse(event)
         except Exception as exc:
             yield _sse({"type": "error", "message": str(exc)})
@@ -89,7 +101,7 @@ async def project_stream(project_id: str, req: ChatRequest):
     project = project_store.get_project(project_id)
     if not project:
         raise HTTPException(404, "Project not found")
-    return _stream(str(_project_dir(project)), req.message)
+    return _stream(str(_project_dir(project)), req.message, project_tmux_name(project_id))
 
 
 @router.get("/projects/{project_id}/messages")

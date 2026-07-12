@@ -933,7 +933,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
         <button
           onClick={onToggleCollapse}
           title="Expand simulations panel"
-          className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400 dark:text-gray-600 hover:text-gray-900 dark:hover:text-gray-300 transition-colors"
+          className="flex-1 flex flex-col items-center justify-start gap-3 pt-3 text-gray-400 dark:text-gray-600 hover:text-gray-900 dark:hover:text-gray-300 transition-colors"
         >
           <ChevronRight size={15} />
           <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ writingMode: "vertical-rl" }}>
@@ -946,7 +946,22 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
 
   return (
     <aside className="w-64 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full">
-      <div className="px-3 py-2.5 flex-shrink-0">
+      {/* Header — "Simulations" label + collapse control, pinned to the top */}
+      <div className="flex items-center justify-between px-3 pt-3 pb-1.5 flex-shrink-0">
+        <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-600">Simulations</p>
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            title="Collapse panel"
+            className="hidden md:inline-flex p-0.5 rounded text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <ChevronLeft size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* New Simulation */}
+      <div className="px-3 pb-2.5 flex-shrink-0">
         <button
           onClick={onNewSession}
           className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
@@ -957,18 +972,6 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 pb-2">
-        <div className="flex items-center justify-between px-3 pt-1 pb-1.5">
-          <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-600">Simulations</p>
-          {onToggleCollapse && (
-            <button
-              onClick={onToggleCollapse}
-              title="Collapse panel"
-              className="hidden md:inline-flex p-0.5 rounded text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              <ChevronLeft size={14} />
-            </button>
-          )}
-        </div>
         {sessionsLoading && sessions.length === 0 ? (
           <div className="px-1 py-2">
             <div className="flex items-center gap-2 px-2 mb-3">
