@@ -26,6 +26,11 @@ tau_p: 2.0
 ref_p: ${gromacs.pressure}
 compressibility: 4.5e-5
 
+# Generate initial Maxwell-Boltzmann velocities at ref_t (freshly solvated
+# structures have zero velocities → 0 K cold start without this).
+gen_vel: "yes"
+gen_seed: -1
+
 # Box setup (used by editconf before solvation/vacuum runs; not an MDP key)
 box_clearance: 1.5      # nm — minimum distance between molecule and box edge
 

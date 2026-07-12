@@ -1,0 +1,15 @@
+_target_name: opes
+
+# On-the-fly probability enhanced sampling (OPES / OPES_METAD) via PLUMED.
+# Keys are flat to match the PLUMED builder (web/backend/routers/config.py).
+pace: 500                       # steps between kernel depositions
+sigma: 0.05                     # kernel width in CV units (broadcast per CV)
+barrier: 30                     # kJ/mol — expected free-energy barrier
+temperature: ${gromacs.temperature}
+
+kernels_file: KERNELS
+state_wfile: STATE
+state_wstride: 500000           # steps between STATE dumps
+store_states: true
+
+nsteps: 50000000                # 100 ns at dt=0.002 ps; override as needed

@@ -68,6 +68,14 @@ def generate_mdp_from_config(
     if extra_params:
         gromacs_cfg.update(extra_params)
 
+    # Pressure coupling is ill-defined without solvent: a barostat on an
+    # unsolvated molecule has a near-zero virial → box collapse / LINCS blow-up.
+    # Force it off whenever the system has no water model (e.g. the "Auto"
+    # template applied to a vacuum-defaulting system).
+    water_model = str(OmegaConf.select(cfg, "system.water_model") or "").strip().lower()
+    if water_model in ("none", "vacuum"):
+        gromacs_cfg["pcoupl"] = "no"
+
     # Keep thermostat coupling robust across template/UI changes.
     # Using a single "System" group guarantees every atom belongs to a tc-grps entry.
     tcoupl = str(gromacs_cfg.get("tcoupl", "")).strip().lower()

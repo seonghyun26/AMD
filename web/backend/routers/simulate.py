@@ -68,7 +68,9 @@ def _persist_run_status(session: object, status: str) -> None:
         current = meta.get("run_status", "standby")
         if current == status:
             return None
-        if current == "finished":
+        # `finished` is terminal for the *run*, but the user may re-run or reset:
+        # allow finished→running (re-run) and finished→standby (terminate/reset).
+        if current == "finished" and status not in ("running", "standby"):
             return None
         if current == "failed" and status != "running":
             return None
@@ -435,6 +437,20 @@ async def start_simulation(session_id: str):
         }
         # Only persist "running" after mdrun has actually started
         _persist_run_status(session, "running")
+        # Persist launch identity so a server that lost the in-memory handle can
+        # still map/observe the run (GPU dashboard) and reason about liveness.
+        try:
+            from web.backend.session_store import mutate_session_json
+
+            def _stamp(meta: dict) -> dict:
+                meta["pid"] = mdrun["pid"]
+                meta["gpu_id"] = gpu_id
+                meta["output_prefix"] = output_prefix
+                return meta
+
+            mutate_session_json(session.session_id, _stamp)
+        except Exception:
+            pass
 
         return {
             "status": "running",
@@ -475,7 +491,11 @@ async def stop_simulation(session_id: str):
     session = get_session(session_id)
     has_checkpoint = False
     if session:
-        _persist_run_status(session, "paused")
+        # Only record "paused" if we actually stopped a live run — otherwise a
+        # stop click on an already-finished/idle sim would mislabel it paused
+        # (and a later resume would relaunch from an end-of-run checkpoint).
+        if stopped:
+            _persist_run_status(session, "paused")
         work_dir = Path(session.work_dir)
         cpt = work_dir / _SIM_SUBDIR / "md.cpt"
         has_checkpoint = cpt.exists()

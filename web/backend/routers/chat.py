@@ -34,7 +34,7 @@ PRESET_CONFIGS: dict[str, dict[str, str]] = {
     ),
     "md": dict(method="plain_md", system="protein", gromacs="default", plumed_cvs="default"),
     "metad": dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
-    "opes": dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
+    "opes": dict(method="opes", system="protein", gromacs="default", plumed_cvs="default"),
     "umbrella": dict(method="umbrella", system="protein", gromacs="default", plumed_cvs="default"),
     "steered": dict(method="steered", system="protein", gromacs="default", plumed_cvs="default"),
 }
@@ -298,7 +298,15 @@ async def get_session_run_status(session_id: str):
     if run_status == "running":
         work_dir = Path(data["work_dir"]).resolve()
         session_root = work_dir.parent
-        inferred = infer_run_status_from_disk(session_root, work_dir)
+        # Prefer the live in-memory verdict (authoritative exit code) when the
+        # process handle is still held; otherwise infer from disk (log markers +
+        # a staleness fallback for handle-lost/crashed runs). Keeps this endpoint
+        # consistent with /simulate/status.
+        from web.backend.session_manager import get_simulation_status
+        live = get_simulation_status(session_id)
+        inferred = live.get("status") if live.get("status") in ("finished", "failed") else None
+        if inferred is None:
+            inferred = infer_run_status_from_disk(session_root, work_dir)
         if inferred in ("finished", "failed"):
             import time as _time
             run_status = inferred

@@ -296,11 +296,24 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         )
 
     elif method_name in ("umbrella", "umbrella_sampling"):
-        window_center = float(OmegaConf.select(cfg, "method.window_start") or 0.0)
-        force_constant = float(OmegaConf.select(cfg, "method.force_constant") or 1000)
+        # NOTE: full umbrella sampling runs one simulation per window (WHAM over
+        # all windows). This backbone launches a single restrained run, so we use
+        # the configured restraint + the first window center. Reads the actual
+        # (nested) config keys; previously read non-existent flat keys and always
+        # fell back to AT=0 / KAPPA=1000. Multi-window WHAM is future work.
+        window_center = float(
+            OmegaConf.select(cfg, "method.window_start")
+            if OmegaConf.select(cfg, "method.window_start") is not None
+            else (OmegaConf.select(cfg, "method.windows.start") or 0.0)
+        )
+        force_constant = float(
+            OmegaConf.select(cfg, "method.force_constant")
+            or OmegaConf.select(cfg, "method.restraint.force_constant")
+            or 1000
+        )
         cv_name = cv_names[0] if cv_names else "cv1"
 
-        lines.append("# Umbrella Sampling — Harmonic Restraint")
+        lines.append("# Umbrella Sampling — Harmonic Restraint (single window)")
         lines.append(
             f"restraint: RESTRAINT ARG={cv_name} AT={window_center} KAPPA={force_constant}"
         )
@@ -310,10 +323,29 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         )
 
     elif method_name in ("steered", "steered_md"):
-        initial = float(OmegaConf.select(cfg, "method.initial_value") or 0)
-        final = float(OmegaConf.select(cfg, "method.final_value") or 4.0)
-        force_constant = float(OmegaConf.select(cfg, "method.force_constant") or 500)
+        # Reads the actual (nested) pull.* config; previously read non-existent
+        # flat keys and hardcoded AT0=0/AT1=4.0/KAPPA=500. The endpoint is derived
+        # from the pull rate × total run time when a rate is given.
+        initial = float(OmegaConf.select(cfg, "method.initial_value") or 0.0)
+        force_constant = float(
+            OmegaConf.select(cfg, "method.force_constant")
+            or OmegaConf.select(cfg, "method.pull.force_constant")
+            or 500
+        )
         nsteps = int(OmegaConf.select(cfg, "method.nsteps") or 5000000)
+        dt = float(OmegaConf.select(cfg, "gromacs.dt") or 0.002)
+        rate = float(
+            OmegaConf.select(cfg, "method.pull.rate")
+            or OmegaConf.select(cfg, "method.pull_rate")
+            or 0.0
+        )
+        final_cfg = OmegaConf.select(cfg, "method.final_value")
+        if rate > 0:
+            final = initial + rate * nsteps * dt  # nm reached at the configured pull velocity
+        elif final_cfg is not None:
+            final = float(final_cfg)
+        else:
+            final = 4.0
         cv_name = cv_names[0] if cv_names else "cv1"
 
         lines.append("# Steered MD — Moving Restraint")

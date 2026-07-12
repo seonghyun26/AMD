@@ -269,7 +269,42 @@ def infer_run_status_from_disk(session_root: Path, work_dir: Path) -> str | None
         [work_dir / "simulation" / "md.log", work_dir / "md.log"],
         expected_nsteps=expected_nsteps,
     )
-    return result["status"] if result else None
+    if result:
+        return result["status"]
+
+    # No terminal verdict from the log. This is the HANDLE-LOST path (no live
+    # process to protect), so a run still marked "running" whose process is gone
+    # — server restart, OOM-kill, container death, host reboot — would otherwise
+    # be stuck "running" forever. Fall back to a *generous* staleness check: a
+    # genuinely live mdrun writes md.log continuously, and legitimate pauses (PME
+    # tuning, checkpoint flush) last seconds, so idleness far beyond that means
+    # the run died. This never fires for a healthy run (fresh log mtime).
+    import time as _time
+
+    stale_secs = 900  # 15 min
+    now = _time.time()
+    log = next(
+        (p for p in (work_dir / "simulation" / "md.log", work_dir / "md.log") if p.exists()),
+        None,
+    )
+    if log is not None:
+        try:
+            if now - log.stat().st_mtime > stale_secs:
+                return "failed"
+        except Exception:
+            pass
+        return None  # log recently written → assume still alive
+    # No log at all: fall back to how long ago the run was recorded as started.
+    try:
+        import json as _json
+
+        meta = _json.loads((session_root / "session.json").read_text())
+        started = float(meta.get("started_at") or 0.0)
+        if started and now - started > stale_secs:
+            return "failed"
+    except Exception:
+        pass
+    return None
 
 
 def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
@@ -351,18 +386,13 @@ def get_simulation_status(session_id: str) -> dict:
                 if inferred and inferred["status"] in {"finished", "failed"}:
                     status = {"running": False, **inferred}
                 else:
-                    # A successful mdrun always writes its md.log. Treat a zero
-                    # exit code with NO log produced as a failure (the process
-                    # died at/near launch without running) rather than "finished".
-                    op = str((session.sim_status or {}).get("output_prefix") or "simulation/md")
-                    _wd = Path(session.work_dir)
-                    has_log = any(
-                        (_wd / c).exists()
-                        for c in (f"{op}.log", "simulation/md.log", "md.log")
-                    )
+                    # Decide the terminal state from the ACTUAL process exit code
+                    # (see test_lifecycle_fixes #8). Handle-lost/crashed runs with
+                    # no exit code are covered separately by the disk staleness
+                    # fallback in infer_run_status_from_disk().
                     status = {
                         "running": False,
-                        "status": "finished" if (rc == 0 and has_log) else "failed",
+                        "status": "finished" if rc == 0 else "failed",
                     }
                 status["pid"] = proc.pid
                 status["exit_code"] = rc
