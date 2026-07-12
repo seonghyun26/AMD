@@ -27,6 +27,15 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
   const [value, setValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  // Tracks the current scope so an in-flight stream can tell if the user
+  // switched projects (its appends/persist would otherwise corrupt the other
+  // project's conversation, which shares the single global `messages` array).
+  const projectIdRef = useRef(projectId);
+  useEffect(() => {
+    projectIdRef.current = projectId;
+    // Abort any stream in flight when the scope changes (or on unmount).
+    return () => abortRef.current?.abort();
+  }, [projectId]);
   const isStreaming = useSessionStore((s) => s.isStreaming);
   const sessions = useSessionStore((s) => s.sessions);
   const pendingPrompt = useSessionStore((s) => s.pendingPrompt);
@@ -51,22 +60,26 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
 
   const doSend = async (text: string, title?: string) => {
     if (!text.trim() || isStreaming) return;
+    const sendScope = projectId; // scope this send belongs to
     setValue("");
     setMentionOpen(false);
     addUserMessage(text, title);
     abortRef.current = new AbortController();
     try {
-      for await (const event of streamAssistant(projectId, text, abortRef.current.signal)) {
+      for await (const event of streamAssistant(sendScope, text, abortRef.current.signal)) {
+        if (projectIdRef.current !== sendScope) return; // switched away — don't touch the new scope
         appendSSEEvent(event);
       }
     } catch (err) {
+      if (projectIdRef.current !== sendScope) return;
       if ((err as Error).name !== "AbortError") {
         appendSSEEvent({ type: "error", message: String(err) });
       } else {
         appendSSEEvent({ type: "agent_done", final_text: "" });
       }
     }
-    persistAssistant(projectId);
+    // Only persist if we're still in the same conversation we sent from.
+    if (projectIdRef.current === sendScope) persistAssistant(sendScope);
   };
 
   const handleSend = () => doSend(value);

@@ -72,6 +72,10 @@ function newAssistantMessage(): ChatMessage {
   };
 }
 
+// Monotonic token so a slow loadAssistant() whose scope changed mid-flight can
+// detect it was superseded and skip its set() (avoids clobbering the newer one).
+let assistantLoadEpoch = 0;
+
 export const useSessionStore = create<SessionState>((set) => ({
   sessionId: null,
   config: null,
@@ -302,9 +306,11 @@ export const useSessionStore = create<SessionState>((set) => ({
   // Assistant conversation is scoped to a project (or general when projectId=null),
   // not a simulation — it replaces the per-simulation chat state.
   loadAssistant: async (projectId) => {
+    const epoch = ++assistantLoadEpoch;
     set({ messages: [], isStreaming: false });
     try {
       const { messages } = await getAssistantMessages(projectId);
+      if (epoch !== assistantLoadEpoch) return; // a newer load started — discard
       if (Array.isArray(messages) && messages.length > 0) {
         set({ messages: messages as ChatMessage[] });
       }
