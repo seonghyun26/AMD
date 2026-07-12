@@ -27,6 +27,7 @@ from web.backend.jwt_auth import verify_token  # noqa: E402
 from web.backend.routers import (  # noqa: E402
     agents,
     analysis,
+    assistant,
     auth,
     chat,
     config,
@@ -116,6 +117,7 @@ app.add_middleware(JWTAuthMiddleware)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
+app.include_router(assistant.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
