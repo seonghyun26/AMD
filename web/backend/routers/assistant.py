@@ -115,9 +115,10 @@ async def project_save_messages(project_id: str, req: MessagesRequest):
 
 
 @router.post("/assistant/stream")
-async def general_stream(req: ChatRequest, request: Request):
-    username = getattr(request.state, "username", "") or "_"
-    return _stream(str(_general_dir(username)), req.message)
+async def general_stream(req: ChatRequest):
+    # The general assistant can read ALL result directories (read-only), not one.
+    _OUTPUTS.mkdir(parents=True, exist_ok=True)
+    return _stream(str(_OUTPUTS), req.message)
 
 
 @router.get("/assistant/messages")

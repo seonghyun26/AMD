@@ -68,14 +68,6 @@ def _build_options(work_dir: str):
     return ClaudeAgentOptions(**{k: v for k, v in desired.items() if k in valid})
 
 
-def _tool_result_payload(block: Any) -> dict[str, Any]:
-    content = getattr(block, "content", None)
-    payload: dict[str, Any] = {"content": content}
-    if getattr(block, "is_error", None):
-        payload["is_error"] = True
-    return payload
-
-
 async def stream_claude_code(work_dir: str, message: str) -> AsyncIterator[dict[str, Any]]:
     """Stream a read-only Claude Code session rooted at *work_dir*, yielding
     SSE event dicts for *message*."""
@@ -84,9 +76,6 @@ async def stream_claude_code(work_dir: str, message: str) -> AsyncIterator[dict[
             ClaudeSDKClient,
             ResultMessage,
             TextBlock,
-            ThinkingBlock,
-            ToolResultBlock,
-            ToolUseBlock,
         )
     except Exception as exc:  # SDK not installed / import failure
         yield {
@@ -103,26 +92,12 @@ async def stream_claude_code(work_dir: str, message: str) -> AsyncIterator[dict[
             async for msg in client.receive_response():
                 # Blocks can arrive on assistant messages (text/thinking/tool_use)
                 # or user messages (tool_result); handle any message with content.
+                # Only surface the assistant's text — thinking blocks and tool
+                # (Glob/Read/Grep) events are intentionally suppressed to keep the
+                # chat uncluttered.
                 for block in getattr(msg, "content", None) or []:
-                    if isinstance(block, TextBlock):
-                        if block.text:
-                            yield {"type": "text_delta", "text": block.text}
-                    elif isinstance(block, ThinkingBlock):
-                        yield {"type": "thinking", "thinking": block.thinking}
-                    elif isinstance(block, ToolUseBlock):
-                        yield {
-                            "type": "tool_start",
-                            "tool_use_id": block.id,
-                            "tool_name": block.name,
-                            "tool_input": block.input or {},
-                        }
-                    elif isinstance(block, ToolResultBlock):
-                        yield {
-                            "type": "tool_result",
-                            "tool_use_id": block.tool_use_id,
-                            "tool_name": "",
-                            "result": _tool_result_payload(block),
-                        }
+                    if isinstance(block, TextBlock) and block.text:
+                        yield {"type": "text_delta", "text": block.text}
                 if isinstance(msg, ResultMessage):
                     yield {"type": "agent_done", "final_text": ""}
                     return
