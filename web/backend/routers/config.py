@@ -48,6 +48,24 @@ async def update_session_config(session_id: str, req: ConfigUpdateRequest):
         raise HTTPException(404, "Session not found")
 
     cfg = session.agent.cfg
+
+    # Validate the PROPOSED result before committing so a bad manual edit
+    # (dt too large, negative temperature, unknown thermostat/barostat) is
+    # rejected with a clear message instead of silently producing an invalid MDP.
+    proposed = OmegaConf.create(OmegaConf.to_container(cfg, resolve=False))
+    for key, value in req.updates.items():
+        OmegaConf.update(proposed, key, value, merge=True, force_add=True)
+    try:
+        gdict = OmegaConf.to_container(OmegaConf.select(proposed, "gromacs") or {}, resolve=True)
+    except Exception:
+        gdict = None  # couldn't resolve → skip validation rather than false-reject
+    if isinstance(gdict, dict):
+        from md_agent.config.schemas import validate_gromacs_dict
+
+        problems = validate_gromacs_dict(gdict)
+        if problems:
+            raise HTTPException(400, "Invalid GROMACS settings — " + "; ".join(problems))
+
     for key, value in req.updates.items():
         try:
             OmegaConf.update(cfg, key, value, merge=True)
