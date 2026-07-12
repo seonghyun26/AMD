@@ -16,21 +16,33 @@ _SESSION_RESOURCES = {"sessions", "agents"}
 
 
 def session_owner(session_id: str) -> str | None:
-    """Return the owning username of a session, or None if unknown."""
+    """Owning username of a session; ``""`` if the record exists but has no owner
+    (legacy/migrated), or ``None`` if the session is not indexed at all.
+
+    The empty-string case must NOT be conflated with None: an authenticated user
+    always has a non-empty username, so an ownerless record then fails the
+    ``owner == current_user`` check in ``owns`` (deny), while a truly-unknown id
+    (None) still falls through to a 404 rather than leaking existence.
+    """
     try:
         rec = db.get_session_indexed(session_id)
     except Exception:
         return None
-    return (rec or {}).get("username") or None
+    if not rec:
+        return None
+    return rec.get("username") or ""
 
 
 def project_owner(project_id: str) -> str | None:
-    """Return the owning username of a project, or None if unknown."""
+    """Owning username of a project; ``""`` if ownerless, ``None`` if unknown.
+    See :func:`session_owner` for why the two are kept distinct."""
     try:
         proj = project_store.get_project(project_id)
     except Exception:
         return None
-    return (proj or {}).get("username") or None
+    if not proj:
+        return None
+    return proj.get("username") or ""
 
 
 def owns(current_user: str, path: str) -> bool:
