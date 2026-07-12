@@ -16,7 +16,6 @@ Output: yields SSE-shaped event dicts matching the existing chat protocol
 from __future__ import annotations
 
 import dataclasses
-import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -35,15 +34,15 @@ _SYSTEM_PROMPT = (
 
 
 def _subprocess_env() -> dict[str, str]:
-    """Environment for the Claude Code subprocess.
+    """Env overrides for the Claude Code subprocess.
 
-    Drops ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN so the CLI authenticates with the
-    logged-in Claude subscription rather than metered API billing.
+    The SDK MERGES this dict on top of the full parent environment
+    (``process_env = {**os.environ, **options.env}``), so omitting a key does NOT
+    remove it. We must OVERRIDE ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN to empty
+    so the CLI ignores them and authenticates with the logged-in Claude
+    subscription instead of metered API billing.
     """
-    env = dict(os.environ)
-    env.pop("ANTHROPIC_API_KEY", None)
-    env.pop("ANTHROPIC_AUTH_TOKEN", None)
-    return env
+    return {"ANTHROPIC_API_KEY": "", "ANTHROPIC_AUTH_TOKEN": ""}
 
 
 def _build_options(work_dir: str):
