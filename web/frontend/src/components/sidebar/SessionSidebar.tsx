@@ -396,7 +396,7 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
   const sysVersion = "0.1.0";
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-[420px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
@@ -660,7 +660,7 @@ export function ServerStatusModal({ onClose }: { onClose: () => void }) {
   const diskPct = cpu?.disk_total_gb ? ((cpu.disk_used_gb ?? 0) / cpu.disk_total_gb) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-[520px] max-h-[85vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
@@ -934,202 +934,59 @@ function ProjectItem({
 // ── Main sidebar ───────────────────────────────────────────────────────
 
 export default function SessionSidebar({ onNewSession, onSelectSession, onSessionDeleted }: Props) {
-  const router = useRouter();
-  const { sessions, sessionsLoading, sessionId, fetchSimulations, switchSession, updateSessionNickname, removeSession, setSessionRunStatus } =
+  const { sessions, sessionsLoading, sessionId, switchSession, updateSessionNickname, removeSession, setSessionRunStatus } =
     useSessionStore();
-  const { projects, activeProjectId, projectsLoading, fetchProjects, setActiveProject, createAndSelect, deleteProjectById } =
-    useProjectStore();
-  const username = getUsername();
-  const [collapsed, setCollapsed] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
-  useEffect(() => {
-    if (activeProjectId) fetchSimulations(activeProjectId);
-  }, [activeProjectId, fetchSimulations]);
-
-  const activeProject = projects.find((p) => p.project_id === activeProjectId) || null;
-
-  const submitNewProject = async () => {
-    const name = newName.trim();
-    if (!name) { setCreating(false); return; }
-    await createAndSelect(name);
-    setNewName("");
-    setCreating(false);
-  };
-
-  const handleLogout = () => {
-    logout();
-    router.push("/login");
-  };
-
-  if (collapsed) {
-    return (
-      <aside className="w-10 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full overflow-x-hidden transition-all duration-200">
-        <button
-          onClick={() => setCollapsed(false)}
-          title="Expand sidebar"
-          className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400 hover:text-gray-700 dark:text-gray-600 dark:hover:text-gray-300 transition-colors"
-        >
-          <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow">
-            <FlaskConical size={12} className="text-white" />
-          </div>
-          <ChevronRight size={15} />
-          <span
-            className="text-[10px] font-semibold uppercase tracking-widest"
-            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-          >
-            Simulations
-          </span>
-        </button>
-      </aside>
-    );
-  }
 
   return (
-    <aside className="w-64 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full transition-all duration-200">
-      {/* Brand */}
-      <div className="px-4 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2.5 flex-shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow">
-          <FlaskConical size={16} className="text-white" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">AMD</div>
-          <div className="text-[11px] text-gray-400 dark:text-gray-500">Automating MD</div>
-        </div>
+    <aside className="w-64 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full">
+      <div className="px-3 py-2.5 flex-shrink-0">
         <button
-          onClick={() => setCollapsed(true)}
-          title="Collapse sidebar"
-          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+          onClick={onNewSession}
+          className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
         >
-          <ChevronLeft size={15} />
+          <Plus size={12} />
+          <span className="text-xs font-medium">New Simulation</span>
         </button>
       </div>
 
-      {activeProjectId === null ? (
-        /* ── Projects view ── */
-        <>
-          <div className="px-3 py-2.5 flex-shrink-0">
-            {creating ? (
-              <div className="flex items-center gap-1.5">
-                <input
-                  autoFocus
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") submitNewProject();
-                    if (e.key === "Escape") { setCreating(false); setNewName(""); }
-                  }}
-                  placeholder="Project name"
-                  className="flex-1 min-w-0 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <button onClick={submitNewProject} className="text-emerald-500 hover:text-emerald-400 flex-shrink-0"><Check size={13} /></button>
-                <button onClick={() => { setCreating(false); setNewName(""); }} className="text-gray-400 hover:text-gray-600 flex-shrink-0"><X size={13} /></button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setCreating(true)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
-              >
-                <FolderPlus size={12} />
-                <span className="text-xs font-medium">New Project</span>
-              </button>
-            )}
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-2 pb-2">
-            <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-600 px-3 pt-1 pb-1.5">Projects</p>
-            {projectsLoading && projects.length === 0 ? (
-              <div className="flex items-center gap-2 px-3 py-2">
-                <Loader2 size={11} className="animate-spin text-gray-400" />
-                <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading projects…</span>
-              </div>
-            ) : projects.length === 0 ? (
-              <p className="text-[11px] text-gray-400 dark:text-gray-600 px-3 py-2">No projects yet</p>
-            ) : (
-              <div className="space-y-0.5">
-                {projects.map((p) => (
-                  <ProjectItem
-                    key={p.project_id}
-                    p={p}
-                    onOpen={() => setActiveProject(p.project_id)}
-                    onDeleted={() => deleteProjectById(p.project_id)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      ) : (
-        /* ── Simulations view (inside a project) ── */
-        <>
-          <div className="px-3 pt-2.5 pb-2 flex-shrink-0 border-b border-gray-100 dark:border-gray-800/60">
-            <button
-              onClick={() => setActiveProject(null)}
-              className="flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-colors mb-1.5"
-            >
-              <ArrowLeft size={12} /> Projects
-            </button>
-            <div className="flex items-center gap-1.5 px-0.5">
-              <FolderOpen size={13} className="text-blue-500/70 flex-shrink-0" />
-              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{activeProject?.name ?? "Project"}</span>
+      <div className="flex-1 overflow-y-auto px-2 pb-2">
+        <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-600 px-3 pt-1 pb-1.5">Simulations</p>
+        {sessionsLoading && sessions.length === 0 ? (
+          <div className="px-1 py-2">
+            <div className="flex items-center gap-2 px-2 mb-3">
+              <Loader2 size={11} className="animate-spin text-gray-400" />
+              <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading simulations…</span>
+            </div>
+            <div className="space-y-1 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="rounded-lg bg-gray-100 dark:bg-gray-800/60 px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <div className="w-2 h-2 rounded-full bg-gray-200 dark:bg-gray-700" />
+                    <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
+                  </div>
+                  <div className="pl-3 h-2.5 w-16 bg-gray-100 dark:bg-gray-800 rounded" />
+                </div>
+              ))}
             </div>
           </div>
-
-          <div className="px-3 py-2.5 flex-shrink-0">
-            <button
-              onClick={onNewSession}
-              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
-            >
-              <Plus size={12} />
-              <span className="text-xs font-medium">New Simulation</span>
-            </button>
+        ) : sessions.length === 0 ? (
+          <p className="text-[11px] text-gray-400 dark:text-gray-600 px-3 py-2">No simulations yet</p>
+        ) : (
+          <div className="space-y-0.5">
+            {sessions.map((s) => (
+              <SessionItem
+                key={s.session_id}
+                s={s}
+                isActive={s.session_id === sessionId}
+                onSelect={() => { switchSession(s.session_id, s.work_dir); onSelectSession?.(s.session_id); }}
+                onSaved={(nick) => updateSessionNickname(s.session_id, nick)}
+                onDeleted={() => { removeSession(s.session_id); onSessionDeleted?.(s.session_id); }}
+                onRunStatusRead={(rs) => setSessionRunStatus(s.session_id, rs as "standby" | "running" | "finished" | "failed")}
+              />
+            ))}
           </div>
-
-          <div className="flex-1 overflow-y-auto px-2 pb-2">
-            {sessionsLoading && sessions.length === 0 ? (
-              <div className="px-1 py-2">
-                <div className="flex items-center gap-2 px-2 mb-3">
-                  <Loader2 size={11} className="animate-spin text-gray-400" />
-                  <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading simulations…</span>
-                </div>
-                <div className="space-y-1 animate-pulse">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="rounded-lg bg-gray-100 dark:bg-gray-800/60 px-3 py-2.5">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <div className="w-2 h-2 rounded-full bg-gray-200 dark:bg-gray-700" />
-                        <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
-                      </div>
-                      <div className="pl-3 h-2.5 w-16 bg-gray-100 dark:bg-gray-800 rounded" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : sessions.length === 0 ? (
-              <p className="text-[11px] text-gray-400 dark:text-gray-600 px-3 py-2">No simulations yet</p>
-            ) : (
-              <div className="space-y-0.5">
-                {sessions.map((s) => (
-                  <SessionItem
-                    key={s.session_id}
-                    s={s}
-                    isActive={s.session_id === sessionId}
-                    onSelect={() => { switchSession(s.session_id, s.work_dir); onSelectSession?.(s.session_id); }}
-                    onSaved={(nick) => updateSessionNickname(s.session_id, nick)}
-                    onDeleted={() => { removeSession(s.session_id); onSessionDeleted?.(s.session_id); }}
-                    onRunStatusRead={(rs) => setSessionRunStatus(s.session_id, rs as "standby" | "running" | "finished" | "failed")}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      <ProfileSection username={username ?? "user"} onLogout={handleLogout} />
+        )}
+      </div>
     </aside>
   );
 }

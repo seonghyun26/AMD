@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight, Loader2, FlaskConical, Menu, MessageSquare } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, FlaskConical } from "lucide-react";
 import { isAuthenticated } from "@/lib/auth";
 import { useSessionStore } from "@/store/sessionStore";
 import { useProjectStore } from "@/store/projectStore";
 import SessionSidebar from "@/components/sidebar/SessionSidebar";
 import MDWorkspace from "@/components/workspace/MDWorkspace";
 import ProjectHome from "@/components/projects/ProjectHome";
+import TopBar from "@/components/layout/TopBar";
 const ChatWindow = dynamic(() => import("@/components/chat/ChatWindow"), { ssr: false });
 const ChatInput = dynamic(() => import("@/components/chat/ChatInput"), { ssr: false });
 
@@ -101,7 +102,7 @@ export default function App() {
       <aside
         className={`flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 overflow-x-hidden fixed inset-y-0 z-40 w-full max-w-sm transition-[right] duration-200 ${
           mobileChatOpen ? "right-0" : "-right-full"
-        } md:static md:right-auto md:z-auto ${rightPanelOpen ? "md:w-96" : "md:w-10"}`}
+        } md:static md:right-auto md:z-auto ${rightPanelOpen ? "md:w-[30rem]" : "md:w-10"}`}
       >
         {chatExpanded ? (
           <>
@@ -143,26 +144,13 @@ export default function App() {
   );
 
   return (
-    <div className="flex flex-col md:flex-row h-screen overflow-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
-      {/* Mobile top bar */}
-      <div className="md:hidden flex items-center justify-between px-2 h-12 flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-        {activeProjectId ? (
-          <button onClick={() => setMobileSidebarOpen(true)} className="p-2 rounded-lg text-gray-600 dark:text-gray-300" aria-label="Open simulations">
-            <Menu size={18} />
-          </button>
-        ) : (
-          <span className="w-9" />
-        )}
-        <div className="flex items-center gap-1.5">
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-            <FlaskConical size={11} className="text-white" />
-          </div>
-          <span className="text-sm font-semibold">AMD</span>
-        </div>
-        <button onClick={() => setMobileChatOpen(true)} className="p-2 rounded-lg text-gray-600 dark:text-gray-300" aria-label="Open AI assistant">
-          <MessageSquare size={18} />
-        </button>
-      </div>
+    <div className="flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+      <TopBar
+        activeProject={activeProject}
+        onBack={() => setActiveProject(null)}
+        onOpenSidebar={() => setMobileSidebarOpen(true)}
+        onOpenChat={() => setMobileChatOpen(true)}
+      />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {activeProjectId === null ? (
