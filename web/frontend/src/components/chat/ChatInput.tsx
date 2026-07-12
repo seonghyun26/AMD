@@ -3,30 +3,29 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, StopCircle } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
-import { streamChat } from "@/lib/sse";
+import { streamAssistant } from "@/lib/sse";
 
 interface Props {
-  sessionId: string;
+  /** null = general assistant (home); otherwise this project's assistant. */
+  projectId: string | null;
   /** When set to a non-empty string, auto-sends that message once. */
   autoSend?: string;
   onAutoSendComplete?: () => void;
 }
 
-export default function ChatInput({ sessionId, autoSend, onAutoSendComplete }: Props) {
+export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: Props) {
   const [value, setValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const isStreaming = useSessionStore((s) => s.isStreaming);
-  const { addUserMessage, appendSSEEvent, persistMessages } = useSessionStore();
+  const { addUserMessage, appendSSEEvent, persistAssistant } = useSessionStore();
 
   const doSend = async (text: string) => {
     if (!text.trim() || isStreaming) return;
     setValue("");
     addUserMessage(text);
-
     abortRef.current = new AbortController();
-
     try {
-      for await (const event of streamChat(sessionId, text, abortRef.current.signal)) {
+      for await (const event of streamAssistant(projectId, text, abortRef.current.signal)) {
         appendSSEEvent(event);
       }
     } catch (err) {
@@ -36,16 +35,11 @@ export default function ChatInput({ sessionId, autoSend, onAutoSendComplete }: P
         appendSSEEvent({ type: "agent_done", final_text: "" });
       }
     }
-    // Persist messages after streaming completes
-    persistMessages(sessionId);
+    persistAssistant(projectId);
   };
 
   const handleSend = () => doSend(value);
-
-  const handleStop = () => {
-    abortRef.current?.abort();
-  };
-
+  const handleStop = () => abortRef.current?.abort();
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -53,7 +47,6 @@ export default function ChatInput({ sessionId, autoSend, onAutoSendComplete }: P
     }
   };
 
-  // Auto-send external message (e.g. from "Start MD" button)
   useEffect(() => {
     if (autoSend && !isStreaming) {
       doSend(autoSend);
@@ -69,7 +62,7 @@ export default function ChatInput({ sessionId, autoSend, onAutoSendComplete }: P
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe your simulation, ask about a paper, or give instructions…"
+          placeholder={projectId ? "Ask about this project's simulations…" : "Ask the assistant…"}
           rows={3}
           className="flex-1 resize-none border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
         />

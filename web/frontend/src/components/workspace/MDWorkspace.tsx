@@ -205,7 +205,7 @@ function DeleteConfirmPopup({
       >
         <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Move to archive?</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          <span className="font-mono text-gray-700 dark:text-gray-300">{name}</span> will be moved to the session&apos;s
+          <span className="font-mono text-gray-700 dark:text-gray-300">{name}</span> will be moved to the simulation&apos;s
           archive folder. Use the archive button in the Files tab to restore it.
         </p>
         <div className="flex gap-2 justify-end">
@@ -3291,7 +3291,7 @@ function MethodTab({
     setPlumedMessage(null);
     try {
       await generatePlumedFile(sessionId);
-      setPlumedMessage("plumed.dat written to session directory.");
+      setPlumedMessage("plumed.dat written to simulation directory.");
     } catch (err: unknown) {
       setPlumedMessage(err instanceof Error ? err.message : "Generation failed.");
     } finally {
@@ -3867,7 +3867,7 @@ function MethodTab({
                     handleGeneratePlumed();
                   }}
                   disabled={plumedLoading || isLocked}
-                  title="Write plumed.dat to session"
+                  title="Write plumed.dat to simulation"
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200/60 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-800/40 transition-colors disabled:opacity-50"
                 >
                   Generate
@@ -3969,7 +3969,7 @@ function NewSessionForm({
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 mb-3 shadow-lg">
             <FlaskConical size={22} className="text-white" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New Session</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New Simulation</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -4071,7 +4071,7 @@ function NewSessionForm({
             disabled={loading}
             className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-all text-sm shadow-lg shadow-blue-900/30"
           >
-            {loading ? "Creating…" : "Create Session"}
+            {loading ? "Creating…" : "Create Simulation"}
           </button>
         </form>
       </div>
@@ -4107,7 +4107,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [resultCards, setResultCards] = useState<ResultCardDef[]>([]);
   const [gromacsSaveState, setGromacsSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const { setSession, sessions, addSession, setSessionMolecule, setSessionRunStatus, setSessionResultCards, appendSSEEvent, clearMessages } = useSessionStore();
+  const { setSession, sessions, addSession, setSessionMolecule, setSessionRunStatus, setSessionResultCards, appendSSEEvent } = useSessionStore();
   // Stable ref — lets the restore effect read latest sessions without re-running
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -4145,8 +4145,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       })
       .filter(Boolean) as ResultCardDef[];
     setResultCards(restoredCards);
-    // Clear chat messages so previous session's conversation doesn't bleed into the new session
-    clearMessages();
+    // Note: chat messages are the project-level assistant conversation now — they
+    // persist across simulation switches, so we do NOT clear them here.
     // Fetch authoritative wall-clock timestamps from session.json on disk.
     // The Zustand store may not have them yet (e.g. after page refresh or session switch).
     if (sessionId) {
@@ -4475,8 +4475,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             <FlaskConical size={28} className="text-gray-400 dark:text-gray-600" />
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No session selected</p>
-            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Select a session from the sidebar or create a new one to get started.</p>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No simulation selected</p>
+            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Select a simulation from the sidebar or create a new one to get started.</p>
           </div>
         </div>
         <button
@@ -4484,7 +4484,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors shadow-lg shadow-blue-900/30"
         >
           <Plus size={14} />
-          New Session
+          New Simulation
         </button>
       </div>
     );
@@ -4547,7 +4547,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={24} className="animate-spin text-gray-400" />
-              <span className="text-sm text-gray-500">Loading session…</span>
+              <span className="text-sm text-gray-500">Loading simulation…</span>
             </div>
           </div>
         ) : renderTab()}

@@ -126,6 +126,22 @@ export async function listProjectSimulations(
   return json(await authFetch(`${BASE}/projects/${projectId}/simulations`));
 }
 
+// ── Assistant (project-level / general) chat persistence ──────────────
+
+export async function getAssistantMessages(projectId: string | null): Promise<{ messages: unknown[] }> {
+  const path = projectId ? `/projects/${projectId}/messages` : `/assistant/messages`;
+  return json(await authFetch(`${BASE}${path}`));
+}
+
+export async function saveAssistantMessages(projectId: string | null, messages: unknown[]): Promise<void> {
+  const path = projectId ? `/projects/${projectId}/messages` : `/assistant/messages`;
+  await authFetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages }),
+  });
+}
+
 export async function listSessions(username: string): Promise<{
   sessions: {
     session_id: string;

@@ -113,7 +113,7 @@ function SessionItem({
                 <Trash2 size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Delete session?</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Delete simulation?</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
                   <span className="text-gray-700 dark:text-gray-300 font-medium">{nick}</span>
                 </p>
@@ -159,7 +159,7 @@ function SessionItem({
               .then(({ run_status }) => onRunStatusRead(run_status))
               .catch(() => {});
           } catch {
-            setRestoreError("Failed to load session — data may be missing or corrupted.");
+            setRestoreError("Failed to load simulation — data may be missing or corrupted.");
           }
         }}
       >
@@ -310,7 +310,7 @@ const AGENT_BACKENDS = [
 
 type AgentBackendId = typeof AGENT_BACKENDS[number]["id"];
 
-function SettingsModal({ username, onClose }: { username: string; onClose: () => void }) {
+export function SettingsModal({ username, onClose }: { username: string; onClose: () => void }) {
   const { theme, toggle } = useTheme();
 
   // API keys state
@@ -627,7 +627,7 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
   );
 }
 
-function ServerStatusModal({ onClose }: { onClose: () => void }) {
+export function ServerStatusModal({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -982,7 +982,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
             className="text-[10px] font-semibold uppercase tracking-widest"
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
           >
-            Sessions
+            Simulations
           </span>
         </button>
       </aside>
@@ -1085,7 +1085,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
               className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
             >
               <Plus size={12} />
-              <span className="text-xs font-medium">New Session</span>
+              <span className="text-xs font-medium">New Simulation</span>
             </button>
           </div>
 

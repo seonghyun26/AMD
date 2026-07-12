@@ -7,7 +7,7 @@ import type {
   SSEEvent,
   ToolCallBlock,
 } from "@/lib/types";
-import { listSessions, listProjectSimulations, getMessages, saveMessages } from "@/lib/api";
+import { listSessions, listProjectSimulations, getMessages, saveMessages, getAssistantMessages, saveAssistantMessages } from "@/lib/api";
 import { getUsername } from "@/lib/auth";
 import { uuid } from "@/lib/utils";
 
@@ -48,6 +48,8 @@ interface SessionState {
   clearMessages: () => void;
   loadMessages: (sessionId: string) => Promise<void>;
   persistMessages: (sessionId: string) => void;
+  loadAssistant: (projectId: string | null) => Promise<void>;
+  persistAssistant: (projectId: string | null) => void;
 }
 
 function newAssistantMessage(): ChatMessage {
@@ -69,11 +71,13 @@ export const useSessionStore = create<SessionState>((set) => ({
   sessions: [],
   sessionsLoading: true,
 
+  // Selecting/creating a simulation must NOT clear `messages` — those now hold the
+  // project-level assistant conversation, which is independent of sim selection.
   setSession: (id, config) =>
-    set({ sessionId: id, config, messages: [], simProgress: null }),
+    set({ sessionId: id, config, simProgress: null }),
 
   switchSession: (id, workDir) =>
-    set({ sessionId: id, config: { method: "", system: "", gromacs: "", plumed_cvs: "", workDir }, messages: [], simProgress: null, isStreaming: false }),
+    set({ sessionId: id, config: { method: "", system: "", gromacs: "", plumed_cvs: "", workDir }, simProgress: null }),
 
   fetchSessions: async () => {
     try {
@@ -281,5 +285,25 @@ export const useSessionStore = create<SessionState>((set) => ({
     const { messages } = useSessionStore.getState();
     if (messages.length === 0) return;
     saveMessages(sessionId, messages).catch(() => {});
+  },
+
+  // Assistant conversation is scoped to a project (or general when projectId=null),
+  // not a simulation — it replaces the per-simulation chat state.
+  loadAssistant: async (projectId) => {
+    set({ messages: [], isStreaming: false });
+    try {
+      const { messages } = await getAssistantMessages(projectId);
+      if (Array.isArray(messages) && messages.length > 0) {
+        set({ messages: messages as ChatMessage[] });
+      }
+    } catch {
+      // no persisted conversation yet
+    }
+  },
+
+  persistAssistant: (projectId) => {
+    const { messages } = useSessionStore.getState();
+    if (messages.length === 0) return;
+    saveAssistantMessages(projectId, messages).catch(() => {});
   },
 }));
