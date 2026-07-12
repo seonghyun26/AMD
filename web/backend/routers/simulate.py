@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from omegaconf import OmegaConf
 
 from web.backend.session_manager import get_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -176,6 +181,169 @@ def _remove_matching(work_dir: Path, *patterns: str) -> None:
                     p.unlink()
                 except Exception:
                     pass
+
+
+# ── Pre-production equilibration ───────────────────────────────────────
+# Standard protocol before the production run: energy minimization, then
+# (position-restrained) NVT and — for solvated systems — NPT. Overrides are
+# applied on top of the session's gromacs config so cutoffs/electrostatics stay
+# consistent across stages.
+_EQUIL_NSTEPS = 50000  # 100 ps at dt=0.002 ps
+
+_EM_OVERRIDES: dict[str, Any] = {
+    "integrator": "steep",
+    "nsteps": _EQUIL_NSTEPS,
+    "emtol": 1000.0,
+    "emstep": 0.01,
+    "tcoupl": "no",
+    "pcoupl": "no",
+    "gen_vel": "no",
+    "continuation": "no",
+    "define": None,
+}
+_NVT_OVERRIDES: dict[str, Any] = {
+    "integrator": "md",
+    "nsteps": _EQUIL_NSTEPS,
+    "pcoupl": "no",          # NVT: no barostat
+    "gen_vel": "yes",        # assign initial velocities at ref_t
+    "continuation": "no",
+    "define": "-DPOSRES",    # restrain the solute
+}
+_NPT_OVERRIDES: dict[str, Any] = {
+    "integrator": "md",
+    "nsteps": _EQUIL_NSTEPS,
+    "pcoupl": "C-rescale",   # gentle barostat for equilibration
+    "gen_vel": "no",
+    "continuation": "yes",   # continue velocities from NVT
+    "define": "-DPOSRES",
+}
+# Production continues from the equilibrated state (velocities from the last cpt).
+_PROD_OVERRIDES: dict[str, Any] = {"continuation": "yes", "gen_vel": "no"}
+
+_EQUIL_STAGES = ("minimizing", "nvt", "npt")
+
+
+def _set_stage(session: object, stage: str) -> None:
+    """Record the current pipeline stage (in memory + session.json)."""
+    try:
+        if session.sim_status is None:  # type: ignore[attr-defined]
+            session.sim_status = {}  # type: ignore[attr-defined]
+        session.sim_status["stage"] = stage  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        from web.backend.session_store import mutate_session_json
+
+        mutate_session_json(session.session_id, lambda m: {**m, "stage": stage})  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+def _equilibrate_and_run(
+    session: object,
+    gmx: object,
+    cfg: object,
+    work_dir: Path,
+    coord_file: str,
+    top_file: str,
+    index_file: str | None,
+    gpu_id: str | None,
+    plumed_file: str | None,
+    water_model: str,
+    expected_nsteps: int | None,
+) -> None:
+    """Run EM → NVT → [NPT] → production sequentially in a background thread.
+
+    Each equilibration stage is a blocking grompp+mdrun; production is launched
+    non-blocking (its handle becomes the live run). Any failure marks the session
+    ``failed``. NPT is skipped for vacuum (no barostat)."""
+    from md_agent.config.hydra_utils import generate_mdp_from_config
+
+    def _grompp(mdp: str, coord: str, tpr: str, restraint: str | None = None, checkpoint: str | None = None) -> None:
+        r = gmx.grompp(  # type: ignore[attr-defined]
+            mdp_file=mdp,
+            topology_file=top_file,
+            coordinate_file=coord,
+            output_tpr=tpr,
+            index_file=index_file,
+            restraint_file=restraint,
+            checkpoint_file=checkpoint,
+            max_warnings=5,
+        )
+        if not r.get("success"):
+            raise RuntimeError(f"grompp {mdp} failed: {r.get('stderr', '')[-1200:]}")
+
+    def _mdrun_blocking(tpr: str, deffnm: str) -> None:
+        m = gmx.mdrun(tpr_file=tpr, output_prefix=deffnm, gpu_id=gpu_id)  # type: ignore[attr-defined]
+        if m.get("error"):
+            raise RuntimeError(m["error"])
+        w = gmx.wait_mdrun()  # type: ignore[attr-defined]
+        if not w.get("success"):
+            raise RuntimeError(f"mdrun {deffnm} failed (rc={w.get('returncode')})")
+
+    try:
+        solvated = str(water_model).strip().lower() not in ("none", "vacuum", "")
+
+        _set_stage(session, "minimizing")
+        generate_mdp_from_config(cfg, str(work_dir / "em.mdp"), extra_params=_EM_OVERRIDES)
+        _grompp("em.mdp", coord_file, "em.tpr")
+        _mdrun_blocking("em.tpr", "em")
+        last_gro, last_cpt = "em.gro", None
+
+        _set_stage(session, "nvt")
+        generate_mdp_from_config(cfg, str(work_dir / "nvt.mdp"), extra_params=_NVT_OVERRIDES)
+        _grompp("nvt.mdp", last_gro, "nvt.tpr", restraint=last_gro, checkpoint=last_cpt)
+        _mdrun_blocking("nvt.tpr", "nvt")
+        last_gro, last_cpt = "nvt.gro", "nvt.cpt"
+
+        if solvated:
+            _set_stage(session, "npt")
+            generate_mdp_from_config(cfg, str(work_dir / "npt.mdp"), extra_params=_NPT_OVERRIDES)
+            _grompp("npt.mdp", last_gro, "npt.tpr", restraint=last_gro, checkpoint=last_cpt)
+            _mdrun_blocking("npt.tpr", "npt")
+            last_gro, last_cpt = "npt.gro", "npt.cpt"
+
+        # ── Production ──
+        _set_stage(session, "production")
+        generate_mdp_from_config(cfg, str(work_dir / "md.mdp"), extra_params=_PROD_OVERRIDES)
+        sim_dir = work_dir / _SIM_SUBDIR
+        if sim_dir.exists():
+            shutil.rmtree(sim_dir)
+        sim_dir.mkdir(exist_ok=True)
+        output_prefix = f"{_SIM_SUBDIR}/md"
+        _grompp("md.mdp", last_gro, "md.tpr", checkpoint=last_cpt)
+        m = gmx.mdrun(  # type: ignore[attr-defined]
+            tpr_file="md.tpr",
+            output_prefix=output_prefix,
+            gpu_id=gpu_id,
+            plumed_file=plumed_file,
+            extra_flags=["-cpt", "0.1"],
+        )
+        if m.get("error"):
+            raise RuntimeError(m["error"])
+        session.sim_status.update(  # type: ignore[attr-defined]
+            {
+                "status": "running",
+                "output_prefix": output_prefix,
+                "expected_nsteps": expected_nsteps,
+                "pid": m["pid"],
+                "gpu_id": gpu_id,
+                "stage": "production",
+            }
+        )
+        try:
+            from web.backend.session_store import mutate_session_json
+
+            mutate_session_json(
+                session.session_id,  # type: ignore[attr-defined]
+                lambda meta: {**meta, "pid": m["pid"], "gpu_id": gpu_id, "output_prefix": output_prefix, "stage": "production"},
+            )
+        except Exception:
+            pass
+    except Exception as exc:  # noqa: BLE001 — any stage failure ⇒ failed
+        logger.error("Equilibration/production failed for %s: %s", getattr(session, "session_id", "?"), exc)
+        _set_stage(session, "failed")
+        _persist_run_status(session, "failed")
 
 
 @router.post("/sessions/{session_id}/simulate")
@@ -371,92 +539,54 @@ async def start_simulation(session_id: str):
 
             coord_file = box_gro
 
-        # ── Step C: production grompp → md.tpr ─────────────────────────────
-        _archive_existing(work_dir, "md.tpr", "mdout.mdp")
-        index_file = OmegaConf.select(cfg, "system.index") or None
-        has_index = index_file and (work_dir / index_file).exists()
-        grompp = gmx.grompp(
-            mdp_file="md.mdp",
-            topology_file=top_file,
-            coordinate_file=coord_file,
-            output_tpr="md.tpr",
-            index_file=index_file if has_index else None,
-            max_warnings=5,
-        )
-        if not grompp["success"]:
-            raise HTTPException(500, f"grompp failed:\n{grompp.get('stderr', '')[-2000:]}")
-
-        # ── Step D: launch mdrun (non-blocking) ────────────────────────────
-        # Clean out stale simulation outputs from a previous (e.g. paused/failed) run
-        # so GROMACS starts fresh without conflicting partial files.
-        sim_dir = work_dir / _SIM_SUBDIR
-        if sim_dir.exists():
-            shutil.rmtree(sim_dir)
-        sim_dir.mkdir(exist_ok=True)
-        output_prefix = f"{_SIM_SUBDIR}/md"
-        # Ensure a fresh Docker-backed mdrun process per launch.
+        # ── Step C: equilibrate, then run production (background) ──────────
+        # Fresh Docker-backed mdrun handle per launch.
         try:
             gmx._cleanup()
         except Exception:
             pass
+        _archive_existing(work_dir, "md.tpr", "mdout.mdp")
+        index_file = OmegaConf.select(cfg, "system.index") or None
+        has_index = bool(index_file and (work_dir / index_file).exists())
         gpu_id = OmegaConf.select(cfg, "gromacs.gpu_id") or None
-        # Auto-detect an available GPU if none was explicitly configured
         if not gpu_id:
             gpu_id = _auto_detect_gpu()
-        # Pass plumed.dat for enhanced-sampling methods
         method_name = OmegaConf.select(cfg, "method._target_name") or "md"
         plumed_methods = {
-            "metadynamics",
-            "metad",
-            "opes",
-            "umbrella",
-            "umbrella_sampling",
-            "steered",
-            "steered_md",
+            "metadynamics", "metad", "opes",
+            "umbrella", "umbrella_sampling", "steered", "steered_md",
         }
         plumed_file = (
             "plumed.dat"
             if method_name in plumed_methods and (work_dir / "plumed.dat").exists()
             else None
         )
-        mdrun = gmx.mdrun(
-            tpr_file="md.tpr",
-            output_prefix=output_prefix,
-            gpu_id=gpu_id,
-            plumed_file=plumed_file,
-            extra_flags=["-cpt", "0.1"],  # checkpoint every ~6s so pause/resume works
-        )
         expected_nsteps = OmegaConf.select(cfg, "method.nsteps")
+
+        # Mark the run live immediately; a background worker runs
+        # EM → NVT → [NPT] → production and advances `stage` as it goes so the
+        # HTTP request returns without blocking for the equilibration runs.
         session.sim_status = {
             "status": "running",
             "started_at": time.time(),
-            "output_prefix": output_prefix,
+            "output_prefix": f"{_SIM_SUBDIR}/md",
             "expected_nsteps": int(expected_nsteps) if expected_nsteps is not None else None,
-            "pid": mdrun["pid"],
             "gpu_id": gpu_id,
+            "stage": "minimizing",
         }
-        # Only persist "running" after mdrun has actually started
         _persist_run_status(session, "running")
-        # Persist launch identity so a server that lost the in-memory handle can
-        # still map/observe the run (GPU dashboard) and reason about liveness.
-        try:
-            from web.backend.session_store import mutate_session_json
 
-            def _stamp(meta: dict) -> dict:
-                meta["pid"] = mdrun["pid"]
-                meta["gpu_id"] = gpu_id
-                meta["output_prefix"] = output_prefix
-                return meta
+        threading.Thread(
+            target=_equilibrate_and_run,
+            args=(
+                session, gmx, cfg, work_dir, coord_file, top_file,
+                index_file if has_index else None, gpu_id, plumed_file,
+                water_model, int(expected_nsteps) if expected_nsteps is not None else None,
+            ),
+            daemon=True,
+        ).start()
 
-            mutate_session_json(session.session_id, _stamp)
-        except Exception:
-            pass
-
-        return {
-            "status": "running",
-            "pid": mdrun["pid"],
-            "expected_files": mdrun["expected_files"],
-        }
+        return {"status": "equilibrating", "stage": "minimizing"}
 
     except HTTPException:
         # Any preparation or launch failure transitions the session to "failed"

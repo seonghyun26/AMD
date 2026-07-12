@@ -1801,6 +1801,7 @@ function FilesTab({ sessionId }: { sessionId: string }) {
 function ProgressTab({
   sessionId,
   runStatus,
+  stage,
   exitCode,
   totalSteps,
   timestepPs,
@@ -1813,6 +1814,7 @@ function ProgressTab({
 }: {
   sessionId: string;
   runStatus: "standby" | "running" | "finished" | "failed" | "paused";
+  stage?: string | null;
   exitCode: number | null;
   totalSteps: number;
   timestepPs: number;
@@ -1945,8 +1947,18 @@ function ProgressTab({
   const computedNsPerDay = elapsedMs != null && elapsedMs > 0 && simNs > 0
     ? (simNs * 86400000) / elapsedMs
     : null;
+  // Pre-production equilibration (EM/NVT/NPT) — surfaced distinctly from the
+  // production run so the progress bar/steps aren't misread as production yet.
+  const STAGE_LABEL: Record<string, string> = {
+    minimizing: "Minimizing",
+    nvt: "NVT equilibration",
+    npt: "NPT equilibration",
+  };
+  const equilStage = runStatus === "running" && stage && stage !== "production" ? stage : null;
   const runStatusBadge = runStatus === "running"
-    ? { label: "Running",  className: "text-green-400" }
+    ? equilStage
+      ? { label: STAGE_LABEL[equilStage] ?? "Equilibrating", className: "text-cyan-400" }
+      : { label: "Running",  className: "text-green-400" }
     : runStatus === "paused"
       ? { label: "Paused", className: "text-amber-400" }
       : runStatus === "finished"
@@ -1963,6 +1975,14 @@ function ProgressTab({
         accent="emerald"
         action={<span className={`text-xs font-semibold ${runStatusBadge.className}`}>{runStatusBadge.label}</span>}
       >
+        {equilStage && (
+          <div className="flex items-center gap-2 rounded-lg border border-cyan-300/50 dark:border-cyan-800/50 bg-cyan-50/60 dark:bg-cyan-950/30 px-3 py-2 text-xs text-cyan-700 dark:text-cyan-300">
+            <Loader2 size={13} className="animate-spin flex-shrink-0" />
+            <span>
+              Equilibrating before production — <span className="font-semibold">{STAGE_LABEL[equilStage] ?? equilStage}</span>. The production run starts automatically when this finishes.
+            </span>
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-gray-50/70 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-800 rounded-lg p-2">
             <p className="text-xs text-gray-500 uppercase tracking-wider">Wall Time</p>
@@ -1986,9 +2006,11 @@ function ProgressTab({
             <span>
               {runStatus === "finished"
                 ? `${targetSteps.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
-                : liveProgress
-                  ? `${liveProgress.step.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
-                  : "Waiting for md.log..."}
+                : equilStage
+                  ? `${STAGE_LABEL[equilStage] ?? "Equilibrating"}…`
+                  : liveProgress
+                    ? `${liveProgress.step.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
+                    : "Waiting for md.log..."}
             </span>
             <span>{(runStatus === "finished" || (liveProgress && targetSteps > 0)) ? `${pct.toFixed(1)}%` : "0.0%"}</span>
           </div>
@@ -4125,6 +4147,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const [moleculeLoading, setMoleculeLoading] = useState(false);
   const [simState, setSimState] = useState<SimState>("standby");
   const [simRunStatus, setSimRunStatus] = useState<"standby" | "running" | "finished" | "failed" | "paused">("standby");
+  const [simStage, setSimStage] = useState<string | null>(null);
   const [simExitCode, setSimExitCode] = useState<number | null>(null);
   const [simStartedAt, setSimStartedAt] = useState<number | null>(null);
   const [simFinishedAt, setSimFinishedAt] = useState<number | null>(null);
@@ -4290,6 +4313,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       try {
         const status = await getSimulationStatus(sessionId);
         if (cancelled) return;
+        setSimStage(status.stage ?? null);
         // Re-check after async gap — reset effect may have updated status to "failed" or "paused"
         if ((simRunStatusRef.current as string) === "failed" || (simRunStatusRef.current as string) === "paused") return;
         let mappedStatus: "standby" | "running" | "finished" | "failed" | "paused";
@@ -4389,7 +4413,13 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setSimFinishedAt(null);
     try {
       const result = await startSimulation(sessionId);
-      appendSSEEvent({ type: "text_delta", text: `Simulation started (PID ${result.pid}). Output files: ${Object.values(result.expected_files).join(", ")}` });
+      const msg =
+        result.status === "equilibrating"
+          ? "Simulation started — running energy minimization, then NVT/NPT equilibration before production."
+          : result.expected_files
+            ? `Simulation started (PID ${result.pid}). Output files: ${Object.values(result.expected_files).join(", ")}`
+            : "Simulation started.";
+      appendSSEEvent({ type: "text_delta", text: msg });
       appendSSEEvent({ type: "agent_done", final_text: "" });
       setSimStartedAt(Date.now());
     } catch (err) {
@@ -4539,6 +4569,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           <ProgressTab
             sessionId={sessionId}
             runStatus={simRunStatus}
+            stage={simStage}
             exitCode={simExitCode}
             totalSteps={Number(((cfg.method as Record<string, unknown> | undefined)?.nsteps ?? 0))}
             timestepPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.dt ?? 0.002))}

@@ -205,9 +205,16 @@ class GROMACSRunner:
         coordinate_file: str,
         output_tpr: str,
         index_file: str | None = None,
+        restraint_file: str | None = None,
+        checkpoint_file: str | None = None,
         max_warnings: int = 0,
     ) -> dict[str, Any]:
-        """Prepare a GROMACS .tpr run input file."""
+        """Prepare a GROMACS .tpr run input file.
+
+        ``restraint_file`` (-r) supplies the reference coordinates for position
+        restraints (needed for -DPOSRES NVT/NPT equilibration); ``checkpoint_file``
+        (-t) supplies velocities/state to continue from a previous stage.
+        """
         args = [
             "grompp",
             "-f",
@@ -223,6 +230,10 @@ class GROMACSRunner:
         ]
         if index_file:
             args += ["-n", index_file]
+        if restraint_file:
+            args += ["-r", restraint_file]
+        if checkpoint_file:
+            args += ["-t", checkpoint_file]
 
         result = self._classify_grompp_output(self._run(args))
         out = result.to_dict()

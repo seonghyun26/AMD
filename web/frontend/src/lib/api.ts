@@ -513,14 +513,14 @@ export async function getMolecules(): Promise<{
 
 export async function startSimulation(
   sessionId: string
-): Promise<{ status: string; pid: number; expected_files: Record<string, string> }> {
+): Promise<{ status: string; stage?: string; pid?: number; expected_files?: Record<string, string> }> {
   const res = await authFetch(`${BASE}/sessions/${sessionId}/simulate`, { method: "POST" });
   return json(res);
 }
 
 export async function getSimulationStatus(
   sessionId: string
-): Promise<{ running: boolean; status?: "standby" | "running" | "finished" | "failed"; pid?: number; exit_code?: number; started_at?: number; finished_at?: number }> {
+): Promise<{ running: boolean; status?: "standby" | "running" | "finished" | "failed"; stage?: string; pid?: number; exit_code?: number; started_at?: number; finished_at?: number }> {
   return json(await authFetch(`${BASE}/sessions/${sessionId}/simulate/status`));
 }
 

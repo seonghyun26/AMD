@@ -358,6 +358,14 @@ def get_simulation_status(session_id: str) -> dict:
                 result["finished_at"] = fa
             return result
 
+        # During pre-production equilibration the live mdrun handle belongs to a
+        # STAGE (EM/NVT/NPT), not the production run. Report "running" + the stage
+        # so a stage's clean exit isn't misread as the production run finishing.
+        # The background worker owns stage transitions and marks failure itself.
+        stage = (session.sim_status or {}).get("stage")
+        if stage in ("minimizing", "nvt", "npt"):
+            return _with_timestamps({"running": True, "status": "running", "stage": stage})
+
         if runner is not None:
             proc = getattr(runner, "_mdrun_proc", None)
 
