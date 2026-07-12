@@ -328,7 +328,7 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
     getApiKeys(username).then(({ keys: k }) => {
       setKeys(k);
       // Auto-verify stored keys
-      for (const svc of ["anthropic", "openai", "deepseek", "wandb"]) {
+      for (const svc of ["anthropic", "openai", "deepseek"]) {
         if (k[svc]) {
           setVerifying((v) => ({ ...v, [svc]: true }));
           verifyApiKey(username, svc)
@@ -399,7 +399,7 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-[420px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="relative w-[520px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2.5">
@@ -473,20 +473,6 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
               verifying={verifying["deepseek"] ?? false}
               verifyError={verifyErrors["deepseek"] ?? null}
               onVerify={() => handleVerify("deepseek")}
-            />
-            <ApiKeyRow
-              label="Weights & Biases"
-              color="bg-yellow-400"
-              value={keys["wandb"] ?? ""}
-              onChange={(v) => setKeyValue("wandb", v)}
-              placeholder="Enter WandB API key"
-              onSave={() => handleSaveKey("wandb")}
-              saving={saving["wandb"] ?? false}
-              saved={saved["wandb"] ?? false}
-              verified={verified["wandb"] ?? null}
-              verifying={verifying["wandb"] ?? false}
-              verifyError={verifyErrors["wandb"] ?? null}
-              onVerify={() => handleVerify("wandb")}
             />
           </div>
 

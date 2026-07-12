@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FlaskConical, Settings, Monitor, LogOut, FolderOpen, Menu, MessageSquare } from "lucide-react";
+import { FlaskConical, Settings, Monitor, LogOut, FolderOpen, Menu, MessageSquare, ArrowLeft } from "lucide-react";
 import { getUsername, logout } from "@/lib/auth";
 import { SettingsModal, ServerStatusModal } from "@/components/sidebar/SessionSidebar";
 import type { Project } from "@/lib/types";
@@ -38,8 +38,18 @@ export default function TopBar({
       <div className="flex items-center gap-2 min-w-0">
         {activeProject && (
           <button
+            onClick={onBack}
+            className="p-1.5 -ml-1 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0"
+            aria-label="Back to projects"
+            title="Back to projects"
+          >
+            <ArrowLeft size={18} />
+          </button>
+        )}
+        {activeProject && (
+          <button
             onClick={onOpenSidebar}
-            className="md:hidden p-2 -ml-1 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="md:hidden p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             aria-label="Open simulations"
           >
             <Menu size={18} />
@@ -53,16 +63,10 @@ export default function TopBar({
         </div>
         <span className="text-gray-300 dark:text-gray-700 hidden sm:inline">/</span>
         {activeProject ? (
-          <div className="flex items-center gap-1.5 min-w-0">
-            <button onClick={onBack} className="hidden sm:inline text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-colors flex-shrink-0">
-              Projects
-            </button>
-            <span className="text-gray-300 dark:text-gray-700 hidden sm:inline">/</span>
-            <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
-              <FolderOpen size={14} className="text-blue-500/70 flex-shrink-0" />
-              {activeProject.name}
-            </span>
-          </div>
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200 truncate min-w-0">
+            <FolderOpen size={14} className="text-blue-500/70 flex-shrink-0" />
+            {activeProject.name}
+          </span>
         ) : (
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 hidden sm:inline">Projects</span>
         )}

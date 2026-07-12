@@ -36,6 +36,29 @@ export default function App() {
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const isMobile = useIsMobile();
 
+  // Resizable assistant column (desktop) — drag the handle on its left edge.
+  const [chatWidth, setChatWidth] = useState(480);
+  useEffect(() => {
+    const v = Number(localStorage.getItem("amd_chat_width"));
+    if (v >= 320 && v <= 900) setChatWidth(v);
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("amd_chat_width", String(chatWidth)); } catch { /* ignore */ }
+  }, [chatWidth]);
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    document.body.style.userSelect = "none";
+    const onMove = (ev: MouseEvent) =>
+      setChatWidth(Math.min(Math.max(window.innerWidth - ev.clientX, 320), 900));
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   const { fetchSimulations, loadAssistant } = useSessionStore();
   const { projects, activeProjectId, setActiveProject } = useProjectStore();
 
@@ -100,10 +123,18 @@ export default function App() {
         <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setMobileChatOpen(false)} />
       )}
       <aside
-        className={`flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 overflow-x-hidden fixed inset-y-0 z-40 w-full max-w-sm transition-[right] duration-200 ${
+        style={!isMobile && rightPanelOpen ? { width: chatWidth } : undefined}
+        className={`flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 overflow-x-hidden fixed inset-y-0 z-40 w-full max-w-sm md:max-w-none transition-[right] duration-200 ${
           mobileChatOpen ? "right-0" : "-right-full"
-        } md:static md:right-auto md:z-auto ${rightPanelOpen ? "md:w-[30rem]" : "md:w-10"}`}
+        } md:relative md:right-auto md:z-auto md:transition-none ${rightPanelOpen ? "" : "md:w-10"}`}
       >
+        {rightPanelOpen && (
+          <div
+            onMouseDown={startResize}
+            className="hidden md:block absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-400/40 active:bg-blue-500/50 transition-colors z-20"
+            title="Drag to resize"
+          />
+        )}
         {chatExpanded ? (
           <>
             <div className="px-4 py-3.5 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 flex items-center justify-between">
