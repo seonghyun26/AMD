@@ -36,6 +36,15 @@ export default function App() {
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const isMobile = useIsMobile();
 
+  // Collapsible simulation list (desktop) — fold to a thin rail on the left.
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  useEffect(() => {
+    setLeftPanelOpen(localStorage.getItem("amd_sim_list_open") !== "0");
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("amd_sim_list_open", leftPanelOpen ? "1" : "0"); } catch { /* ignore */ }
+  }, [leftPanelOpen]);
+
   // Resizable assistant column (desktop) — drag the handle on its left edge.
   const [chatWidth, setChatWidth] = useState(480);
   useEffect(() => {
@@ -60,6 +69,7 @@ export default function App() {
   };
 
   const { fetchSimulations, loadAssistant } = useSessionStore();
+  const pendingPrompt = useSessionStore((s) => s.pendingPrompt);
   const { projects, activeProjectId, setActiveProject } = useProjectStore();
 
   useEffect(() => {
@@ -79,6 +89,14 @@ export default function App() {
   useEffect(() => {
     if (activeProjectId) fetchSimulations(activeProjectId);
   }, [activeProjectId, fetchSimulations]);
+
+  // A workspace shortcut queued a prompt — make sure the assistant panel is open
+  // so its ChatInput mounts, consumes the prompt, and streams the answer.
+  useEffect(() => {
+    if (!pendingPrompt) return;
+    if (isMobile) setMobileChatOpen(true);
+    else setRightPanelOpen(true);
+  }, [pendingPrompt, isMobile]);
 
   if (!hydrated) {
     return (
@@ -200,6 +218,8 @@ export default function App() {
               } md:left-auto`}
             >
               <SessionSidebar
+                collapsed={!isMobile && !leftPanelOpen}
+                onToggleCollapse={() => setLeftPanelOpen((v) => !v)}
                 onNewSession={() => { handleNewSession(); setMobileSidebarOpen(false); }}
                 onSelectSession={(id) => {
                   setSessionId(id);

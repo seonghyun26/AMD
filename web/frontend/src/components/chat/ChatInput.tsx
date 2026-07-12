@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Send, StopCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Send, StopCircle, FlaskConical } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { streamAssistant } from "@/lib/sse";
 
@@ -13,15 +13,46 @@ interface Props {
   onAutoSendComplete?: () => void;
 }
 
+/** Detect a trailing `@query` token immediately before the caret (used for the
+ *  simulation-name mention popup). Returns the query text and the `@` offset. */
+function mentionAt(text: string, caret: number): { query: string; start: number } | null {
+  const upto = text.slice(0, caret);
+  // `@` must be at the start or preceded by whitespace; query = word-ish chars.
+  const m = upto.match(/(?:^|\s)@([\w.()/-]*)$/);
+  if (!m) return null;
+  return { query: m[1], start: caret - m[1].length - 1 };
+}
+
 export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: Props) {
   const [value, setValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
   const isStreaming = useSessionStore((s) => s.isStreaming);
-  const { addUserMessage, appendSSEEvent, persistAssistant } = useSessionStore();
+  const sessions = useSessionStore((s) => s.sessions);
+  const pendingPrompt = useSessionStore((s) => s.pendingPrompt);
+  const { addUserMessage, appendSSEEvent, persistAssistant, consumePendingPrompt } = useSessionStore();
+
+  // @-mention state — only active inside a project (simulations belong to one).
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [hi, setHi] = useState(0);
+
+  const matches = useMemo(() => {
+    if (!mentionOpen || !projectId) return [];
+    const q = mentionQuery.toLowerCase();
+    return sessions
+      .filter((s) => (s.nickname || "").toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [mentionOpen, projectId, mentionQuery, sessions]);
+
+  useEffect(() => {
+    if (hi > matches.length - 1) setHi(0);
+  }, [matches.length, hi]);
 
   const doSend = async (text: string) => {
     if (!text.trim() || isStreaming) return;
     setValue("");
+    setMentionOpen(false);
     addUserMessage(text);
     abortRef.current = new AbortController();
     try {
@@ -40,7 +71,45 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
 
   const handleSend = () => doSend(value);
   const handleStop = () => abortRef.current?.abort();
+
+  const refreshMention = (text: string, caret: number) => {
+    if (!projectId) { setMentionOpen(false); return; }
+    const m = mentionAt(text, caret);
+    if (m) { setMentionQuery(m.query); setMentionOpen(true); }
+    else setMentionOpen(false);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
+    setValue(text);
+    refreshMention(text, e.target.selectionStart ?? text.length);
+  };
+
+  const insertMention = (nickname: string) => {
+    const el = taRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    const m = mentionAt(value, caret);
+    if (!m) return;
+    const before = value.slice(0, m.start);
+    const after = value.slice(caret);
+    const inserted = `@${nickname} `;
+    const next = before + inserted + after;
+    setValue(next);
+    setMentionOpen(false);
+    const pos = (before + inserted).length;
+    requestAnimationFrame(() => {
+      const t = taRef.current;
+      if (t) { t.focus(); t.setSelectionRange(pos, pos); }
+    });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionOpen && matches.length > 0) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => (h + 1) % matches.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => (h - 1 + matches.length) % matches.length); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertMention(matches[hi]?.nickname || ""); return; }
+      if (e.key === "Escape") { e.preventDefault(); setMentionOpen(false); return; }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -55,14 +124,47 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSend]);
 
+  // A workspace shortcut ("Analyze", "Suggest CVs", …) queued a prompt — send it.
+  useEffect(() => {
+    if (!pendingPrompt) return;
+    consumePendingPrompt();
+    if (!isStreaming) doSend(pendingPrompt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPrompt]);
+
   return (
     <div className="border-t border-gray-200 dark:border-gray-800 p-3 bg-white/50 dark:bg-gray-900/50 flex-shrink-0">
-      <div className="flex gap-2 items-end">
+      <div className="relative flex gap-2 items-end">
+        {/* @-mention dropdown — simulations in this project */}
+        {mentionOpen && matches.length > 0 && (
+          <div className="absolute bottom-full left-0 mb-2 w-72 max-w-full max-h-60 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl z-50 py-1">
+            <p className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Simulations</p>
+            {matches.map((s, i) => (
+              <button
+                key={s.session_id}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); insertMention(s.nickname); }}
+                onMouseEnter={() => setHi(i)}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
+                  i === hi ? "bg-blue-50 dark:bg-blue-950/50" : "hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                }`}
+              >
+                <FlaskConical size={13} className="flex-shrink-0 text-blue-500/70" />
+                <span className="text-sm text-gray-800 dark:text-gray-200 truncate flex-1">{s.nickname}</span>
+                <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 flex-shrink-0">
+                  {s.session_id.slice(0, 6)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
+          ref={taRef}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={projectId ? "Ask about this project's simulations…" : "Ask the assistant…"}
+          onClick={(e) => refreshMention(value, (e.target as HTMLTextAreaElement).selectionStart ?? value.length)}
+          placeholder={projectId ? "Ask about this project's simulations…  (@ to mention one)" : "Ask the assistant…"}
           rows={3}
           className="flex-1 resize-none border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
         />

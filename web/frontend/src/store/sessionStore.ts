@@ -30,6 +30,9 @@ interface SessionState {
   isStreaming: boolean;
   sessions: SessionSummary[];
   sessionsLoading: boolean;
+  /** A prompt queued by a workspace shortcut (e.g. "Analyze", "Suggest CVs") to
+   *  be auto-sent by the AI assistant panel. Consumed once by ChatInput. */
+  pendingPrompt: string | null;
 
   // Actions
   setSession: (id: string, config: SessionConfig) => void;
@@ -50,6 +53,8 @@ interface SessionState {
   persistMessages: (sessionId: string) => void;
   loadAssistant: (projectId: string | null) => Promise<void>;
   persistAssistant: (projectId: string | null) => void;
+  requestAssistant: (text: string) => void;
+  consumePendingPrompt: () => void;
 }
 
 function newAssistantMessage(): ChatMessage {
@@ -70,6 +75,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   isStreaming: false,
   sessions: [],
   sessionsLoading: true,
+  pendingPrompt: null,
 
   // Selecting/creating a simulation must NOT clear `messages` — those now hold the
   // project-level assistant conversation, which is independent of sim selection.
@@ -306,4 +312,9 @@ export const useSessionStore = create<SessionState>((set) => ({
     if (messages.length === 0) return;
     saveAssistantMessages(projectId, messages).catch(() => {});
   },
+
+  // Workspace shortcut buttons queue a prompt here; the assistant panel picks it
+  // up (ChatInput) and auto-sends it, and page.tsx opens the panel.
+  requestAssistant: (text) => set({ pendingPrompt: text }),
+  consumePendingPrompt: () => set({ pendingPrompt: null }),
 }));

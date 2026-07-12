@@ -2031,7 +2031,12 @@ function ProgressTab({
         action={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setAgentOpen(true)}
+              onClick={() => {
+                const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
+                useSessionStore.getState().requestAssistant(
+                  `Analyze the results of the "${nick}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`
+                );
+              }}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
             >
               <Bot size={11} />
@@ -2560,7 +2565,12 @@ function GromacsTab({
           <div className="flex items-center gap-2">
             {!isLocked && (
               <button
-                onClick={() => setAgentOpen(true)}
+                onClick={() => {
+                  const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
+                  useSessionStore.getState().requestAssistant(
+                    `Review the GROMACS parameters configured for the "${nick}" simulation (see its config.yaml / .mdp) and suggest sensible values or flag anything unusual for this system — thermostat, timestep, cutoffs, electrostatics, constraints and run length.`
+                  );
+                }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
               >
                 <Bot size={11} />
@@ -2761,10 +2771,10 @@ function AdvancedSection({
 
       {open && (
         <fieldset disabled={isLocked} className={isLocked ? "space-y-3 opacity-70" : "space-y-3"}>
-        <div className="p-3 space-y-5 border-t border-gray-300/40 dark:border-gray-700/40 bg-gray-50/20 dark:bg-gray-900/20">
+        <div className="adv-params p-3 space-y-5 border-t border-gray-300/40 dark:border-gray-700/40 bg-gray-50/20 dark:bg-gray-900/20">
           {/* Non-bonded cutoffs */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Non-bonded Cutoffs</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Non-bonded Cutoffs</p>
             <FieldGrid>
               <Field
                 label="Coulomb cutoff"
@@ -2787,7 +2797,7 @@ function AdvancedSection({
 
           {/* Electrostatics */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Electrostatics</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Electrostatics</p>
             <FieldGrid>
               <SelectField
                 label="Coulomb type"
@@ -2821,7 +2831,7 @@ function AdvancedSection({
 
           {/* Neighbor list */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Neighbor List</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Neighbor List</p>
             <FieldGrid>
               <SelectField
                 label="Cutoff scheme"
@@ -2846,7 +2856,7 @@ function AdvancedSection({
 
           {/* Constraints */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Constraints</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Constraints</p>
             <FieldGrid>
               <SelectField
                 label="Constraints"
@@ -2874,7 +2884,7 @@ function AdvancedSection({
 
           {/* Output frequencies */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Output Frequencies (steps)</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Output Frequencies (steps)</p>
             <FieldGrid>
               <Field
                 label="nstxout"
@@ -2929,7 +2939,7 @@ function AdvancedSection({
 
           {/* Pressure */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Pressure Coupling</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Pressure Coupling</p>
             <FieldGrid>
               <SelectField
                 label="Barostat"
@@ -3309,7 +3319,12 @@ function MethodTab({
           <div className="flex items-center gap-2">
             {needsPlumed && !isLocked && (
               <button
-                onClick={() => setAgentOpen(true)}
+                onClick={() => {
+                  const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
+                  useSessionStore.getState().requestAssistant(
+                    `Suggest good collective variables (CVs) for the "${nick}" simulation given its molecular system and enhanced-sampling method. For each CV, give the PLUMED-style definition (1-based atom indices) and explain why it is informative.`
+                  );
+                }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
               >
                 <Bot size={11} />
@@ -3988,8 +4003,10 @@ function NewSessionForm({
             />
           </div>
 
-          {/* Three selectors side by side */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Three selectors side by side — auto-fit on the workspace's actual
+              width (not the viewport), so they reflow to 2/1 columns when the
+              assistant panel is widened and this column gets narrow. */}
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))" }}>
 
             {/* Molecule system */}
             <div className="rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-900/60 p-3 flex flex-col gap-1.5">

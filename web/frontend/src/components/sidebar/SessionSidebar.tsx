@@ -14,6 +14,9 @@ interface Props {
   onNewSession: () => void;
   onSelectSession?: (id: string) => void;
   onSessionDeleted?: (id: string) => void;
+  /** Desktop-only: render as a thin collapsed strip. */
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 // ── Session list item ──────────────────────────────────────────────────
@@ -919,9 +922,27 @@ function ProjectItem({
 
 // ── Main sidebar ───────────────────────────────────────────────────────
 
-export default function SessionSidebar({ onNewSession, onSelectSession, onSessionDeleted }: Props) {
+export default function SessionSidebar({ onNewSession, onSelectSession, onSessionDeleted, collapsed, onToggleCollapse }: Props) {
   const { sessions, sessionsLoading, sessionId, switchSession, updateSessionNickname, removeSession, setSessionRunStatus } =
     useSessionStore();
+
+  // Collapsed strip — a thin rail that expands the panel when clicked.
+  if (collapsed) {
+    return (
+      <aside className="w-10 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full">
+        <button
+          onClick={onToggleCollapse}
+          title="Expand simulations panel"
+          className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400 dark:text-gray-600 hover:text-gray-900 dark:hover:text-gray-300 transition-colors"
+        >
+          <ChevronRight size={15} />
+          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ writingMode: "vertical-rl" }}>
+            Simulations
+          </span>
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside className="w-64 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full">
@@ -936,7 +957,18 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 pb-2">
-        <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-600 px-3 pt-1 pb-1.5">Simulations</p>
+        <div className="flex items-center justify-between px-3 pt-1 pb-1.5">
+          <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-600">Simulations</p>
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              title="Collapse panel"
+              className="hidden md:inline-flex p-0.5 rounded text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <ChevronLeft size={14} />
+            </button>
+          )}
+        </div>
         {sessionsLoading && sessions.length === 0 ? (
           <div className="px-1 py-2">
             <div className="flex items-center gap-2 px-2 mb-3">

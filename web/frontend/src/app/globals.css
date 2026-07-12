@@ -54,3 +54,12 @@ html.light * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 .font-mono {
   font-variant-numeric: tabular-nums;
 }
+
+/* Advanced-parameters form: shrink the per-field labels (Coulomb cutoff, VdW
+   cutoff, …) so the section headers (Non-bonded Cutoffs, Electrostatics, …)
+   read as the larger, bolder, dominant level of the hierarchy. */
+.adv-params label {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+}
