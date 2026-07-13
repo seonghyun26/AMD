@@ -284,7 +284,10 @@ class GROMACSRunner:
         if plumed_file:
             args += ["-plumed", plumed_file]
         if gpu_id:
-            args += ["-gpu_id", gpu_id]
+            # `docker run --gpus device=N` exposes only that GPU to the container,
+            # remapped to container-local index 0. So gmx (inside the container)
+            # must be told 0, not the host index. Non-Docker runs pass it as-is.
+            args += ["-gpu_id", "0" if self._docker_image else gpu_id]
         if cpt_file:
             args += ["-cpi", cpt_file, "-append"]
         elif append:
@@ -297,7 +300,11 @@ class GROMACSRunner:
         # requires the cidfile not to pre-exist.
         cid_path: Path | None = None
         if self._docker_image:
-            cid_path = self.work_dir / ".mdrun.cid"
+            # Absolute path: `docker --cidfile` resolves against the docker
+            # client's cwd, so a relative work_dir makes docker fail with
+            # "failed to create the container ID file" (exit 127). The -v mount
+            # already uses .resolve(); the cidfile must match.
+            cid_path = (self.work_dir / ".mdrun.cid").resolve()
             try:
                 cid_path.unlink(missing_ok=True)
             except Exception:

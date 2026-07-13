@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from omegaconf import OmegaConf
 
-from web.backend.session_manager import get_session
+from web.backend.session_manager import get_or_restore_session
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +377,7 @@ async def start_simulation(session_id: str):
     moved to work_dir/archive/ before each step so GROMACS never produces its
     own #filename.bak# backups.
     """
-    session = get_session(session_id)
+    session = get_or_restore_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
 
@@ -620,7 +620,7 @@ async def simulation_status(session_id: str):
     result = get_simulation_status(session_id)
     terminal = result.get("status") if result.get("status") in {"finished", "failed"} else None
     if terminal:
-        session = get_session(session_id)
+        session = get_or_restore_session(session_id)
         if session:
             _persist_run_status(session, terminal)
     return result
@@ -636,7 +636,7 @@ async def stop_simulation(session_id: str):
     from web.backend.session_manager import stop_session_simulation
 
     stopped = stop_session_simulation(session_id)
-    session = get_session(session_id)
+    session = get_or_restore_session(session_id)
     has_checkpoint = False
     if session:
         # Only record "paused" if we actually stopped a live run — otherwise a
@@ -656,7 +656,7 @@ async def terminate_simulation(session_id: str):
     from web.backend.session_manager import stop_session_simulation
 
     stop_session_simulation(session_id)
-    session = get_session(session_id)
+    session = get_or_restore_session(session_id)
     if session:
         session.sim_status = {}
         _persist_run_status(session, "standby")
@@ -666,7 +666,7 @@ async def terminate_simulation(session_id: str):
 @router.get("/sessions/{session_id}/simulate/checkpoint-status")
 async def checkpoint_status(session_id: str):
     """Check whether a checkpoint file exists for resume."""
-    session = get_session(session_id)
+    session = get_or_restore_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
     work_dir = Path(session.work_dir)
@@ -681,7 +681,7 @@ async def resume_simulation(session_id: str):
     Uses ``gmx mdrun -s md.tpr -cpi simulation/md.cpt -deffnm simulation/md -append``.
     The checkpoint file must exist from the previous run.
     """
-    session = get_session(session_id)
+    session = get_or_restore_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
 
