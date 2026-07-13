@@ -8,12 +8,17 @@ import { Loader2 } from "lucide-react";
 export default function ChatWindow() {
   const messages = useSessionStore((s) => s.messages);
   const isStreaming = useSessionStore((s) => s.isStreaming);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new content
+  // Auto-scroll to the latest message — but scroll ONLY this container (using
+  // scrollIntoView would scroll every ancestor, i.e. the whole page), and only
+  // when the user is already near the bottom (don't yank them down mid-read).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const el = containerRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [messages, isStreaming]);
 
   if (messages.length === 0) {
     return (
@@ -27,7 +32,7 @@ export default function ChatWindow() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto overflow-x-hidden">
+    <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
       {messages.map((msg) => (
         <MessageBubble key={msg.id} message={msg} />
       ))}
@@ -43,8 +48,6 @@ export default function ChatWindow() {
           </div>
         </div>
       )}
-
-      <div ref={bottomRef} />
     </div>
   );
 }
