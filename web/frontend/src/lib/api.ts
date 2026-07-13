@@ -586,11 +586,21 @@ export interface GpuInfo {
   name: string;
   memory_used_mb: number;
   memory_total_mb: number;
+  memory_free_mb?: number;
   utilization_pct: number;
   temperature_c: number;
-  session_id: string | null;
-  session_nickname: string | null;
-  available: boolean;
+  allowed?: boolean;
+  session_id?: string | null;
+  session_nickname?: string | null;
+  available?: boolean;
+}
+
+export async function listGpus(): Promise<GpuInfo[]> {
+  try {
+    return (await getServerStatus()).gpus ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export interface ServerStatus {

@@ -29,23 +29,50 @@ _GPU_DENY_LIST: set[str] = set(
 
 
 def _auto_detect_gpu() -> str | None:
-    """Return the index of the first idle *allowed* GPU, or None."""
+    """Return the *allowed* GPU with the most free memory (≥ ~2 GB), else None.
+
+    Memory-aware rather than idle-only: a GPU that is busy but still has spare
+    memory is used instead of silently falling back to CPU.
+    """
     try:
         r = subprocess.run(
-            ["nvidia-smi", "--query-gpu=index,utilization.gpu", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=index,memory.free", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
             timeout=5,
         )
         if r.returncode != 0:
             return None
+        best: str | None = None
+        best_free = -1
         for line in r.stdout.strip().splitlines():
             parts = [p.strip() for p in line.split(",")]
-            if len(parts) >= 2 and parts[0] not in _GPU_DENY_LIST and int(parts[1]) < 10:
-                return parts[0]
+            if len(parts) < 2 or parts[0] in _GPU_DENY_LIST:
+                continue
+            try:
+                free = int(parts[1])
+            except ValueError:
+                continue
+            if free > best_free:
+                best, best_free = parts[0], free
+        if best is not None and best_free >= 2000:  # need ≥ ~2 GB free to be useful
+            return best
     except Exception:
         pass
     return None
+
+
+def _resolve_gpu(cfg: object) -> str | None:
+    """Map the configured gromacs.gpu_id to a concrete GPU index (or None=CPU).
+
+    "cpu" → CPU; "auto"/unset → memory-aware auto-select; a number → that GPU.
+    """
+    raw = str(OmegaConf.select(cfg, "gromacs.gpu_id") or "").strip().lower()
+    if raw == "cpu":
+        return None
+    if raw in ("", "auto"):
+        return _auto_detect_gpu()
+    return raw
 
 
 _COORD_EXTS = {".gro", ".pdb"}
@@ -561,9 +588,7 @@ async def start_simulation(session_id: str):
         _archive_existing(work_dir, "md.tpr", "mdout.mdp")
         index_file = OmegaConf.select(cfg, "system.index") or None
         has_index = bool(index_file and (work_dir / index_file).exists())
-        gpu_id = OmegaConf.select(cfg, "gromacs.gpu_id") or None
-        if not gpu_id:
-            gpu_id = _auto_detect_gpu()
+        gpu_id = _resolve_gpu(cfg)
         method_name = OmegaConf.select(cfg, "method._target_name") or "md"
         plumed_methods = {
             "metadynamics", "metad", "opes",
@@ -712,9 +737,7 @@ async def resume_simulation(session_id: str):
         except Exception:
             pass
 
-        gpu_id = OmegaConf.select(cfg, "gromacs.gpu_id") or None
-        if not gpu_id:
-            gpu_id = _auto_detect_gpu()
+        gpu_id = _resolve_gpu(cfg)
 
         # Generate plumed.dat if needed (same as initial launch)
         method_name = OmegaConf.select(cfg, "method._target_name") or "plain_md"

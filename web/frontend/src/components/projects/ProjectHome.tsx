@@ -108,20 +108,22 @@ export default function ProjectHome({ onOpenProject }: { onOpenProject: (id: str
                     <span className="text-[11px] text-gray-400 dark:text-gray-500">
                       {(p.simulation_count ?? 0)} simulation{(p.simulation_count ?? 0) === 1 ? "" : "s"}
                     </span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setEditingId(p.project_id); setEditName(p.name); }}
-                      className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 p-1 rounded-md text-gray-300 dark:text-gray-600 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
-                      title="Rename project"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteProjectById(p.project_id); }}
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded-md text-gray-300 dark:text-gray-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                      title="Delete project"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditingId(p.project_id); setEditName(p.name); }}
+                        className="p-1 rounded-md text-gray-300 dark:text-gray-600 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                        title="Rename project"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteProjectById(p.project_id); }}
+                        className="p-1 rounded-md text-gray-300 dark:text-gray-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        title="Delete project"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </>
                 )}
               </div>

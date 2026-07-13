@@ -85,7 +85,8 @@ import {
   updateResultCards,
   type CustomCVConfig,
   getSessionRunStatus,
-  getAvailableGpu,
+  listGpus,
+  type GpuInfo,
   getPlumedPreview,
   generatePlumedFile,
   getMolecules,
@@ -1930,6 +1931,16 @@ function ProgressTab({
       ?? names.find((f) => f.lower.endsWith(".pdb"));
     return { trajectoryFile: traj, topologyFile: topo };
   }, [allFiles, filesLoadedFor, sessionId]);
+  // Track when the PRODUCTION run actually started (first live md.log reading),
+  // so ns/day is measured against production wall time, not the total run time
+  // which now includes EM/NVT/NPT equilibration (which would understate it).
+  const [prodStartMs, setProdStartMs] = useState<number | null>(null);
+  useEffect(() => { setProdStartMs(null); }, [sessionId]);
+  useEffect(() => {
+    if (runStatus === "running" && liveProgress != null) setProdStartMs((p) => p ?? Date.now());
+    else if (runStatus === "standby") setProdStartMs(null);
+  }, [runStatus, liveProgress]);
+
   const targetSteps = Number.isFinite(totalSteps) && totalSteps > 0 ? totalSteps : 0;
   const pctRaw = targetSteps > 0 && liveProgress
     ? Math.max(0, Math.min(100, (liveProgress.step / targetSteps) * 100))
@@ -1949,9 +1960,19 @@ function ProgressTab({
   const simNs = liveProgress ? liveProgress.time_ps / 1000 : 0;
   const totalSimPs = totalSteps * timestepPs;
   const totalSimNs = totalSimPs / 1000;
-  const computedNsPerDay = elapsedMs != null && elapsedMs > 0 && simNs > 0
-    ? (simNs * 86400000) / elapsedMs
-    : null;
+  // Prefer GROMACS's own reported ns/day (written to the log at run end); while
+  // running, derive it from PRODUCTION wall time (since md.log first appeared),
+  // not the total elapsed which includes equilibration.
+  const prodElapsedMs =
+    prodStartMs != null && (runStatus === "running" || runStatus === "paused")
+      ? Math.max(0, nowMs - prodStartMs)
+      : null;
+  const computedNsPerDay =
+    liveProgress && liveProgress.ns_per_day > 0
+      ? liveProgress.ns_per_day
+      : prodElapsedMs != null && prodElapsedMs > 1000 && simNs > 0
+        ? (simNs * 86400000) / prodElapsedMs
+        : null;
   // Pre-production equilibration (EM/NVT/NPT) — surfaced distinctly from the
   // production run so the progress bar/steps aren't misread as production yet.
   const STAGE_LABEL: Record<string, string> = {
@@ -2553,35 +2574,19 @@ function MoleculeTab({
 // ── GROMACS tab ────────────────────────────────────────────────────────
 
 function GpuCpuToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const isGpu = value !== "" && value !== "cpu";
-  const [gpuLabel, setGpuLabel] = useState(isGpu ? `GPU ${value}` : "GPU (auto)");
-  const [checking, setChecking] = useState(false);
+  // value: "cpu" → CPU; "auto"/"" → auto-select GPU; "N" → specific GPU N.
+  const isCpu = value === "cpu";
+  const gpuSel = isCpu || value === "" || value === "auto" ? "auto" : value;
+  const [gpus, setGpus] = useState<GpuInfo[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const selectGpu = () => {
-    setChecking(true);
-    getAvailableGpu()
-      .then((r) => {
-        if (r.available && r.gpu_id) {
-          onChange(r.gpu_id);
-          setGpuLabel(`GPU ${r.gpu_id}`);
-        } else {
-          setGpuLabel("No GPU free");
-          // Stay on CPU if no GPU available
-        }
-      })
-      .catch(() => { setGpuLabel("GPU (error)"); })
-      .finally(() => setChecking(false));
+  const refresh = () => {
+    setLoading(true);
+    listGpus().then(setGpus).catch(() => setGpus([])).finally(() => setLoading(false));
   };
+  useEffect(() => { refresh(); }, []);
 
-  const selectCpu = () => {
-    onChange("");
-    setGpuLabel("GPU (auto)");
-  };
-
-  // On mount, if GPU is selected, verify it
-  useEffect(() => {
-    if (isGpu) setGpuLabel(`GPU ${value}`);
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fmtGb = (mb: number) => (mb / 1024).toFixed(1);
 
   return (
     <div>
@@ -2589,30 +2594,63 @@ function GpuCpuToggle({ value, onChange }: { value: string; onChange: (v: string
       <div className="flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden h-[38px]">
         <button
           type="button"
-          onClick={selectGpu}
-          disabled={checking}
-          className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors ${
-            isGpu
-              ? "bg-emerald-100/40 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 border-r border-gray-300 dark:border-gray-700"
-              : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 border-r border-gray-300 dark:border-gray-700"
+          onClick={() => onChange(gpuSel)}
+          className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors border-r border-gray-300 dark:border-gray-700 ${
+            !isCpu
+              ? "bg-emerald-100/40 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400"
+              : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
           }`}
         >
-          {checking ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-          {isGpu ? gpuLabel : "GPU"}
+          <Zap size={12} /> GPU
         </button>
         <button
           type="button"
-          onClick={selectCpu}
+          onClick={() => onChange("cpu")}
           className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors ${
-            !isGpu
+            isCpu
               ? "bg-blue-100/40 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
               : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
           }`}
         >
-          <Cpu size={12} />
-          CPU
+          <Cpu size={12} /> CPU
         </button>
       </div>
+      {!isCpu && (
+        <div className="mt-2 flex items-center gap-1.5">
+          <select
+            value={gpuSel}
+            onChange={(e) => onChange(e.target.value)}
+            className="flex-1 min-w-0 border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="auto">Auto — GPU with most free memory</option>
+            {gpus.map((g) => {
+              const free = g.memory_free_mb ?? (g.memory_total_mb - g.memory_used_mb);
+              const denied = g.allowed === false;
+              return (
+                <option key={g.index} value={String(g.index)} disabled={denied}>
+                  GPU {g.index} · {g.name} · {fmtGb(free)}/{fmtGb(g.memory_total_mb)} GB free · {g.utilization_pct}% util{denied ? " · reserved" : ""}
+                </option>
+              );
+            })}
+          </select>
+          <button
+            type="button"
+            onClick={() => onChange("auto")}
+            title="Auto-select the GPU with the most free memory"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
+          >
+            Auto
+          </button>
+          <button
+            type="button"
+            onClick={refresh}
+            title="Refresh GPU list"
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -3079,10 +3117,11 @@ function AdvancedSection({
             </FieldGrid>
           </div>
 
-          {/* Pressure */}
+          {/* Pressure — 3 fields on one reflowing row (avoids the orphaned τ a
+              fixed 2-col grid produced). */}
           <div>
             <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Pressure Coupling</p>
-            <FieldGrid>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(9rem, 1fr))" }}>
               <SelectField
                 label="Barostat"
                 value={String(gromacs.pcoupl ?? "no")}
@@ -3111,7 +3150,7 @@ function AdvancedSection({
                 onBlur={onSave}
                 unit="ps"
               />
-            </FieldGrid>
+            </div>
           </div>
         </div>
         </fieldset>
