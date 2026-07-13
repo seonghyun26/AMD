@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
+  Check,
   Settings,
   Cpu,
   Zap,
@@ -1802,6 +1803,8 @@ function ProgressTab({
   sessionId,
   runStatus,
   stage,
+  equilibrate = true,
+  solvated = true,
   exitCode,
   totalSteps,
   timestepPs,
@@ -1815,6 +1818,8 @@ function ProgressTab({
   sessionId: string;
   runStatus: "standby" | "running" | "finished" | "failed" | "paused";
   stage?: string | null;
+  equilibrate?: boolean;
+  solvated?: boolean;
   exitCode: number | null;
   totalSteps: number;
   timestepPs: number;
@@ -1955,6 +1960,26 @@ function ProgressTab({
     npt: "NPT equilibration",
   };
   const equilStage = runStatus === "running" && stage && stage !== "production" ? stage : null;
+
+  // Stage-order overview: EM → NVT → [NPT] → Simulation.
+  const orderSteps: { key: string; label: string }[] = equilibrate
+    ? [
+        { key: "minimizing", label: "EM" },
+        { key: "nvt", label: "NVT" },
+        ...(solvated ? [{ key: "npt", label: "NPT" }] : []),
+        { key: "production", label: "Simulation" },
+      ]
+    : [{ key: "production", label: "Simulation" }];
+  const prodIdx = orderSteps.findIndex((s) => s.key === "production");
+  const activeIdx =
+    runStatus === "finished"
+      ? orderSteps.length // all done
+      : runStatus === "standby"
+        ? -1
+        : stage === "production" || (runStatus === "running" && !equilStage)
+          ? prodIdx
+          : orderSteps.findIndex((s) => s.key === stage);
+
   const runStatusBadge = runStatus === "running"
     ? equilStage
       ? { label: STAGE_LABEL[equilStage] ?? "Equilibrating", className: "text-cyan-400" }
@@ -1975,6 +2000,34 @@ function ProgressTab({
         accent="emerald"
         action={<span className={`text-xs font-semibold ${runStatusBadge.className}`}>{runStatusBadge.label}</span>}
       >
+        {orderSteps.length > 1 && (
+          <div className="flex items-center gap-1 flex-wrap">
+            {orderSteps.map((s, i) => {
+              const done = i < activeIdx;
+              const active = i === activeIdx && runStatus !== "finished";
+              const failed = runStatus === "failed" && i === activeIdx;
+              return (
+                <Fragment key={s.key}>
+                  {i > 0 && <ChevronRight size={12} className="text-gray-300 dark:text-gray-700 flex-shrink-0" />}
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                      failed
+                        ? "border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30"
+                        : done
+                          ? "border-emerald-300/60 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30"
+                          : active
+                            ? "border-cyan-300 dark:border-cyan-700 text-cyan-600 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40"
+                            : "border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-600"
+                    }`}
+                  >
+                    {done ? <Check size={11} /> : active && !failed ? <Loader2 size={11} className="animate-spin" /> : null}
+                    {s.label}
+                  </span>
+                </Fragment>
+              );
+            })}
+          </div>
+        )}
         {equilStage && (
           <div className="flex items-center gap-2 rounded-lg border border-cyan-300/50 dark:border-cyan-800/50 bg-cyan-50/60 dark:bg-cyan-950/30 px-3 py-2 text-xs text-cyan-700 dark:text-cyan-300">
             <Loader2 size={13} className="animate-spin flex-shrink-0" />
@@ -2583,6 +2636,8 @@ function GromacsTab({
   const method  = (cfg.method  ?? {}) as Record<string, unknown>;
   const system  = (cfg.system  ?? {}) as Record<string, unknown>;
   const isLocked = runStatus === "running" || runStatus === "finished";
+  const equilibrate = gromacs.equilibrate !== false; // default on
+  const solvated = String(system.water_model ?? "tip3p") !== "none";
   const [agentOpen, setAgentOpen] = useState(false);
 
   return (
@@ -2734,6 +2789,63 @@ function GromacsTab({
             </Section>
           );
         })()}
+
+        {/* Initialization / equilibration */}
+        <Section
+          icon={<Layers size={13} />}
+          title="Initialization"
+          accent="indigo"
+          action={
+            <button
+              type="button"
+              onClick={() => { onChange("gromacs.equilibrate", !equilibrate); onSave(); }}
+              title={equilibrate ? "Equilibration enabled" : "Equilibration disabled"}
+              className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${equilibrate ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${equilibrate ? "left-[18px]" : "left-0.5"}`} />
+            </button>
+          }
+        >
+          {equilibrate ? (
+            <>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
+                Relax the system before production: energy minimization → NVT{solvated ? " → NPT" : ""} → simulation.
+              </p>
+              <FieldGrid>
+                <Field
+                  label="EM max steps"
+                  type="number"
+                  value={String(gromacs.equil_em_steps ?? 50000)}
+                  onChange={(v) => onChange("gromacs.equil_em_steps", Number(v))}
+                  onBlur={onSave}
+                  hint="Minimizer; stops early at emtol."
+                />
+                <Field
+                  label="NVT"
+                  type="number"
+                  value={String(gromacs.equil_nvt_ps ?? 100)}
+                  onChange={(v) => onChange("gromacs.equil_nvt_ps", Number(v))}
+                  onBlur={onSave}
+                  unit="ps"
+                />
+                {solvated && (
+                  <Field
+                    label="NPT"
+                    type="number"
+                    value={String(gromacs.equil_npt_ps ?? 100)}
+                    onChange={(v) => onChange("gromacs.equil_npt_ps", Number(v))}
+                    onBlur={onSave}
+                    unit="ps"
+                  />
+                )}
+              </FieldGrid>
+            </>
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-500">
+              Equilibration off — production starts directly from the built system (velocities assigned at the reference temperature).
+            </p>
+          )}
+        </Section>
 
         {/* Thermostat */}
         <Section icon={<Thermometer size={13} />} title="Temperature" accent="amber">
@@ -4570,6 +4682,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             sessionId={sessionId}
             runStatus={simRunStatus}
             stage={simStage}
+            equilibrate={(cfg.gromacs as Record<string, unknown> | undefined)?.equilibrate !== false}
+            solvated={String((cfg.system as Record<string, unknown> | undefined)?.water_model ?? "tip3p") !== "none"}
             exitCode={simExitCode}
             totalSteps={Number(((cfg.method as Record<string, unknown> | undefined)?.nsteps ?? 0))}
             timestepPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.dt ?? 0.002))}

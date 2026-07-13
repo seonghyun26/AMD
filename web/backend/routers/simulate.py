@@ -283,29 +283,42 @@ def _equilibrate_and_run(
 
     try:
         solvated = str(water_model).strip().lower() not in ("none", "vacuum", "")
+        # Equilibration knob (configured from the GROMACS tab). Durations: EM in
+        # max steps; NVT/NPT in ps (→ steps via dt).
+        _eq = OmegaConf.select(cfg, "gromacs.equilibrate")
+        equilibrate = True if _eq is None else bool(_eq)
+        dt = float(OmegaConf.select(cfg, "gromacs.dt") or 0.002)
+        em_steps = int(OmegaConf.select(cfg, "gromacs.equil_em_steps") or _EQUIL_NSTEPS)
+        nvt_steps = max(1, int(float(OmegaConf.select(cfg, "gromacs.equil_nvt_ps") or 100.0) / dt))
+        npt_steps = max(1, int(float(OmegaConf.select(cfg, "gromacs.equil_npt_ps") or 100.0) / dt))
 
-        _set_stage(session, "minimizing")
-        generate_mdp_from_config(cfg, str(work_dir / "em.mdp"), extra_params=_EM_OVERRIDES)
-        _grompp("em.mdp", coord_file, "em.tpr")
-        _mdrun_blocking("em.tpr", "em")
-        last_gro, last_cpt = "em.gro", None
+        last_gro, last_cpt = coord_file, None
+        if equilibrate:
+            _set_stage(session, "minimizing")
+            generate_mdp_from_config(cfg, str(work_dir / "em.mdp"), extra_params={**_EM_OVERRIDES, "nsteps": em_steps})
+            _grompp("em.mdp", coord_file, "em.tpr")
+            _mdrun_blocking("em.tpr", "em")
+            last_gro, last_cpt = "em.gro", None
 
-        _set_stage(session, "nvt")
-        generate_mdp_from_config(cfg, str(work_dir / "nvt.mdp"), extra_params=_NVT_OVERRIDES)
-        _grompp("nvt.mdp", last_gro, "nvt.tpr", restraint=last_gro, checkpoint=last_cpt)
-        _mdrun_blocking("nvt.tpr", "nvt")
-        last_gro, last_cpt = "nvt.gro", "nvt.cpt"
+            _set_stage(session, "nvt")
+            generate_mdp_from_config(cfg, str(work_dir / "nvt.mdp"), extra_params={**_NVT_OVERRIDES, "nsteps": nvt_steps})
+            _grompp("nvt.mdp", last_gro, "nvt.tpr", restraint=last_gro, checkpoint=last_cpt)
+            _mdrun_blocking("nvt.tpr", "nvt")
+            last_gro, last_cpt = "nvt.gro", "nvt.cpt"
 
-        if solvated:
-            _set_stage(session, "npt")
-            generate_mdp_from_config(cfg, str(work_dir / "npt.mdp"), extra_params=_NPT_OVERRIDES)
-            _grompp("npt.mdp", last_gro, "npt.tpr", restraint=last_gro, checkpoint=last_cpt)
-            _mdrun_blocking("npt.tpr", "npt")
-            last_gro, last_cpt = "npt.gro", "npt.cpt"
+            if solvated:
+                _set_stage(session, "npt")
+                generate_mdp_from_config(cfg, str(work_dir / "npt.mdp"), extra_params={**_NPT_OVERRIDES, "nsteps": npt_steps})
+                _grompp("npt.mdp", last_gro, "npt.tpr", restraint=last_gro, checkpoint=last_cpt)
+                _mdrun_blocking("npt.tpr", "npt")
+                last_gro, last_cpt = "npt.gro", "npt.cpt"
 
         # ── Production ──
         _set_stage(session, "production")
-        generate_mdp_from_config(cfg, str(work_dir / "md.mdp"), extra_params=_PROD_OVERRIDES)
+        # Continue from the equilibrated checkpoint; if equilibration was disabled,
+        # start production fresh (assign velocities) from the built system.
+        prod_overrides = _PROD_OVERRIDES if equilibrate else {"continuation": "no", "gen_vel": "yes"}
+        generate_mdp_from_config(cfg, str(work_dir / "md.mdp"), extra_params=prod_overrides)
         sim_dir = work_dir / _SIM_SUBDIR
         if sim_dir.exists():
             shutil.rmtree(sim_dir)
@@ -566,13 +579,15 @@ async def start_simulation(session_id: str):
         # Mark the run live immediately; a background worker runs
         # EM → NVT → [NPT] → production and advances `stage` as it goes so the
         # HTTP request returns without blocking for the equilibration runs.
+        _eq = OmegaConf.select(cfg, "gromacs.equilibrate")
+        initial_stage = "production" if _eq is not None and not bool(_eq) else "minimizing"
         session.sim_status = {
             "status": "running",
             "started_at": time.time(),
             "output_prefix": f"{_SIM_SUBDIR}/md",
             "expected_nsteps": int(expected_nsteps) if expected_nsteps is not None else None,
             "gpu_id": gpu_id,
-            "stage": "minimizing",
+            "stage": initial_stage,
         }
         _persist_run_status(session, "running")
 
@@ -586,7 +601,10 @@ async def start_simulation(session_id: str):
             daemon=True,
         ).start()
 
-        return {"status": "equilibrating", "stage": "minimizing"}
+        return {
+            "status": "running" if initial_stage == "production" else "equilibrating",
+            "stage": initial_stage,
+        }
 
     except HTTPException:
         # Any preparation or launch failure transitions the session to "failed"

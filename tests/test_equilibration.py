@@ -84,6 +84,35 @@ def test_vacuum_skips_npt(tmp_path, _cfg, _patched):
     assert gmx.grompps[2]["checkpoint_file"] == "nvt.cpt"  # production continues from NVT
 
 
+def test_equilibration_disabled_runs_production_directly(tmp_path, _cfg, _patched):
+    from omegaconf import OmegaConf
+
+    OmegaConf.update(_cfg, "gromacs.equilibrate", False, merge=True)
+    gmx = _FakeGmx()
+    sim._equilibrate_and_run(
+        _FakeSession(), gmx, _cfg, tmp_path, "ionized.gro", "topol.top",
+        None, "0", None, "tip3p", 1000,
+    )
+    mdps = [g["mdp_file"] for g in gmx.grompps]
+    assert mdps == ["md.mdp"]  # no EM/NVT/NPT
+    assert gmx.grompps[0]["coordinate_file"] == "ionized.gro"
+    assert not gmx.grompps[0]["checkpoint_file"]  # fresh start, no continuation
+    assert gmx.mdruns == ["simulation/md"]
+
+
+def test_configurable_nvt_length(tmp_path, _cfg, _patched):
+    from omegaconf import OmegaConf
+
+    OmegaConf.update(_cfg, "gromacs.equil_nvt_ps", 20, merge=True)  # 20 ps at dt=0.002 → 10000 steps
+    gmx = _FakeGmx()
+    sim._equilibrate_and_run(
+        _FakeSession(), gmx, _cfg, tmp_path, "ionized.gro", "topol.top",
+        None, "0", None, "tip3p", 1000,
+    )
+    nvt_mdp = (tmp_path / "nvt.mdp").read_text()
+    assert any(line.replace(" ", "").startswith("nsteps=10000") for line in nvt_mdp.splitlines())
+
+
 def test_stage_failure_marks_failed(tmp_path, _cfg, _patched):
     gmx = _FakeGmx(fail_on="nvt.mdp")  # NVT grompp fails
     sim._equilibrate_and_run(
