@@ -308,6 +308,7 @@ function ApiKeyRow({
 const AGENT_BACKENDS = [
   { id: "anthropic",   label: "Claude", color: "orange" },
   { id: "claude_code", label: "Claude Code", color: "orange" },
+  { id: "codex",       label: "Codex", color: "emerald" },
   { id: "openai",      label: "ChatGPT", color: "emerald" },
   { id: "deepseek",    label: "DeepSeek", color: "blue" },
 ] as const;
@@ -541,8 +542,8 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Agent Backbone</h4>
             <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden h-[36px]">
               {AGENT_BACKENDS.map((b, i) => {
-                // Claude Code uses the CLI subscription login — no API key to verify.
-                const isVerified = b.id === "claude_code" ? true : verified[b.id] === true;
+                // CLI backends use their existing subscription login.
+                const isVerified = b.id === "claude_code" || b.id === "codex" ? true : verified[b.id] === true;
                 const isActive = agentBackend === b.id;
                 const disabled = !isVerified;
                 return (
@@ -571,7 +572,7 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
               })}
             </div>
             <p className="text-[10px] text-gray-400 dark:text-gray-600">
-              Only providers with a verified API key can be selected.
+              API providers require a verified key; CLI backends use their saved login.
             </p>
           </div>
 

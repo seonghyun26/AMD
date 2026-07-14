@@ -147,10 +147,11 @@ def start():
     """Entry point for the amd-web console script."""
     import uvicorn
 
+    port = int(os.getenv("AMD_PORT", "8000"))
     uvicorn.run(
         "web.backend.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=False,  # reload breaks with StaticFiles mount after build
     )
 

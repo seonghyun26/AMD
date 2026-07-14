@@ -505,7 +505,7 @@ async def stream_chat(session_id: str, req: StreamChatRequest):
     if not session:
         raise HTTPException(404, "Session not found")
 
-    # Route to a real (read-only) Claude Code session when that backbone is selected.
+    # Route CLI-backed assistants separately from the API-driven MDAgent.
     backbone = ""
     try:
         from web.backend.db import get_api_keys
@@ -526,6 +526,26 @@ async def stream_chat(session_id: str, req: StreamChatRequest):
 
         return StreamingResponse(
             cc_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
+    if backbone == "codex":
+        from web.backend.codex_agent import stream_codex
+
+        async def codex_generator():
+            try:
+                async for event in stream_codex(session.work_dir, message):
+                    yield _format_sse(event)
+            except Exception as exc:
+                yield _format_sse({"type": "error", "message": str(exc)})
+
+        return StreamingResponse(
+            codex_generator(),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
