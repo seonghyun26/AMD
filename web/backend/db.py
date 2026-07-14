@@ -31,7 +31,9 @@ _ITERATIONS = 260_000
 
 # ── API-key encryption ────────────────────────────────────────────────
 
-_ENC_KEY_PATH = Path(os.getenv("AMD_ENCRYPTION_KEY_PATH", str(Path.home() / ".amd" / "encryption_key")))
+_ENC_KEY_PATH = Path(
+    os.getenv("AMD_ENCRYPTION_KEY_PATH", str(Path.home() / ".amd" / "encryption_key"))
+)
 
 
 def _load_encryption_key() -> bytes:
@@ -61,7 +63,7 @@ def _decrypt_api_key(stored: str) -> str:
         return ""
     if stored.startswith(_ENC_PREFIX):
         try:
-            return _FERNET.decrypt(stored[len(_ENC_PREFIX):].encode()).decode()
+            return _FERNET.decrypt(stored[len(_ENC_PREFIX) :].encode()).decode()
         except InvalidToken:
             return ""
     # Legacy plaintext — return as-is (will be re-encrypted on next save)
@@ -97,18 +99,15 @@ def _conn() -> sqlite3.Connection:
 def init_db() -> None:
     """Create tables and seed default users (idempotent)."""
     with _conn() as con:
-        con.execute(
-            """
+        con.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 username      TEXT    UNIQUE NOT NULL,
                 password_hash TEXT    NOT NULL,
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
-        con.execute(
-            """
+        """)
+        con.execute("""
             CREATE TABLE IF NOT EXISTS user_api_keys (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 username   TEXT    NOT NULL,
@@ -117,10 +116,8 @@ def init_db() -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(username, service)
             )
-        """
-        )
-        con.execute(
-            """
+        """)
+        con.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 session_id       TEXT PRIMARY KEY,
                 work_dir         TEXT NOT NULL,
@@ -135,8 +132,7 @@ def init_db() -> None:
                 json_path        TEXT NOT NULL DEFAULT '',
                 result_cards     TEXT NOT NULL DEFAULT '[]'
             )
-        """
-        )
+        """)
         # Migration: add result_cards column to existing sessions table
         try:
             con.execute("ALTER TABLE sessions ADD COLUMN result_cards TEXT NOT NULL DEFAULT '[]'")
@@ -146,9 +142,7 @@ def init_db() -> None:
         admin_user = os.getenv("AMD_ADMIN_USER")
         admin_pass = os.getenv("AMD_ADMIN_PASSWORD")
         if admin_user and admin_pass:
-            exists = con.execute(
-                "SELECT 1 FROM users WHERE username = ?", (admin_user,)
-            ).fetchone()
+            exists = con.execute("SELECT 1 FROM users WHERE username = ?", (admin_user,)).fetchone()
             if not exists:
                 con.execute(
                     "INSERT INTO users (username, password_hash) VALUES (?, ?)",
@@ -225,8 +219,17 @@ def change_password(username: str, new_password: str) -> bool:
 # ── Session index ────────────────────────────────────────────────────
 
 _SESSION_COLS = (
-    "session_id", "work_dir", "nickname", "username", "run_status",
-    "selected_molecule", "started_at", "finished_at", "status", "updated_at", "json_path",
+    "session_id",
+    "work_dir",
+    "nickname",
+    "username",
+    "run_status",
+    "selected_molecule",
+    "started_at",
+    "finished_at",
+    "status",
+    "updated_at",
+    "json_path",
     "result_cards",
 )
 
@@ -234,6 +237,7 @@ _SESSION_COLS = (
 def upsert_session(data: dict) -> None:
     """Insert or update a session in the index."""
     import json as _json
+
     rc = data.get("result_cards", [])
     rc_json = _json.dumps(rc) if isinstance(rc, list) else (rc if isinstance(rc, str) else "[]")
     with _conn() as con:
@@ -278,6 +282,7 @@ def upsert_session(data: dict) -> None:
 def update_session_index(session_id: str, updates: dict) -> None:
     """Update specific fields of a session in the index."""
     import json as _json
+
     if not updates:
         return
     allowed = set(_SESSION_COLS) - {"session_id"}
@@ -296,6 +301,7 @@ def update_session_index(session_id: str, updates: dict) -> None:
 def list_sessions_indexed(username: str = "") -> list[dict]:
     """Fast session listing from SQLite index."""
     import json as _json
+
     with _conn() as con:
         con.row_factory = sqlite3.Row
         if username:

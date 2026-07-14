@@ -24,6 +24,7 @@ from fastapi import HTTPException, Request
 
 _SECRET_PATH = Path(os.getenv("AMD_JWT_SECRET_PATH", str(Path.home() / ".amd" / "jwt_secret")))
 
+
 def _load_secret() -> str:
     if _SECRET_PATH.exists():
         return _SECRET_PATH.read_text().strip()
@@ -32,12 +33,14 @@ def _load_secret() -> str:
     _SECRET_PATH.write_text(secret)
     return secret
 
+
 _SECRET = _load_secret()
 _ALGORITHM = "HS256"
 _EXPIRY_SECONDS = 7 * 24 * 3600  # 7 days
 
 
 # ── Token helpers ────────────────────────────────────────────────────
+
 
 def create_token(username: str) -> str:
     payload = {
@@ -58,6 +61,7 @@ def verify_token(token: str) -> dict:
 
 
 # ── FastAPI dependency ───────────────────────────────────────────────
+
 
 async def get_current_user(request: Request) -> str:
     """Extract and verify the Bearer token, returning the username.

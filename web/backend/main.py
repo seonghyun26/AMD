@@ -51,9 +51,9 @@ _project_store.migrate_sessions_to_projects()
 
 app = FastAPI(title="AMD Web API", version="0.1.0")
 
-_cors_origins = os.getenv(
-    "AMD_CORS_ORIGINS", "http://localhost:3000,http://localhost:8000"
-).split(",")
+_cors_origins = os.getenv("AMD_CORS_ORIGINS", "http://localhost:3000,http://localhost:8000").split(
+    ","
+)
 
 app.add_middleware(
     CORSMiddleware,

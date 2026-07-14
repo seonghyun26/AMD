@@ -64,14 +64,12 @@ def _ensure_tmux_session(name: str, logfile: Path) -> bool:
     try:
         logfile.parent.mkdir(parents=True, exist_ok=True)
         logfile.touch(exist_ok=True)
-        exists = subprocess.run(
-            [_TMUX, "has-session", "-t", name], capture_output=True
-        )
+        exists = subprocess.run([_TMUX, "has-session", "-t", name], capture_output=True)
         if exists.returncode != 0:
             subprocess.run(
-                [_TMUX, "new-session", "-d", "-s", name,
-                 f"tail -F {shlex.quote(str(logfile))}"],
-                capture_output=True, check=False,
+                [_TMUX, "new-session", "-d", "-s", name, f"tail -F {shlex.quote(str(logfile))}"],
+                capture_output=True,
+                check=False,
             )
         return True
     except Exception:

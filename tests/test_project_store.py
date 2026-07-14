@@ -95,8 +95,14 @@ class TestSimulationAssociation:
         _make_session("s1", project_id=p["project_id"])
         # Re-upsert the same session (as the app does on status changes)
         db.upsert_session(
-            {"session_id": "s1", "work_dir": "/tmp/s1/data", "run_status": "running",
-             "status": "active", "updated_at": "x", "json_path": "/tmp/s1/session.json"}
+            {
+                "session_id": "s1",
+                "work_dir": "/tmp/s1/data",
+                "run_status": "running",
+                "status": "active",
+                "updated_at": "x",
+                "json_path": "/tmp/s1/session.json",
+            }
         )
         assert project_store.get_project(p["project_id"])["simulation_count"] == 1
 
@@ -144,8 +150,12 @@ class TestCVStore:
         pid = project_store.create_project(name="A")["project_id"]
         cv_store.create_cv(pid, name="phi", cv_type="dihedral", score=0.4)
         cv_store.create_cv(
-            pid, name="psi", cv_type="dihedral", score=0.9,
-            origin_sims=["s1"], metrics={"tica": 0.9},
+            pid,
+            name="psi",
+            cv_type="dihedral",
+            score=0.9,
+            origin_sims=["s1"],
+            metrics={"tica": 0.9},
         )
         cv_store.create_cv(pid, name="unscored", cv_type="distance")
         cvs = cv_store.list_cvs(pid)

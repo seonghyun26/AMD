@@ -23,9 +23,7 @@ router = APIRouter()
 # GPUs that must never be auto-selected.
 # Set AMD_GPU_DENY_LIST env var as comma-separated indices (e.g. "0,1,2,3").
 # Defaults to GPUs 0-3 which are reserved on this machine.
-_GPU_DENY_LIST: set[str] = set(
-    os.getenv("AMD_GPU_DENY_LIST", "0,1,2,3").split(",")
-)
+_GPU_DENY_LIST: set[str] = set(os.getenv("AMD_GPU_DENY_LIST", "0,1,2,3").split(","))
 
 
 def _auto_detect_gpu() -> str | None:
@@ -231,17 +229,17 @@ _EM_OVERRIDES: dict[str, Any] = {
 _NVT_OVERRIDES: dict[str, Any] = {
     "integrator": "md",
     "nsteps": _EQUIL_NSTEPS,
-    "pcoupl": "no",          # NVT: no barostat
-    "gen_vel": "yes",        # assign initial velocities at ref_t
+    "pcoupl": "no",  # NVT: no barostat
+    "gen_vel": "yes",  # assign initial velocities at ref_t
     "continuation": "no",
-    "define": "-DPOSRES",    # restrain the solute
+    "define": "-DPOSRES",  # restrain the solute
 }
 _NPT_OVERRIDES: dict[str, Any] = {
     "integrator": "md",
     "nsteps": _EQUIL_NSTEPS,
-    "pcoupl": "C-rescale",   # gentle barostat for equilibration
+    "pcoupl": "C-rescale",  # gentle barostat for equilibration
     "gen_vel": "no",
-    "continuation": "yes",   # continue velocities from NVT
+    "continuation": "yes",  # continue velocities from NVT
     "define": "-DPOSRES",
 }
 # Production continues from the equilibrated state (velocities from the last cpt).
@@ -286,7 +284,9 @@ def _equilibrate_and_run(
     ``failed``. NPT is skipped for vacuum (no barostat)."""
     from md_agent.config.hydra_utils import generate_mdp_from_config
 
-    def _grompp(mdp: str, coord: str, tpr: str, restraint: str | None = None, checkpoint: str | None = None) -> None:
+    def _grompp(
+        mdp: str, coord: str, tpr: str, restraint: str | None = None, checkpoint: str | None = None
+    ) -> None:
         r = gmx.grompp(  # type: ignore[attr-defined]
             mdp_file=mdp,
             topology_file=top_file,
@@ -322,20 +322,28 @@ def _equilibrate_and_run(
         last_gro, last_cpt = coord_file, None
         if equilibrate:
             _set_stage(session, "minimizing")
-            generate_mdp_from_config(cfg, str(work_dir / "em.mdp"), extra_params={**_EM_OVERRIDES, "nsteps": em_steps})
+            generate_mdp_from_config(
+                cfg, str(work_dir / "em.mdp"), extra_params={**_EM_OVERRIDES, "nsteps": em_steps}
+            )
             _grompp("em.mdp", coord_file, "em.tpr")
             _mdrun_blocking("em.tpr", "em")
             last_gro, last_cpt = "em.gro", None
 
             _set_stage(session, "nvt")
-            generate_mdp_from_config(cfg, str(work_dir / "nvt.mdp"), extra_params={**_NVT_OVERRIDES, "nsteps": nvt_steps})
+            generate_mdp_from_config(
+                cfg, str(work_dir / "nvt.mdp"), extra_params={**_NVT_OVERRIDES, "nsteps": nvt_steps}
+            )
             _grompp("nvt.mdp", last_gro, "nvt.tpr", restraint=last_gro, checkpoint=last_cpt)
             _mdrun_blocking("nvt.tpr", "nvt")
             last_gro, last_cpt = "nvt.gro", "nvt.cpt"
 
             if solvated:
                 _set_stage(session, "npt")
-                generate_mdp_from_config(cfg, str(work_dir / "npt.mdp"), extra_params={**_NPT_OVERRIDES, "nsteps": npt_steps})
+                generate_mdp_from_config(
+                    cfg,
+                    str(work_dir / "npt.mdp"),
+                    extra_params={**_NPT_OVERRIDES, "nsteps": npt_steps},
+                )
                 _grompp("npt.mdp", last_gro, "npt.tpr", restraint=last_gro, checkpoint=last_cpt)
                 _mdrun_blocking("npt.tpr", "npt")
                 last_gro, last_cpt = "npt.gro", "npt.cpt"
@@ -344,7 +352,9 @@ def _equilibrate_and_run(
         _set_stage(session, "production")
         # Continue from the equilibrated checkpoint; if equilibration was disabled,
         # start production fresh (assign velocities) from the built system.
-        prod_overrides = _PROD_OVERRIDES if equilibrate else {"continuation": "no", "gen_vel": "yes"}
+        prod_overrides = (
+            _PROD_OVERRIDES if equilibrate else {"continuation": "no", "gen_vel": "yes"}
+        )
         generate_mdp_from_config(cfg, str(work_dir / "md.mdp"), extra_params=prod_overrides)
         sim_dir = work_dir / _SIM_SUBDIR
         if sim_dir.exists():
@@ -376,12 +386,20 @@ def _equilibrate_and_run(
 
             mutate_session_json(
                 session.session_id,  # type: ignore[attr-defined]
-                lambda meta: {**meta, "pid": m["pid"], "gpu_id": gpu_id, "output_prefix": output_prefix, "stage": "production"},
+                lambda meta: {
+                    **meta,
+                    "pid": m["pid"],
+                    "gpu_id": gpu_id,
+                    "output_prefix": output_prefix,
+                    "stage": "production",
+                },
             )
         except Exception:
             pass
     except Exception as exc:  # noqa: BLE001 — any stage failure ⇒ failed
-        logger.error("Equilibration/production failed for %s: %s", getattr(session, "session_id", "?"), exc)
+        logger.error(
+            "Equilibration/production failed for %s: %s", getattr(session, "session_id", "?"), exc
+        )
         _set_stage(session, "failed")
         _persist_run_status(session, "failed")
 
@@ -591,8 +609,13 @@ async def start_simulation(session_id: str):
         gpu_id = _resolve_gpu(cfg)
         method_name = OmegaConf.select(cfg, "method._target_name") or "md"
         plumed_methods = {
-            "metadynamics", "metad", "opes",
-            "umbrella", "umbrella_sampling", "steered", "steered_md",
+            "metadynamics",
+            "metad",
+            "opes",
+            "umbrella",
+            "umbrella_sampling",
+            "steered",
+            "steered_md",
         }
         plumed_file = (
             "plumed.dat"
@@ -619,9 +642,17 @@ async def start_simulation(session_id: str):
         threading.Thread(
             target=_equilibrate_and_run,
             args=(
-                session, gmx, cfg, work_dir, coord_file, top_file,
-                index_file if has_index else None, gpu_id, plumed_file,
-                water_model, int(expected_nsteps) if expected_nsteps is not None else None,
+                session,
+                gmx,
+                cfg,
+                work_dir,
+                coord_file,
+                top_file,
+                index_file if has_index else None,
+                gpu_id,
+                plumed_file,
+                water_model,
+                int(expected_nsteps) if expected_nsteps is not None else None,
             ),
             daemon=True,
         ).start()
@@ -766,9 +797,11 @@ async def resume_simulation(session_id: str):
         expected_nsteps = OmegaConf.select(cfg, "method.nsteps")
         session.sim_status = {
             "status": "running",
-            "started_at": session.sim_status.get("started_at", time.time())
-            if session.sim_status
-            else time.time(),
+            "started_at": (
+                session.sim_status.get("started_at", time.time())
+                if session.sim_status
+                else time.time()
+            ),
             "resumed_at": time.time(),
             "output_prefix": output_prefix,
             "expected_nsteps": int(expected_nsteps) if expected_nsteps is not None else None,

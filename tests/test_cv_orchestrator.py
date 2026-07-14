@@ -29,8 +29,15 @@ def _sim_with_phi_colvar(tmp_path, sid, pid, phi_values):
     rows = "".join(f"{i} {v}\n" for i, v in enumerate(phi_values))
     (wd / "COLVAR").write_text("#! FIELDS time phi\n" + rows)
     db.upsert_session(
-        {"session_id": sid, "work_dir": str(wd), "username": "alice", "status": "active",
-         "run_status": "finished", "updated_at": "x", "json_path": ""}
+        {
+            "session_id": sid,
+            "work_dir": str(wd),
+            "username": "alice",
+            "status": "active",
+            "run_status": "finished",
+            "updated_at": "x",
+            "json_path": "",
+        }
     )
     project_store.assign_simulation(sid, pid)
 
@@ -48,7 +55,7 @@ class TestOrchestrator:
 
         res = cv_orchestrator.run_iteration(pid)
         assert {c["name"] for c in res["proposed"]} == {"phi", "psi"}
-        assert "phi" in {c["name"] for c in res["scored"]}       # phi has a COLVAR column
+        assert "phi" in {c["name"] for c in res["scored"]}  # phi has a COLVAR column
         assert res["best"]["name"] == "phi"
         assert "psi" in {c["name"] for c in res["needs_simulation"]}  # psi has no column yet
 
@@ -58,5 +65,5 @@ class TestOrchestrator:
         cv_orchestrator.run_iteration(pid)
 
         res2 = cv_orchestrator.run_iteration(pid)
-        assert res2["proposed"] == []                              # no new CVs
-        assert all(c["name"] != "phi" for c in res2["scored"])     # phi already scored
+        assert res2["proposed"] == []  # no new CVs
+        assert all(c["name"] != "phi" for c in res2["scored"])  # phi already scored

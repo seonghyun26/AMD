@@ -37,14 +37,18 @@ def _auth(user):
 
 def test_project_lifecycle_scoped_to_owner(client):
     alice, bob = _auth("alice"), _auth("bob")
-    r = client.post("/api/projects", json={"name": "Ala CV hunt", "goal": "find CVs"}, headers=alice)
+    r = client.post(
+        "/api/projects", json={"name": "Ala CV hunt", "goal": "find CVs"}, headers=alice
+    )
     assert r.status_code == 200
     proj = r.json()["project"]
     pid = proj["project_id"]
     assert proj["username"] == "alice"  # bound to the JWT, not any body field
 
     # Listing is scoped to the caller
-    alice_ids = [p["project_id"] for p in client.get("/api/projects", headers=alice).json()["projects"]]
+    alice_ids = [
+        p["project_id"] for p in client.get("/api/projects", headers=alice).json()["projects"]
+    ]
     assert pid in alice_ids
     assert client.get("/api/projects", headers=bob).json()["projects"] == []
 
@@ -55,7 +59,9 @@ def test_project_lifecycle_scoped_to_owner(client):
 
 def test_cv_crud_over_http(client):
     alice = _auth("alice")
-    pid = client.post("/api/projects", json={"name": "P"}, headers=alice).json()["project"]["project_id"]
+    pid = client.post("/api/projects", json={"name": "P"}, headers=alice).json()["project"][
+        "project_id"
+    ]
     r = client.post(
         f"/api/projects/{pid}/cvs",
         json={"name": "phi", "cv_type": "dihedral", "score": 0.7},
@@ -69,13 +75,25 @@ def test_cv_crud_over_http(client):
 def test_simulation_assignment_over_http(client):
     alice = _auth("alice")
     db.upsert_session(
-        {"session_id": "s1", "work_dir": "/tmp/s1", "username": "alice", "status": "active",
-         "run_status": "standby", "updated_at": "x", "json_path": ""}
+        {
+            "session_id": "s1",
+            "work_dir": "/tmp/s1",
+            "username": "alice",
+            "status": "active",
+            "run_status": "standby",
+            "updated_at": "x",
+            "json_path": "",
+        }
     )
-    pid = client.post("/api/projects", json={"name": "P"}, headers=alice).json()["project"]["project_id"]
-    assert client.post(
-        f"/api/projects/{pid}/simulations", json={"session_id": "s1"}, headers=alice
-    ).status_code == 200
+    pid = client.post("/api/projects", json={"name": "P"}, headers=alice).json()["project"][
+        "project_id"
+    ]
+    assert (
+        client.post(
+            f"/api/projects/{pid}/simulations", json={"session_id": "s1"}, headers=alice
+        ).status_code
+        == 200
+    )
     sims = client.get(f"/api/projects/{pid}/simulations", headers=alice).json()["simulations"]
     assert [s["session_id"] for s in sims] == ["s1"]
 
@@ -103,8 +121,15 @@ def test_cv_discovery_score_updates_candidate(client, tmp_path):
     rows = "".join(f"{i} {v} 0.0\n" for i, v in enumerate([-2.5, -2.5, 2.5, 2.5] * 20))
     (wd / "COLVAR").write_text("#! FIELDS time phi psi\n" + rows)
     db.upsert_session(
-        {"session_id": "s1", "work_dir": str(wd), "username": "alice", "status": "active",
-         "run_status": "finished", "updated_at": "x", "json_path": ""}
+        {
+            "session_id": "s1",
+            "work_dir": str(wd),
+            "username": "alice",
+            "status": "active",
+            "run_status": "finished",
+            "updated_at": "x",
+            "json_path": "",
+        }
     )
     project_store.assign_simulation("s1", pid)
     cv = cv_store.create_cv(pid, name="phi", cv_type="TORSION")

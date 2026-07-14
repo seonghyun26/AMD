@@ -117,9 +117,7 @@ async def project_save_messages(project_id: str, req: MessagesRequest):
     project = project_store.get_project(project_id)
     if not project:
         raise HTTPException(404, "Project not found")
-    (_project_dir(project) / _MSG_FILE).write_text(
-        json.dumps(req.messages, default=str, indent=2)
-    )
+    (_project_dir(project) / _MSG_FILE).write_text(json.dumps(req.messages, default=str, indent=2))
     return {"saved": len(req.messages)}
 
 
@@ -142,7 +140,5 @@ async def general_get_messages(request: Request):
 @router.post("/assistant/messages")
 async def general_save_messages(req: MessagesRequest, request: Request):
     username = getattr(request.state, "username", "") or "_"
-    (_general_dir(username) / _MSG_FILE).write_text(
-        json.dumps(req.messages, default=str, indent=2)
-    )
+    (_general_dir(username) / _MSG_FILE).write_text(json.dumps(req.messages, default=str, indent=2))
     return {"saved": len(req.messages)}

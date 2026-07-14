@@ -1,6 +1,5 @@
 """Tests for web backend config router — PLUMED generation and config endpoints."""
 
-
 import pytest
 from omegaconf import OmegaConf
 

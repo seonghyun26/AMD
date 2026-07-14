@@ -25,8 +25,7 @@ def init_cv_db() -> None:
     """Create the ``cv_candidates`` table (idempotent)."""
     db.init_db()
     with db._conn() as con:
-        con.execute(
-            """
+        con.execute("""
             CREATE TABLE IF NOT EXISTS cv_candidates (
                 cv_id       TEXT PRIMARY KEY,
                 project_id  TEXT NOT NULL,
@@ -40,11 +39,8 @@ def init_cv_db() -> None:
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
-        con.execute(
-            "CREATE INDEX IF NOT EXISTS idx_cv_project ON cv_candidates(project_id)"
-        )
+            """)
+        con.execute("CREATE INDEX IF NOT EXISTS idx_cv_project ON cv_candidates(project_id)")
 
 
 # ── (De)serialisation helpers ─────────────────────────────────────────
@@ -101,9 +97,7 @@ def create_cv(
 def get_cv(cv_id: str) -> dict[str, Any] | None:
     with db._conn() as con:
         con.row_factory = sqlite3.Row
-        row = con.execute(
-            "SELECT * FROM cv_candidates WHERE cv_id = ?", (cv_id,)
-        ).fetchone()
+        row = con.execute("SELECT * FROM cv_candidates WHERE cv_id = ?", (cv_id,)).fetchone()
     return _row_to_dict(row) if row else None
 
 

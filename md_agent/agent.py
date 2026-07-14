@@ -199,7 +199,11 @@ TOOLS: list[dict[str, Any]] = [
                     "description": "Energy terms to extract (e.g. ['Potential', 'Temperature', 'Pressure'])",
                 },
                 "begin_time": {"type": "number", "default": 0.0, "description": "Start time in ps"},
-                "end_time": {"type": "number", "default": -1.0, "description": "End time in ps (-1 = all)"},
+                "end_time": {
+                    "type": "number",
+                    "default": -1.0,
+                    "description": "End time in ps (-1 = all)",
+                },
             },
             "required": ["edr_file", "terms"],
         },

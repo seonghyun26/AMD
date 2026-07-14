@@ -79,9 +79,9 @@ async def stream_executor(
                     "type": "tool_start",
                     "tool_use_id": tool_use_id,
                     "tool_name": event["name"],
-                    "tool_input": raw_input
-                    if isinstance(raw_input, dict)
-                    else {"input": str(raw_input)},
+                    "tool_input": (
+                        raw_input if isinstance(raw_input, dict) else {"input": str(raw_input)}
+                    ),
                 }
 
             elif kind == "on_tool_end":

@@ -1,6 +1,5 @@
 """Tests for WandB tools and MDMonitor."""
 
-
 import pytest
 
 from md_agent.utils.parsers import count_hills, parse_colvar_file

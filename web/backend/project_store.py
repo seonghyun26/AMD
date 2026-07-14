@@ -37,8 +37,7 @@ def init_projects_db() -> None:
     """
     db.init_db()
     with db._conn() as con:
-        con.execute(
-            """
+        con.execute("""
             CREATE TABLE IF NOT EXISTS projects (
                 project_id   TEXT PRIMARY KEY,
                 name         TEXT NOT NULL DEFAULT '',
@@ -51,8 +50,7 @@ def init_projects_db() -> None:
                 created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
+            """)
         # Additive migration: tag each session with its owning project.
         try:
             con.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT ''")
@@ -88,9 +86,7 @@ def create_project(
 def get_project(project_id: str) -> dict[str, Any] | None:
     with db._conn() as con:
         con.row_factory = sqlite3.Row
-        row = con.execute(
-            "SELECT * FROM projects WHERE project_id = ?", (project_id,)
-        ).fetchone()
+        row = con.execute("SELECT * FROM projects WHERE project_id = ?", (project_id,)).fetchone()
     if not row:
         return None
     project = dict(row)

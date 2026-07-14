@@ -124,7 +124,13 @@ def score_cv(values) -> dict[str, Any]:
     arr = np.asarray([v for v in values if v is not None], dtype=float)
     arr = arr[np.isfinite(arr)]
     if arr.size < 2:
-        return {"range": 0.0, "std": 0.0, "n_transitions": 0, "n_samples": int(arr.size), "score": 0.0}
+        return {
+            "range": 0.0,
+            "std": 0.0,
+            "n_transitions": 0,
+            "n_samples": int(arr.size),
+            "score": 0.0,
+        }
 
     vrange = float(arr.max() - arr.min())
     vstd = float(arr.std())
@@ -146,6 +152,7 @@ def rank_cvs(scored: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ``dict.get("score", 0.0)`` returns None when the key exists with a None value,
     which can't be compared to floats — so key on (has_score, score) explicitly.
     """
+
     def _key(c: dict[str, Any]) -> tuple[bool, float]:
         s = c.get("score")
         return (s is not None, s if s is not None else float("-inf"))
@@ -173,7 +180,7 @@ def read_colvar_column(colvar_path: str, name: str) -> list[float]:
                 if s.startswith("#"):
                     toks = s.split()
                     if "FIELDS" in toks:
-                        fields = toks[toks.index("FIELDS") + 1:]
+                        fields = toks[toks.index("FIELDS") + 1 :]
                     continue
                 if not fields or name not in fields:
                     continue

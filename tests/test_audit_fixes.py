@@ -11,19 +11,31 @@ from web.backend import authz
 class TestGromacsValidation:
     def test_partial_config_is_valid(self):
         # vacuum-like: no pressure/rlist — must NOT be rejected
-        assert validate_gromacs_dict(
-            {"integrator": "md", "dt": 0.002, "temperature": 300, "pcoupl": "no",
-             "rcoulomb": 1.2, "rvdw": 1.2, "constraints": "h-bonds"}
-        ) == []
+        assert (
+            validate_gromacs_dict(
+                {
+                    "integrator": "md",
+                    "dt": 0.002,
+                    "temperature": 300,
+                    "pcoupl": "no",
+                    "rcoulomb": 1.2,
+                    "rvdw": 1.2,
+                    "constraints": "h-bonds",
+                }
+            )
+            == []
+        )
 
     def test_bad_values_are_reported(self):
-        assert validate_gromacs_dict({"dt": 0.01})          # 10 fs — too large
-        assert validate_gromacs_dict({"temperature": -5})   # negative
-        assert validate_gromacs_dict({"nsteps": 0})         # not > 0
+        assert validate_gromacs_dict({"dt": 0.01})  # 10 fs — too large
+        assert validate_gromacs_dict({"temperature": -5})  # negative
+        assert validate_gromacs_dict({"nsteps": 0})  # not > 0
         assert validate_gromacs_dict({"pcoupl": "Nonsense"})  # unknown barostat
 
     def test_unknown_keys_ignored(self):
-        assert validate_gromacs_dict({"dt": 0.002, "coulombtype": "PME", "box_clearance": 1.2}) == []
+        assert (
+            validate_gromacs_dict({"dt": 0.002, "coulombtype": "PME", "box_clearance": 1.2}) == []
+        )
 
 
 class TestColvarBookmark:

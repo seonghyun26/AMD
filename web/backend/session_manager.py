@@ -315,12 +315,20 @@ def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
 
     output_prefix = str(sim_meta.get("output_prefix") or "simulation/md")
     try:
-        expected_nsteps = int(sim_meta["expected_nsteps"]) if sim_meta.get("expected_nsteps") is not None else None
+        expected_nsteps = (
+            int(sim_meta["expected_nsteps"])
+            if sim_meta.get("expected_nsteps") is not None
+            else None
+        )
     except Exception:
         expected_nsteps = None
 
     return _infer_status_from_log(
-        [work_dir / f"{output_prefix}.log", work_dir / "simulation" / "md.log", work_dir / "md.log"],
+        [
+            work_dir / f"{output_prefix}.log",
+            work_dir / "simulation" / "md.log",
+            work_dir / "md.log",
+        ],
         expected_nsteps=expected_nsteps,
         started_after=started_at,
     )
@@ -374,9 +382,7 @@ def get_simulation_status(session_id: str) -> dict:
                     # Still running. Do NOT kill on log heuristics: step-reached
                     # fires before the final checkpoint flush, and a stale log is
                     # not death — either would truncate output / leak GPU work.
-                    return _with_timestamps(
-                        {"running": True, "status": "running", "pid": proc.pid}
-                    )
+                    return _with_timestamps({"running": True, "status": "running", "pid": proc.pid})
                 # Process has ACTUALLY exited — now it is safe to finalise/clean up.
                 try:
                     runner._cleanup()

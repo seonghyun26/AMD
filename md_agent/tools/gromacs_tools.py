@@ -83,8 +83,10 @@ class GROMACSRunner:
             ff_dir = Path(__file__).parents[2] / "data" / "forcefields"
             if ff_dir.is_dir():
                 docker_prefix += [
-                    "-v", f"{ff_dir.resolve()}:/ff_extra:ro",
-                    "-e", "GMXLIB=/ff_extra",
+                    "-v",
+                    f"{ff_dir.resolve()}:/ff_extra:ro",
+                    "-e",
+                    "GMXLIB=/ff_extra",
                 ]
             if gpu_id:
                 docker_prefix += ["--gpus", f"device={gpu_id}"]

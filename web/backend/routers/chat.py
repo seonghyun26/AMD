@@ -190,7 +190,9 @@ async def create_session_endpoint(req: CreateSessionRequest, request: Request):
     _STRUCT_EXTS = {".pdb", ".gro", ".mol2", ".xyz"}
     seeded_structs = [f for f in seeded if Path(f).suffix.lower() in _STRUCT_EXTS]
     # Prefer unfolded conformations as starting structure for enhanced sampling
-    seeded_struct = next((f for f in seeded_structs if "unfolded" in f.lower()), None) or next(iter(seeded_structs), None)
+    seeded_struct = next((f for f in seeded_structs if "unfolded" in f.lower()), None) or next(
+        iter(seeded_structs), None
+    )
     if seeded_struct:
         try:
             from omegaconf import OmegaConf as _OC
@@ -226,6 +228,7 @@ async def create_session_endpoint(req: CreateSessionRequest, request: Request):
 
     # Index in SQLite for fast listing
     from web.backend.db import upsert_session
+
     upsert_session({**meta, "json_path": str(json_path)})
 
     # Attach the new simulation to a project if one was specified.
@@ -303,17 +306,22 @@ async def get_session_run_status(session_id: str):
         # a staleness fallback for handle-lost/crashed runs). Keeps this endpoint
         # consistent with /simulate/status.
         from web.backend.session_manager import get_simulation_status
+
         live = get_simulation_status(session_id)
         inferred = live.get("status") if live.get("status") in ("finished", "failed") else None
         if inferred is None:
             inferred = infer_run_status_from_disk(session_root, work_dir)
         if inferred in ("finished", "failed"):
             import time as _time
+
             run_status = inferred
-            update_session_json(session_id, {
-                "run_status": inferred,
-                "finished_at": data.get("finished_at") or _time.time(),
-            })
+            update_session_json(
+                session_id,
+                {
+                    "run_status": inferred,
+                    "finished_at": data.get("finished_at") or _time.time(),
+                },
+            )
     return {
         "run_status": run_status,
         "started_at": data.get("started_at"),
@@ -340,10 +348,13 @@ async def update_result_cards(session_id: str, req: ResultCardsRequest):
 
     from web.backend.session_store import update_session_json
 
-    update_session_json(session_id, {
-        "result_cards": req.result_cards,
-        "updated_at": datetime.utcnow().isoformat(),
-    })
+    update_session_json(
+        session_id,
+        {
+            "result_cards": req.result_cards,
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
     return {"session_id": session_id, "result_cards": req.result_cards}
 
 
@@ -354,10 +365,13 @@ async def update_selected_molecule(session_id: str, req: MoleculeSelectRequest):
 
     from web.backend.session_store import update_session_json
 
-    update_session_json(session_id, {
-        "selected_molecule": req.selected_molecule,
-        "updated_at": datetime.utcnow().isoformat(),
-    })
+    update_session_json(
+        session_id,
+        {
+            "selected_molecule": req.selected_molecule,
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
     return {"session_id": session_id, "selected_molecule": req.selected_molecule}
 
 
@@ -372,10 +386,13 @@ async def update_nickname(session_id: str, req: NicknameRequest):
     session = get_session(session_id)
     if session:
         session.nickname = nickname
-    update_session_json(session_id, {
-        "nickname": nickname,
-        "updated_at": datetime.utcnow().isoformat(),
-    })
+    update_session_json(
+        session_id,
+        {
+            "nickname": nickname,
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
     return {"session_id": session_id, "nickname": nickname}
 
 
@@ -412,10 +429,13 @@ async def delete_session_endpoint(session_id: str):
     sf = _scan_session_file(session_id)
     if sf:
         try:
-            update_session_json(session_id, {
-                "status": "deleted",
-                "updated_at": datetime.utcnow().isoformat(),
-            })
+            update_session_json(
+                session_id,
+                {
+                    "status": "deleted",
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
+            )
 
             session_folder = sf.parent
             user_folder = session_folder.parent
