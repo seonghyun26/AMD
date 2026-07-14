@@ -7,12 +7,22 @@ build/
 .eggs/
 *.egg
 *.whl
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
 # Virtual environments
 .venv/
 venv/
 env/
-.env
+.direnv/
 
 # Hydra outputs
 outputs/
@@ -52,6 +62,8 @@ papers/
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
 
 # OS
 .DS_Store
@@ -59,22 +71,36 @@ Thumbs.db
 
 # Secrets
 .env
+.env.*
+!.env.example
 *.key
-.claude
+*.pem
+
+# Local AI-agent state
+.agents/
+.claude/
+.codex/
+.omc/
 
 # Web — Node
 web/frontend/node_modules/
 web/frontend/.next/
 web/frontend/out/
 web/frontend/.eslintcache
+*.tsbuildinfo
 web/frontend/.env.local
 web/frontend/.env*.local
 web/frontend/.turbo/
+web/frontend/.vercel/
+web/frontend/coverage/
 
 # Web — backend
 web/backend/__pycache__/
 web/__pycache__/
-package-lock.json
 .pytest_cache/
 */forcefields/*
-*.omc
+
+# Local runtime state
+*.pid
+*.pid.lock
+*.sock

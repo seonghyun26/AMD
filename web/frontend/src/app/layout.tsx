@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "@/components/ThemeProvider";
@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   title: "AMD — Automating MD",
   description: "Claude-powered molecular dynamics simulation assistant",
   icons: { icon: "/icon.svg" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 // Blocking script that sets the theme class before first paint to prevent FOUC.

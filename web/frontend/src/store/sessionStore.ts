@@ -7,7 +7,7 @@ import type {
   SSEEvent,
   ToolCallBlock,
 } from "@/lib/types";
-import { listSessions, getMessages, saveMessages } from "@/lib/api";
+import { listSessions, listProjectSimulations, getMessages, saveMessages, getAssistantMessages, saveAssistantMessages } from "@/lib/api";
 import { getUsername } from "@/lib/auth";
 import { uuid } from "@/lib/utils";
 
@@ -30,23 +30,36 @@ interface SessionState {
   isStreaming: boolean;
   sessions: SessionSummary[];
   sessionsLoading: boolean;
+  /** A prompt queued by a workspace shortcut (e.g. "Analyze", "Suggest CVs") to
+   *  be auto-sent by the AI assistant panel. Consumed once by ChatInput. The
+   *  optional title is shown as a header above the message in the chat. */
+  pendingPrompt: { text: string; title?: string } | null;
+  /** Bumped after an avatar upload/removal to cache-bust <img> everywhere. */
+  avatarVersion: number;
 
   // Actions
   setSession: (id: string, config: SessionConfig) => void;
   switchSession: (id: string, workDir: string) => void;
   fetchSessions: () => Promise<void>;
+  fetchSimulations: (projectId: string) => Promise<void>;
   addSession: (s: SessionSummary) => void;
   removeSession: (sessionId: string) => void;
   updateSessionNickname: (sessionId: string, nickname: string) => void;
   setSessionMolecule: (sessionId: string, molecule: string) => void;
   setSessionRunStatus: (sessionId: string, runStatus: SessionSummary["run_status"]) => void;
   setSessionResultCards: (sessionId: string, resultCards: unknown[]) => void;
-  addUserMessage: (text: string) => void;
+  addUserMessage: (text: string, title?: string) => void;
   appendSSEEvent: (event: SSEEvent) => void;
   updateProgress: (progress: SimProgress) => void;
   clearMessages: () => void;
   loadMessages: (sessionId: string) => Promise<void>;
   persistMessages: (sessionId: string) => void;
+  loadAssistant: (projectId: string | null) => Promise<void>;
+  persistAssistant: (projectId: string | null) => void;
+  requestAssistant: (text: string, title?: string) => void;
+  consumePendingPrompt: () => void;
+  clearAssistant: (projectId: string | null) => void;
+  bumpAvatar: () => void;
 }
 
 function newAssistantMessage(): ChatMessage {
@@ -59,6 +72,10 @@ function newAssistantMessage(): ChatMessage {
   };
 }
 
+// Monotonic token so a slow loadAssistant() whose scope changed mid-flight can
+// detect it was superseded and skip its set() (avoids clobbering the newer one).
+let assistantLoadEpoch = 0;
+
 export const useSessionStore = create<SessionState>((set) => ({
   sessionId: null,
   config: null,
@@ -67,18 +84,33 @@ export const useSessionStore = create<SessionState>((set) => ({
   isStreaming: false,
   sessions: [],
   sessionsLoading: true,
+  pendingPrompt: null,
+  avatarVersion: 1,
 
+  // Selecting/creating a simulation must NOT clear `messages` — those now hold the
+  // project-level assistant conversation, which is independent of sim selection.
   setSession: (id, config) =>
-    set({ sessionId: id, config, messages: [], simProgress: null }),
+    set({ sessionId: id, config, simProgress: null }),
 
   switchSession: (id, workDir) =>
-    set({ sessionId: id, config: { method: "", system: "", gromacs: "", plumed_cvs: "", workDir }, messages: [], simProgress: null, isStreaming: false }),
+    set({ sessionId: id, config: { method: "", system: "", gromacs: "", plumed_cvs: "", workDir }, simProgress: null }),
 
   fetchSessions: async () => {
     try {
       set({ sessionsLoading: true });
       const { sessions } = await listSessions(getUsername());
       set({ sessions, sessionsLoading: false });
+    } catch {
+      set({ sessionsLoading: false });
+    }
+  },
+
+  // Load only the simulations belonging to a project (the projects-first nav).
+  fetchSimulations: async (projectId) => {
+    try {
+      set({ sessionsLoading: true });
+      const { simulations } = await listProjectSimulations(projectId);
+      set({ sessions: simulations as SessionSummary[], sessionsLoading: false });
     } catch {
       set({ sessionsLoading: false });
     }
@@ -123,14 +155,14 @@ export const useSessionStore = create<SessionState>((set) => ({
       ),
     })),
 
-  addUserMessage: (text) =>
+  addUserMessage: (text, title) =>
     set((state) => ({
       messages: [
         ...state.messages,
         {
           id: uuid(),
           role: "user",
-          blocks: [{ kind: "text", content: text }],
+          blocks: [{ kind: "text", content: text, ...(title ? { title } : {}) }],
           timestamp: Date.now(),
         },
       ],
@@ -270,4 +302,40 @@ export const useSessionStore = create<SessionState>((set) => ({
     if (messages.length === 0) return;
     saveMessages(sessionId, messages).catch(() => {});
   },
+
+  // Assistant conversation is scoped to a project (or general when projectId=null),
+  // not a simulation — it replaces the per-simulation chat state.
+  loadAssistant: async (projectId) => {
+    const epoch = ++assistantLoadEpoch;
+    set({ messages: [], isStreaming: false });
+    try {
+      const { messages } = await getAssistantMessages(projectId);
+      if (epoch !== assistantLoadEpoch) return; // a newer load started — discard
+      if (Array.isArray(messages) && messages.length > 0) {
+        set({ messages: messages as ChatMessage[] });
+      }
+    } catch {
+      // no persisted conversation yet
+    }
+  },
+
+  persistAssistant: (projectId) => {
+    const { messages } = useSessionStore.getState();
+    if (messages.length === 0) return;
+    saveAssistantMessages(projectId, messages).catch(() => {});
+  },
+
+  // Workspace shortcut buttons queue a prompt here; the assistant panel picks it
+  // up (ChatInput) and auto-sends it, and page.tsx opens the panel.
+  requestAssistant: (text, title) => set({ pendingPrompt: { text, title } }),
+  consumePendingPrompt: () => set({ pendingPrompt: null }),
+
+  // Clear the current assistant conversation locally AND on the server (persist
+  // an empty list) so it stays empty across reloads.
+  clearAssistant: (projectId) => {
+    set({ messages: [], isStreaming: false });
+    saveAssistantMessages(projectId, []).catch(() => {});
+  },
+
+  bumpAvatar: () => set((s) => ({ avatarVersion: s.avatarVersion + 1 })),
 }));

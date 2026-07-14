@@ -2,16 +2,14 @@ import type { SSEEvent } from "./types";
 import { getToken } from "./auth";
 
 /**
- * Async generator that streams SSE events from the backend.
- * Uses fetch() + ReadableStream to support POST-style long messages
- * (avoids EventSource's GET-only limitation).
+ * Core SSE reader: POSTs {message} to `url` and yields parsed events.
+ * fetch() + ReadableStream supports long POST bodies (vs EventSource's GET-only).
  */
-export async function* streamChat(
-  sessionId: string,
+async function* streamSSE(
+  url: string,
   message: string,
   signal: AbortSignal
 ): AsyncGenerator<SSEEvent> {
-  const url = `/api/sessions/${sessionId}/stream`;
   const token = getToken();
   const response = await fetch(url, {
     method: "POST",
@@ -24,26 +22,18 @@ export async function* streamChat(
     body: JSON.stringify({ message }),
   });
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-  if (!response.body) {
-    throw new Error("No response body");
-  }
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  if (!response.body) throw new Error("No response body");
 
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
-
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += value;
-
-      // SSE chunks are separated by double newlines
       const parts = buffer.split("\n\n");
       buffer = parts.pop() ?? "";
-
       for (const part of parts) {
         const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
         if (dataLine) {
@@ -58,4 +48,15 @@ export async function* streamChat(
   } finally {
     reader.releaseLock();
   }
+}
+
+/** Per-simulation agent stream (legacy MDAgent path). */
+export function streamChat(sessionId: string, message: string, signal: AbortSignal) {
+  return streamSSE(`/api/sessions/${sessionId}/stream`, message, signal);
+}
+
+/** Project-level (or general, when projectId is null) assistant stream. */
+export function streamAssistant(projectId: string | null, message: string, signal: AbortSignal) {
+  const url = projectId ? `/api/projects/${projectId}/stream` : `/api/assistant/stream`;
+  return streamSSE(url, message, signal);
 }

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Bot, CircleCheck, CircleX } from "lucide-react";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Bot, CircleCheck, CircleX, FolderOpen, FolderPlus, ArrowLeft, Upload } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
+import { useProjectStore } from "@/store/projectStore";
 import { logout, getUsername } from "@/lib/auth";
-import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, type ServerStatus, type GpuInfo } from "@/lib/api";
+import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, uploadAvatar, deleteAvatar, type ServerStatus, type GpuInfo } from "@/lib/api";
+import UserAvatar from "@/components/common/UserAvatar";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/theme";
 
@@ -13,6 +15,9 @@ interface Props {
   onNewSession: () => void;
   onSelectSession?: (id: string) => void;
   onSessionDeleted?: (id: string) => void;
+  /** Desktop-only: render as a thin collapsed strip. */
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 // ── Session list item ──────────────────────────────────────────────────
@@ -112,7 +117,7 @@ function SessionItem({
                 <Trash2 size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Delete session?</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Delete simulation?</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
                   <span className="text-gray-700 dark:text-gray-300 font-medium">{nick}</span>
                 </p>
@@ -158,7 +163,7 @@ function SessionItem({
               .then(({ run_status }) => onRunStatusRead(run_status))
               .catch(() => {});
           } catch {
-            setRestoreError("Failed to load session — data may be missing or corrupted.");
+            setRestoreError("Failed to load simulation — data may be missing or corrupted.");
           }
         }}
       >
@@ -301,14 +306,16 @@ function ApiKeyRow({
 }
 
 const AGENT_BACKENDS = [
-  { id: "anthropic", label: "Claude", color: "orange" },
-  { id: "openai",    label: "ChatGPT", color: "emerald" },
-  { id: "deepseek",  label: "DeepSeek", color: "blue" },
+  { id: "anthropic",   label: "Claude", color: "orange" },
+  { id: "claude_code", label: "Claude Code", color: "orange" },
+  { id: "codex",       label: "Codex", color: "emerald" },
+  { id: "openai",      label: "ChatGPT", color: "emerald" },
+  { id: "deepseek",    label: "DeepSeek", color: "blue" },
 ] as const;
 
 type AgentBackendId = typeof AGENT_BACKENDS[number]["id"];
 
-function SettingsModal({ username, onClose }: { username: string; onClose: () => void }) {
+export function SettingsModal({ username, onClose }: { username: string; onClose: () => void }) {
   const { theme, toggle } = useTheme();
 
   // API keys state
@@ -326,7 +333,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
     getApiKeys(username).then(({ keys: k }) => {
       setKeys(k);
       // Auto-verify stored keys
-      for (const svc of ["anthropic", "openai", "deepseek", "wandb"]) {
+      for (const svc of ["anthropic", "openai", "deepseek"]) {
         if (k[svc]) {
           setVerifying((v) => ({ ...v, [svc]: true }));
           verifyApiKey(username, svc)
@@ -393,11 +400,45 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
   const gmxImage = "gromacs-plumed:latest";
   const sysVersion = "0.1.0";
 
+  const bumpAvatar = useSessionStore((s) => s.bumpAvatar);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setAvatarError(null);
+    setAvatarBusy(true);
+    try {
+      await uploadAvatar(file);
+      bumpAvatar();
+    } catch (err) {
+      setAvatarError((err as Error).message || "Upload failed");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setAvatarError(null);
+    setAvatarBusy(true);
+    try {
+      await deleteAvatar();
+      bumpAvatar();
+    } catch {
+      setAvatarError("Could not remove photo");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-[420px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="relative w-[520px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2.5">
@@ -417,14 +458,36 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</h4>
             <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold shadow">
-                {username[0]?.toUpperCase() ?? "?"}
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{username}</div>
+              <UserAvatar size={44} fallback="initial" className="rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-base font-semibold shadow" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{username}</div>
                 <div className="text-[10px] text-gray-400 dark:text-gray-500">Signed in</div>
               </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={handleAvatarPick}
+              />
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={avatarBusy}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              >
+                {avatarBusy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                Photo
+              </button>
+              <button
+                onClick={handleAvatarRemove}
+                disabled={avatarBusy}
+                title="Remove photo"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
+            {avatarError && <p className="text-[11px] text-red-500 dark:text-red-400 px-1">{avatarError}</p>}
           </div>
 
           {/* ── API Keys ── */}
@@ -472,20 +535,6 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
               verifyError={verifyErrors["deepseek"] ?? null}
               onVerify={() => handleVerify("deepseek")}
             />
-            <ApiKeyRow
-              label="Weights & Biases"
-              color="bg-yellow-400"
-              value={keys["wandb"] ?? ""}
-              onChange={(v) => setKeyValue("wandb", v)}
-              placeholder="Enter WandB API key"
-              onSave={() => handleSaveKey("wandb")}
-              saving={saving["wandb"] ?? false}
-              saved={saved["wandb"] ?? false}
-              verified={verified["wandb"] ?? null}
-              verifying={verifying["wandb"] ?? false}
-              verifyError={verifyErrors["wandb"] ?? null}
-              onVerify={() => handleVerify("wandb")}
-            />
           </div>
 
           {/* ── Agent Backbone ── */}
@@ -493,7 +542,8 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Agent Backbone</h4>
             <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden h-[36px]">
               {AGENT_BACKENDS.map((b, i) => {
-                const isVerified = verified[b.id] === true;
+                // CLI backends use their existing subscription login.
+                const isVerified = b.id === "claude_code" || b.id === "codex" ? true : verified[b.id] === true;
                 const isActive = agentBackend === b.id;
                 const disabled = !isVerified;
                 return (
@@ -522,7 +572,7 @@ function SettingsModal({ username, onClose }: { username: string; onClose: () =>
               })}
             </div>
             <p className="text-[10px] text-gray-400 dark:text-gray-600">
-              Only providers with a verified API key can be selected.
+              API providers require a verified key; CLI backends use their saved login.
             </p>
           </div>
 
@@ -624,7 +674,7 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
   );
 }
 
-function ServerStatusModal({ onClose }: { onClose: () => void }) {
+export function ServerStatusModal({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -657,7 +707,7 @@ function ServerStatusModal({ onClose }: { onClose: () => void }) {
   const diskPct = cpu?.disk_total_gb ? ((cpu.disk_used_gb ?? 0) / cpu.disk_total_gb) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-[520px] max-h-[85vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
@@ -850,41 +900,102 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
   );
 }
 
+// ── Project list item ─────────────────────────────────────────────────
+
+function ProjectItem({
+  p,
+  onOpen,
+  onDeleted,
+}: {
+  p: { project_id: string; name: string; simulation_count?: number };
+  onOpen: () => void;
+  onDeleted: () => Promise<void>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  return (
+    <>
+      {confirming && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-500 dark:text-red-400 flex-shrink-0">
+                <Trash2 size={16} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Delete project?</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  <span className="text-gray-700 dark:text-gray-300 font-medium">{p.name}</span>
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Simulations are kept — only the grouping is removed.</p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm transition-colors"
+              >
+                <X size={13} /> Cancel
+              </button>
+              <button
+                onClick={async (e) => { e.stopPropagation(); setDeleting(true); await onDeleted(); }}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+              >
+                <Check size={13} /> {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="group relative w-full rounded-lg transition-colors cursor-pointer flex overflow-hidden text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-200">
+        <div className="flex-1 min-w-0 px-3 py-2.5" onClick={onOpen}>
+          <div className="flex items-center gap-2">
+            <FolderOpen size={13} className="flex-shrink-0 text-blue-500/70" />
+            <span className="text-xs font-medium truncate flex-1">{p.name}</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-600 flex-shrink-0 tabular-nums">{p.simulation_count ?? 0}</span>
+          </div>
+        </div>
+        <div className="opacity-0 group-hover:opacity-100 flex flex-shrink-0 transition-opacity border-l border-gray-200/60 dark:border-gray-700/40">
+          <button
+            onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
+            className="flex items-center justify-center w-7 text-gray-400 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            title="Delete project"
+          >
+            <Trash2 size={10} />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Main sidebar ───────────────────────────────────────────────────────
 
-export default function SessionSidebar({ onNewSession, onSelectSession, onSessionDeleted }: Props) {
-  const router = useRouter();
-  const { sessions, sessionsLoading, sessionId, fetchSessions, switchSession, updateSessionNickname, removeSession, setSessionRunStatus } =
+export default function SessionSidebar({ onNewSession, onSelectSession, onSessionDeleted, collapsed, onToggleCollapse }: Props) {
+  const { sessions, sessionsLoading, sessionId, switchSession, updateSessionNickname, removeSession, setSessionRunStatus } =
     useSessionStore();
-  const username = getUsername();
-  const [collapsed, setCollapsed] = useState(false);
 
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
-
-  const handleLogout = () => {
-    logout();
-    router.push("/login");
-  };
-
+  // Collapsed strip — a thin rail that expands the panel when clicked.
   if (collapsed) {
     return (
-      <aside className="w-10 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full overflow-x-hidden transition-all duration-200">
+      <aside className="w-10 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full">
         <button
-          onClick={() => setCollapsed(false)}
-          title="Expand sidebar"
-          className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400 hover:text-gray-700 dark:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          onClick={onToggleCollapse}
+          title="Expand simulations panel"
+          className="flex-1 flex flex-col items-center justify-start gap-3 pt-3 text-gray-400 dark:text-gray-600 hover:text-gray-900 dark:hover:text-gray-300 transition-colors"
         >
-          <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow">
-            <FlaskConical size={12} className="text-white" />
-          </div>
           <ChevronRight size={15} />
-          <span
-            className="text-[10px] font-semibold uppercase tracking-widest"
-            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-          >
-            Sessions
+          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ writingMode: "vertical-rl" }}>
+            Simulations
           </span>
         </button>
       </aside>
@@ -892,43 +1003,38 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
   }
 
   return (
-    <aside className="w-64 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full transition-all duration-200">
-      {/* Brand */}
-      <div className="px-4 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2.5 flex-shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow">
-          <FlaskConical size={16} className="text-white" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">AMD</div>
-          <div className="text-[11px] text-gray-400 dark:text-gray-500">Automating MD</div>
-        </div>
-        <button
-          onClick={() => setCollapsed(true)}
-          title="Collapse sidebar"
-          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
-        >
-          <ChevronLeft size={15} />
-        </button>
+    <aside className="w-64 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full">
+      {/* Header — "Simulations" label + collapse control, pinned to the top */}
+      <div className="flex items-center justify-between px-3 pt-3 pb-1.5 flex-shrink-0">
+        <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-600">Simulations</p>
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            title="Collapse panel"
+            className="hidden md:inline-flex p-0.5 rounded text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <ChevronLeft size={14} />
+          </button>
+        )}
       </div>
 
-      {/* New session button */}
-      <div className="px-3 py-2.5 flex-shrink-0">
+      {/* New Simulation */}
+      <div className="px-3 pb-2.5 flex-shrink-0">
         <button
           onClick={onNewSession}
           className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
         >
           <Plus size={12} />
-          <span className="text-xs font-medium">New Session</span>
+          <span className="text-xs font-medium">New Simulation</span>
         </button>
       </div>
 
-      {/* Sessions list */}
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         {sessionsLoading && sessions.length === 0 ? (
           <div className="px-1 py-2">
             <div className="flex items-center gap-2 px-2 mb-3">
               <Loader2 size={11} className="animate-spin text-gray-400" />
-              <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading sessions…</span>
+              <span className="text-[11px] text-gray-400 dark:text-gray-600">Loading simulations…</span>
             </div>
             <div className="space-y-1 animate-pulse">
               {[1, 2, 3].map((i) => (
@@ -943,7 +1049,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
             </div>
           </div>
         ) : sessions.length === 0 ? (
-          <p className="text-[11px] text-gray-400 dark:text-gray-600 px-3 py-2">No sessions yet</p>
+          <p className="text-[11px] text-gray-400 dark:text-gray-600 px-3 py-2">No simulations yet</p>
         ) : (
           <div className="space-y-0.5">
             {sessions.map((s) => (
@@ -960,8 +1066,6 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
           </div>
         )}
       </div>
-
-      <ProfileSection username={username ?? "user"} onLogout={handleLogout} />
     </aside>
   );
 }

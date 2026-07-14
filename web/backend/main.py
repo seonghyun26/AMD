@@ -22,25 +22,38 @@ from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
+from web.backend import authz  # noqa: E402
+
+# Ensure the projects/CV tables exist and legacy sessions are wrapped in projects
+# exactly once (idempotent).
+from web.backend import cv_store as _cv_store  # noqa: E402
+from web.backend import project_store as _project_store  # noqa: E402
 from web.backend.jwt_auth import verify_token  # noqa: E402
 from web.backend.routers import (  # noqa: E402
+    account,
     agents,
     analysis,
+    assistant,
     auth,
     chat,
     config,
     files,
     keys,
+    projects,
     server,
     simulate,
     trajectory,
 )
 
+_project_store.init_projects_db()
+_cv_store.init_cv_db()
+_project_store.migrate_sessions_to_projects()
+
 app = FastAPI(title="AMD Web API", version="0.1.0")
 
-_cors_origins = os.getenv(
-    "AMD_CORS_ORIGINS", "http://localhost:3000,http://localhost:8000"
-).split(",")
+_cors_origins = os.getenv("AMD_CORS_ORIGINS", "http://localhost:3000,http://localhost:8000").split(
+    ","
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,16 +62,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── JWT auth middleware ────────────────────────────────────────────────
+# ── JWT auth + ownership middleware ────────────────────────────────────
 
 # Paths that do not require authentication
 _PUBLIC_PATHS = {"/api/auth/login", "/health"}
 _PUBLIC_PREFIXES = ("/docs", "/openapi.json", "/redoc")
-# Path fragments that are public (browser-initiated requests that can't carry auth headers)
-_PUBLIC_FRAGMENTS = ("/files/download", "/ngl-traj/", "/ramachandran.png")
 
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
+    """Authenticate every /api request and enforce per-resource ownership.
+
+    The token is read from the ``Authorization: Bearer`` header, or from a
+    ``?token=`` query parameter for browser-initiated GETs (``<a>`` downloads,
+    ``<img>``, NGL trajectory loads) that cannot set headers — this replaces the
+    previous blanket substring bypass that left downloads fully unauthenticated.
+    Ownership of id-scoped resources is checked centrally via ``authz.owns``.
+    """
+
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
@@ -68,18 +88,28 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             or path.startswith(_PUBLIC_PREFIXES)
             or not path.startswith("/api")
             or request.method == "OPTIONS"
-            or any(frag in path for frag in _PUBLIC_FRAGMENTS)
         ):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
-            return JSONResponse({"detail": "Missing authorization token"}, status_code=401)
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+        else:
+            token = request.query_params.get("token", "")
 
+        if not token:
+            return JSONResponse({"detail": "Missing authorization token"}, status_code=401)
         try:
-            verify_token(auth_header[7:])
+            username = verify_token(token)["sub"]
         except Exception:
             return JSONResponse({"detail": "Invalid or expired token"}, status_code=401)
+
+        # Expose the verified identity to handlers (avoids re-decoding).
+        request.state.username = username
+
+        # Block cross-user access to id-scoped resources.
+        if not authz.owns(username, path):
+            return JSONResponse({"detail": "Forbidden"}, status_code=403)
 
         return await call_next(request)
 
@@ -87,12 +117,15 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(JWTAuthMiddleware)
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(account.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
+app.include_router(assistant.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
 app.include_router(keys.router, prefix="/api")
+app.include_router(projects.router, prefix="/api")
 app.include_router(server.router, prefix="/api")
 app.include_router(simulate.router, prefix="/api")
 app.include_router(trajectory.router, prefix="/api")
@@ -114,10 +147,11 @@ def start():
     """Entry point for the amd-web console script."""
     import uvicorn
 
+    port = int(os.getenv("AMD_PORT", "8000"))
     uvicorn.run(
         "web.backend.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=False,  # reload breaks with StaticFiles mount after build
     )
 

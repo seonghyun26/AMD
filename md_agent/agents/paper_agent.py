@@ -43,7 +43,7 @@ def search_papers(query: str) -> str:
     """Search Semantic Scholar for MD-related papers matching a keyword query.
     Returns a JSON list of up to 5 papers with title, abstract, authors, year, and PDF URL.
     """
-    results = _retriever.search_semantic_scholar(query, limit=5)
+    results = _retriever.search_semantic_scholar(query, max_results=5)
     return json.dumps(results, default=str, indent=2)
 
 
@@ -65,8 +65,11 @@ def download_and_read_paper(pdf_url: str) -> str:
         tmp_path = Path(tmp.name)
     try:
         _retriever.download_pdf(pdf_url, str(tmp_path))
-        text = _retriever.extract_text_from_pdf(str(tmp_path))
-        return text[:30_000] if len(text) > 30_000 else text
+        result = _retriever.extract_text_from_pdf(str(tmp_path))
+        if isinstance(result, dict) and result.get("error"):
+            return json.dumps(result)
+        text = result.get("text", "") if isinstance(result, dict) else str(result)
+        return text[:30_000]
     finally:
         tmp_path.unlink(missing_ok=True)
 

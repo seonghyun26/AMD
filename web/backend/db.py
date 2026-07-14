@@ -12,7 +12,6 @@ Hash format  (colon-separated, all fields in the hash string):
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import os
 import secrets
@@ -26,16 +25,15 @@ from cryptography.fernet import Fernet, InvalidToken
 DB_PATH = Path(os.getenv("AMD_DB_PATH", str(Path.home() / ".amd" / "users.db")))
 _ITERATIONS = 260_000
 
-# Default users seeded on first run.
-_DEFAULT_USERS: list[tuple[str, str]] = [
-    ("admin", "amd123"),
-    ("hyun", "1126"),
-    ("debug", "1234"),
-]
+# No credentials are hardcoded. On a fresh database a single admin user is
+# bootstrapped from the AMD_ADMIN_USER / AMD_ADMIN_PASSWORD env vars (see init_db);
+# create further users with add_user().
 
 # ── API-key encryption ────────────────────────────────────────────────
 
-_ENC_KEY_PATH = Path(os.getenv("AMD_ENCRYPTION_KEY_PATH", str(Path.home() / ".amd" / "encryption_key")))
+_ENC_KEY_PATH = Path(
+    os.getenv("AMD_ENCRYPTION_KEY_PATH", str(Path.home() / ".amd" / "encryption_key"))
+)
 
 
 def _load_encryption_key() -> bytes:
@@ -65,7 +63,7 @@ def _decrypt_api_key(stored: str) -> str:
         return ""
     if stored.startswith(_ENC_PREFIX):
         try:
-            return _FERNET.decrypt(stored[len(_ENC_PREFIX):].encode()).decode()
+            return _FERNET.decrypt(stored[len(_ENC_PREFIX) :].encode()).decode()
         except InvalidToken:
             return ""
     # Legacy plaintext — return as-is (will be re-encrypted on next save)
@@ -101,18 +99,15 @@ def _conn() -> sqlite3.Connection:
 def init_db() -> None:
     """Create tables and seed default users (idempotent)."""
     with _conn() as con:
-        con.execute(
-            """
+        con.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 username      TEXT    UNIQUE NOT NULL,
                 password_hash TEXT    NOT NULL,
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
-        con.execute(
-            """
+        """)
+        con.execute("""
             CREATE TABLE IF NOT EXISTS user_api_keys (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 username   TEXT    NOT NULL,
@@ -121,10 +116,8 @@ def init_db() -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(username, service)
             )
-        """
-        )
-        con.execute(
-            """
+        """)
+        con.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 session_id       TEXT PRIMARY KEY,
                 work_dir         TEXT NOT NULL,
@@ -139,29 +132,44 @@ def init_db() -> None:
                 json_path        TEXT NOT NULL DEFAULT '',
                 result_cards     TEXT NOT NULL DEFAULT '[]'
             )
-        """
-        )
+        """)
         # Migration: add result_cards column to existing sessions table
         try:
             con.execute("ALTER TABLE sessions ADD COLUMN result_cards TEXT NOT NULL DEFAULT '[]'")
         except Exception:
             pass  # column already exists
-        for username, password in _DEFAULT_USERS:
-            exists = con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
+        # Bootstrap a single admin from env vars on a fresh DB only (no hardcoded creds).
+        admin_user = os.getenv("AMD_ADMIN_USER")
+        admin_pass = os.getenv("AMD_ADMIN_PASSWORD")
+        if admin_user and admin_pass:
+            exists = con.execute("SELECT 1 FROM users WHERE username = ?", (admin_user,)).fetchone()
             if not exists:
                 con.execute(
                     "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                    (username, _hash_password(password)),
+                    (admin_user, _hash_password(admin_pass)),
                 )
 
 
+# Precomputed hash of a random secret. Verifying against it on the unknown-user
+# path spends the same PBKDF2 time as a real check, so login latency does not leak
+# whether a username exists.
+_DUMMY_HASH = _hash_password(secrets.token_hex(16))
+
+
 def verify_user(username: str, password: str) -> bool:
-    """Return True if the username/password pair is valid."""
+    """Return True if the username/password pair is valid.
+
+    On an unknown username, runs a dummy verification so response time does not
+    reveal whether the account exists (timing-attack mitigation).
+    """
     with _conn() as con:
         row = con.execute(
             "SELECT password_hash FROM users WHERE username = ?", (username,)
         ).fetchone()
-    return _verify_password(password, row[0]) if row else False
+    if row:
+        return _verify_password(password, row[0])
+    _verify_password(password, _DUMMY_HASH)
+    return False
 
 
 def get_api_keys(username: str) -> dict[str, str]:
@@ -211,8 +219,17 @@ def change_password(username: str, new_password: str) -> bool:
 # ── Session index ────────────────────────────────────────────────────
 
 _SESSION_COLS = (
-    "session_id", "work_dir", "nickname", "username", "run_status",
-    "selected_molecule", "started_at", "finished_at", "status", "updated_at", "json_path",
+    "session_id",
+    "work_dir",
+    "nickname",
+    "username",
+    "run_status",
+    "selected_molecule",
+    "started_at",
+    "finished_at",
+    "status",
+    "updated_at",
+    "json_path",
     "result_cards",
 )
 
@@ -220,6 +237,7 @@ _SESSION_COLS = (
 def upsert_session(data: dict) -> None:
     """Insert or update a session in the index."""
     import json as _json
+
     rc = data.get("result_cards", [])
     rc_json = _json.dumps(rc) if isinstance(rc, list) else (rc if isinstance(rc, str) else "[]")
     with _conn() as con:
@@ -264,6 +282,7 @@ def upsert_session(data: dict) -> None:
 def update_session_index(session_id: str, updates: dict) -> None:
     """Update specific fields of a session in the index."""
     import json as _json
+
     if not updates:
         return
     allowed = set(_SESSION_COLS) - {"session_id"}
@@ -282,6 +301,7 @@ def update_session_index(session_id: str, updates: dict) -> None:
 def list_sessions_indexed(username: str = "") -> list[dict]:
     """Fast session listing from SQLite index."""
     import json as _json
+
     with _conn() as con:
         con.row_factory = sqlite3.Row
         if username:

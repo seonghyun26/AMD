@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-import json
+import os
 import subprocess
 from pathlib import Path
 
 from fastapi import APIRouter
+
+# GPUs reserved on this machine (never auto-selected; not offered as "allowed").
+# Mirrors AMD_GPU_DENY_LIST used by the run launcher.
+_GPU_DENY_LIST: set[str] = set(os.getenv("AMD_GPU_DENY_LIST", "0,1,2,3").split(","))
 
 router = APIRouter()
 
@@ -37,8 +41,10 @@ def _nvidia_smi_query() -> list[dict]:
                     "name": parts[1],
                     "memory_used_mb": int(parts[2]),
                     "memory_total_mb": int(parts[3]),
+                    "memory_free_mb": max(0, int(parts[3]) - int(parts[2])),
                     "utilization_pct": int(parts[4]),
                     "temperature_c": int(parts[5]),
+                    "allowed": parts[0] not in _GPU_DENY_LIST,
                 }
             )
         return gpus

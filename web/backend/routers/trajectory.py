@@ -12,6 +12,7 @@ Binary frame response format:
 
 `combined_b64` is URL-safe base64url(JSON {"xtc": "<path>", "top": "<path>"}).
 """
+
 from __future__ import annotations
 
 import base64

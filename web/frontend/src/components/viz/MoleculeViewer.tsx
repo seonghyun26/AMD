@@ -55,6 +55,7 @@ interface RepState {
   stick: boolean;
   ribbon: boolean;
   surface: boolean;
+  solvent: boolean;
 }
 
 const REP_LABELS: { key: keyof RepState; label: string }[] = [
@@ -62,23 +63,28 @@ const REP_LABELS: { key: keyof RepState; label: string }[] = [
   { key: "stick",   label: "Stick"   },
   { key: "ribbon",  label: "Cartoon" },
   { key: "surface", label: "Surface" },
+  { key: "solvent", label: "Solvent" },
 ];
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyRepresentations(component: any, reps: RepState) {
   component.removeAllRepresentations();
+  // When solvent is hidden, restrict the atom representations to non-water.
+  const atomSele = reps.solvent ? undefined : "not water";
+  const withSele = (params: Record<string, unknown>) =>
+    atomSele ? { ...params, sele: atomSele } : params;
   if (reps.ball) {
-    component.addRepresentation("spacefill", { colorScheme: "element", radiusScale: 0.2 });
+    component.addRepresentation("spacefill", withSele({ colorScheme: "element", radiusScale: 0.2 }));
   }
   if (reps.stick) {
-    component.addRepresentation("licorice", { colorScheme: "element" });
+    component.addRepresentation("licorice", withSele({ colorScheme: "element" }));
   }
   if (reps.ribbon) {
     component.addRepresentation("cartoon", { sele: "protein", colorScheme: "residueindex" });
   }
   if (reps.surface) {
-    component.addRepresentation("surface", { color: "white", opacity: 0.1 });
+    component.addRepresentation("surface", withSele({ color: "white", opacity: 0.1 }));
   }
 }
 
@@ -87,6 +93,7 @@ const DEFAULT_REPS: RepState = {
   stick: true,
   ribbon: false,
   surface: false,
+  solvent: true,
 };
 
 /** Capture a screenshot from the NGL stage. */

@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from web.backend.db import get_api_keys
-from web.backend.session_manager import get_session
+from web.backend.session_manager import get_or_restore_session
 
 router = APIRouter()
 
@@ -37,7 +37,7 @@ async def run_agent(session_id: str, agent_type: str, input: str = ""):
     if agent_type not in _AGENT_TYPES:
         raise HTTPException(400, f"Unknown agent type '{agent_type}'. Use: {_AGENT_TYPES}")
 
-    session = get_session(session_id)
+    session = get_or_restore_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
 

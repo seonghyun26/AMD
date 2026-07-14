@@ -199,7 +199,11 @@ TOOLS: list[dict[str, Any]] = [
                     "description": "Energy terms to extract (e.g. ['Potential', 'Temperature', 'Pressure'])",
                 },
                 "begin_time": {"type": "number", "default": 0.0, "description": "Start time in ps"},
-                "end_time": {"type": "number", "default": -1.0, "description": "End time in ps (-1 = all)"},
+                "end_time": {
+                    "type": "number",
+                    "default": -1.0,
+                    "description": "End time in ps (-1 = all)",
+                },
             },
             "required": ["edr_file", "terms"],
         },
@@ -583,11 +587,17 @@ class MDAgent:
         self.work_dir = Path(work_dir)
         self.work_dir.mkdir(parents=True, exist_ok=True)
 
-        self._client = anthropic.Anthropic()
+        # Optional: the per-simulation MDAgent chat is legacy (the project/general
+        # Claude Code assistant replaced it), so the app must still run when
+        # ANTHROPIC_API_KEY is absent. Build the API client best-effort.
+        try:
+            self._client = anthropic.Anthropic()
+        except Exception:
+            self._client = None
         self._gmx = GROMACSRunner(work_dir=str(self.work_dir))
         self._plumed = PlumedGenerator()
         self._paper_retriever = PaperRetriever()
-        self._settings_extractor = MDSettingsExtractor(self._client)
+        self._settings_extractor = MDSettingsExtractor(self._client) if self._client else None
 
         self._messages: list[dict[str, Any]] = []
 

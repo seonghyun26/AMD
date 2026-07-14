@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -34,7 +34,7 @@ PRESET_CONFIGS: dict[str, dict[str, str]] = {
     ),
     "md": dict(method="plain_md", system="protein", gromacs="default", plumed_cvs="default"),
     "metad": dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
-    "opes": dict(method="metadynamics", system="protein", gromacs="default", plumed_cvs="default"),
+    "opes": dict(method="opes", system="protein", gromacs="default", plumed_cvs="default"),
     "umbrella": dict(method="umbrella", system="protein", gromacs="default", plumed_cvs="default"),
     "steered": dict(method="steered", system="protein", gromacs="default", plumed_cvs="default"),
 }
@@ -104,6 +104,7 @@ class CreateSessionRequest(BaseModel):
     work_dir: str
     nickname: str = ""
     username: str = ""
+    project_id: str = ""
     preset: str = "undefined"
     # Individual overrides (ignored when preset is set)
     method: str = ""
@@ -115,8 +116,10 @@ class CreateSessionRequest(BaseModel):
 
 
 @router.post("/sessions")
-async def create_session_endpoint(req: CreateSessionRequest):
+async def create_session_endpoint(req: CreateSessionRequest, request: Request):
     """Create a new agent session. Returns session_id + list of seeded files."""
+    # Bind the session to the authenticated user, not a client-supplied name.
+    username = getattr(request.state, "username", "") or req.username
     Path(req.work_dir).mkdir(parents=True, exist_ok=True)
 
     # Resolve config from preset; individual fields override if provided
@@ -172,7 +175,7 @@ async def create_session_endpoint(req: CreateSessionRequest):
     session = create_session(
         work_dir=req.work_dir,
         nickname=req.nickname,
-        username=req.username,
+        username=username,
         method=method,
         system=hydra_system,
         gromacs=gromacs,
@@ -187,7 +190,9 @@ async def create_session_endpoint(req: CreateSessionRequest):
     _STRUCT_EXTS = {".pdb", ".gro", ".mol2", ".xyz"}
     seeded_structs = [f for f in seeded if Path(f).suffix.lower() in _STRUCT_EXTS]
     # Prefer unfolded conformations as starting structure for enhanced sampling
-    seeded_struct = next((f for f in seeded_structs if "unfolded" in f.lower()), None) or next(iter(seeded_structs), None)
+    seeded_struct = next((f for f in seeded_structs if "unfolded" in f.lower()), None) or next(
+        iter(seeded_structs), None
+    )
     if seeded_struct:
         try:
             from omegaconf import OmegaConf as _OC
@@ -214,7 +219,7 @@ async def create_session_endpoint(req: CreateSessionRequest):
         "session_id": session.session_id,
         "nickname": session.nickname,
         "work_dir": session.work_dir,
-        "username": req.username,
+        "username": username,
         "status": "active",
         "run_status": "standby",
         "updated_at": datetime.utcnow().isoformat(),
@@ -223,7 +228,14 @@ async def create_session_endpoint(req: CreateSessionRequest):
 
     # Index in SQLite for fast listing
     from web.backend.db import upsert_session
+
     upsert_session({**meta, "json_path": str(json_path)})
+
+    # Attach the new simulation to a project if one was specified.
+    if req.project_id:
+        from web.backend.project_store import assign_simulation
+
+        assign_simulation(session.session_id, req.project_id)
 
     return {
         "session_id": session.session_id,
@@ -234,14 +246,14 @@ async def create_session_endpoint(req: CreateSessionRequest):
 
 
 @router.get("/sessions")
-async def list_sessions_endpoint(username: str = ""):
-    """List sessions by scanning outputs/{username}/*/session.json on disk.
-
-    This is a pure read — status inference that requires a write is
-    deferred to the per-session run-status endpoint.
+async def list_sessions_endpoint(request: Request):
+    """List the authenticated user's sessions (scoped to the JWT identity so one
+    user cannot enumerate another's). Pure read — status inference that requires
+    a write is deferred to the per-session run-status endpoint.
     """
-    from web.backend.session_store import read_all_sessions
+    username = getattr(request.state, "username", "") or ""
     from web.backend.session_manager import infer_run_status_from_disk
+    from web.backend.session_store import read_all_sessions
 
     raw = read_all_sessions(username)
     sessions = []
@@ -254,13 +266,9 @@ async def list_sessions_endpoint(username: str = ""):
             inferred = infer_run_status_from_disk(session_root, work_dir_resolved)
             if inferred in ("finished", "failed"):
                 run_status = inferred
-                # Persist the inferred status via locked write
-                import time as _time
-                from web.backend.session_store import update_session_json
-                update_session_json(data["session_id"], {
-                    "run_status": inferred,
-                    "finished_at": data.get("finished_at") or _time.time(),
-                })
+                # Read-only listing: do NOT persist here. Concurrent list calls
+                # (polling, multiple tabs) would race on the same session.json.
+                # The per-session run-status endpoint owns the persist.
         sessions.append(
             {
                 "session_id": data["session_id"],
@@ -293,14 +301,27 @@ async def get_session_run_status(session_id: str):
     if run_status == "running":
         work_dir = Path(data["work_dir"]).resolve()
         session_root = work_dir.parent
-        inferred = infer_run_status_from_disk(session_root, work_dir)
+        # Prefer the live in-memory verdict (authoritative exit code) when the
+        # process handle is still held; otherwise infer from disk (log markers +
+        # a staleness fallback for handle-lost/crashed runs). Keeps this endpoint
+        # consistent with /simulate/status.
+        from web.backend.session_manager import get_simulation_status
+
+        live = get_simulation_status(session_id)
+        inferred = live.get("status") if live.get("status") in ("finished", "failed") else None
+        if inferred is None:
+            inferred = infer_run_status_from_disk(session_root, work_dir)
         if inferred in ("finished", "failed"):
             import time as _time
+
             run_status = inferred
-            update_session_json(session_id, {
-                "run_status": inferred,
-                "finished_at": data.get("finished_at") or _time.time(),
-            })
+            update_session_json(
+                session_id,
+                {
+                    "run_status": inferred,
+                    "finished_at": data.get("finished_at") or _time.time(),
+                },
+            )
     return {
         "run_status": run_status,
         "started_at": data.get("started_at"),
@@ -324,12 +345,16 @@ class ResultCardsRequest(BaseModel):
 async def update_result_cards(session_id: str, req: ResultCardsRequest):
     """Persist which result plot cards are open in session.json."""
     from datetime import datetime
+
     from web.backend.session_store import update_session_json
 
-    update_session_json(session_id, {
-        "result_cards": req.result_cards,
-        "updated_at": datetime.utcnow().isoformat(),
-    })
+    update_session_json(
+        session_id,
+        {
+            "result_cards": req.result_cards,
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
     return {"session_id": session_id, "result_cards": req.result_cards}
 
 
@@ -337,18 +362,23 @@ async def update_result_cards(session_id: str, req: ResultCardsRequest):
 async def update_selected_molecule(session_id: str, req: MoleculeSelectRequest):
     """Persist the selected molecule filename in session.json."""
     from datetime import datetime
+
     from web.backend.session_store import update_session_json
 
-    update_session_json(session_id, {
-        "selected_molecule": req.selected_molecule,
-        "updated_at": datetime.utcnow().isoformat(),
-    })
+    update_session_json(
+        session_id,
+        {
+            "selected_molecule": req.selected_molecule,
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
     return {"session_id": session_id, "selected_molecule": req.selected_molecule}
 
 
 @router.patch("/sessions/{session_id}/nickname")
 async def update_nickname(session_id: str, req: NicknameRequest):
     from datetime import datetime
+
     from web.backend.session_store import update_session_json
 
     nickname = req.nickname.strip()
@@ -356,10 +386,13 @@ async def update_nickname(session_id: str, req: NicknameRequest):
     session = get_session(session_id)
     if session:
         session.nickname = nickname
-    update_session_json(session_id, {
-        "nickname": nickname,
-        "updated_at": datetime.utcnow().isoformat(),
-    })
+    update_session_json(
+        session_id,
+        {
+            "nickname": nickname,
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
     return {"session_id": session_id, "nickname": nickname}
 
 
@@ -391,15 +424,18 @@ async def delete_session_endpoint(session_id: str):
     moved_to: str | None = None
 
     # Mark as deleted via locked write, then move folder to trash.
-    from web.backend.session_store import update_session_json, _scan_session_file
+    from web.backend.session_store import _scan_session_file, update_session_json
 
     sf = _scan_session_file(session_id)
     if sf:
         try:
-            update_session_json(session_id, {
-                "status": "deleted",
-                "updated_at": datetime.utcnow().isoformat(),
-            })
+            update_session_json(
+                session_id,
+                {
+                    "status": "deleted",
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
+            )
 
             session_folder = sf.parent
             user_folder = session_folder.parent
@@ -488,6 +524,55 @@ async def stream_chat(session_id: str, req: StreamChatRequest):
     session = get_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
+
+    # Route CLI-backed assistants separately from the API-driven MDAgent.
+    backbone = ""
+    try:
+        from web.backend.db import get_api_keys
+
+        backbone = (get_api_keys(getattr(session, "username", "")) or {}).get("_agent_backend", "")
+    except Exception:
+        backbone = ""
+
+    if backbone == "claude_code":
+        from web.backend.claude_code_agent import stream_claude_code
+
+        async def cc_generator():
+            try:
+                async for event in stream_claude_code(session.work_dir, message):
+                    yield _format_sse(event)
+            except Exception as exc:
+                yield _format_sse({"type": "error", "message": str(exc)})
+
+        return StreamingResponse(
+            cc_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
+    if backbone == "codex":
+        from web.backend.codex_agent import stream_codex
+
+        async def codex_generator():
+            try:
+                async for event in stream_codex(session.work_dir, message):
+                    yield _format_sse(event)
+            except Exception as exc:
+                yield _format_sse({"type": "error", "message": str(exc)})
+
+        return StreamingResponse(
+            codex_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
 
     async def event_generator():
         loop = asyncio.get_running_loop()

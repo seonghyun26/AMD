@@ -26,7 +26,7 @@ export type SSEEvent =
 
 export type MessageRole = "user" | "assistant";
 
-export type TextBlock = { kind: "text"; content: string };
+export type TextBlock = { kind: "text"; content: string; title?: string };
 export type ThinkingBlock = { kind: "thinking"; content: string; collapsed: boolean };
 export type ToolCallBlock = {
   kind: "tool_call";
@@ -70,4 +70,18 @@ export interface ConfigOptions {
   systems: string[];
   gromacs: string[];
   plumed_cvs: string[];
+}
+
+export interface Project {
+  project_id: string;
+  name: string;
+  username: string;
+  description?: string;
+  molecule?: string;
+  system?: string;
+  goal?: string;
+  status?: string;
+  simulation_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 # ── Collective Variable schemas ────────────────────────────────────────
 
@@ -84,18 +84,21 @@ VALID_CONSTRAINTS = {"none", "h-bonds", "all-bonds", "h-angles", "all-angles"}
 
 
 class GromacsSchema(BaseModel):
+    # Numeric fields are optional so a *partial* config (e.g. the vacuum template,
+    # which has no pressure/rlist) validates — the goal is to catch bad VALUES,
+    # not to require every key. Unlisted keys are ignored by default.
     integrator: str = "md"
-    dt: float = Field(gt=0, le=0.004, description="ps")
-    temperature: float = Field(gt=0, description="K")
-    pressure: float = Field(gt=0, description="bar")
-    nsteps: int = Field(gt=0)
+    dt: float | None = Field(default=None, gt=0, le=0.004, description="ps")
+    temperature: float | None = Field(default=None, gt=0, description="K")
+    pressure: float | None = Field(default=None, gt=0, description="bar")
+    nsteps: int | None = Field(default=None, gt=0)
     tcoupl: str = "V-rescale"
     pcoupl: str = "Parrinello-Rahman"
     constraints: str = "h-bonds"
-    nstenergy: int = Field(gt=0)
-    rlist: float = Field(gt=0, description="nm")
-    rcoulomb: float = Field(gt=0, description="nm")
-    rvdw: float = Field(gt=0, description="nm")
+    nstenergy: int | None = Field(default=None, gt=0)
+    rlist: float | None = Field(default=None, gt=0, description="nm")
+    rcoulomb: float | None = Field(default=None, gt=0, description="nm")
+    rvdw: float | None = Field(default=None, gt=0, description="nm")
     gen_vel: str | None = None
     gen_seed: int | None = None
     continuation: str | None = None
@@ -127,6 +130,24 @@ class GromacsSchema(BaseModel):
         if v not in VALID_CONSTRAINTS:
             raise ValueError(f"Unknown constraints value '{v}'")
         return v
+
+
+def validate_gromacs_dict(d: dict[str, Any]) -> list[str]:
+    """Validate a (possibly partial) gromacs config dict against GromacsSchema.
+
+    Returns a list of human-readable problems (empty ⇒ valid). Never raises, so
+    callers can choose to reject (API edits) or just warn (session creation).
+    Unknown keys are ignored; only recognised fields are range/whitelist-checked.
+    """
+    try:
+        GromacsSchema.model_validate(d)
+        return []
+    except ValidationError as exc:
+        problems: list[str] = []
+        for err in exc.errors():
+            loc = ".".join(str(x) for x in err.get("loc", ())) or "value"
+            problems.append(f"{loc}: {err.get('msg', 'invalid')}")
+        return problems
 
 
 # ── Extracted paper settings schema ───────────────────────────────────

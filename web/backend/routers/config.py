@@ -48,6 +48,24 @@ async def update_session_config(session_id: str, req: ConfigUpdateRequest):
         raise HTTPException(404, "Session not found")
 
     cfg = session.agent.cfg
+
+    # Validate the PROPOSED result before committing so a bad manual edit
+    # (dt too large, negative temperature, unknown thermostat/barostat) is
+    # rejected with a clear message instead of silently producing an invalid MDP.
+    proposed = OmegaConf.create(OmegaConf.to_container(cfg, resolve=False))
+    for key, value in req.updates.items():
+        OmegaConf.update(proposed, key, value, merge=True, force_add=True)
+    try:
+        gdict = OmegaConf.to_container(OmegaConf.select(proposed, "gromacs") or {}, resolve=True)
+    except Exception:
+        gdict = None  # couldn't resolve → skip validation rather than false-reject
+    if isinstance(gdict, dict):
+        from md_agent.config.schemas import validate_gromacs_dict
+
+        problems = validate_gromacs_dict(gdict)
+        if problems:
+            raise HTTPException(400, "Invalid GROMACS settings — " + "; ".join(problems))
+
     for key, value in req.updates.items():
         try:
             OmegaConf.update(cfg, key, value, merge=True)
@@ -296,11 +314,24 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         )
 
     elif method_name in ("umbrella", "umbrella_sampling"):
-        window_center = float(OmegaConf.select(cfg, "method.window_start") or 0.0)
-        force_constant = float(OmegaConf.select(cfg, "method.force_constant") or 1000)
+        # NOTE: full umbrella sampling runs one simulation per window (WHAM over
+        # all windows). This backbone launches a single restrained run, so we use
+        # the configured restraint + the first window center. Reads the actual
+        # (nested) config keys; previously read non-existent flat keys and always
+        # fell back to AT=0 / KAPPA=1000. Multi-window WHAM is future work.
+        window_center = float(
+            OmegaConf.select(cfg, "method.window_start")
+            if OmegaConf.select(cfg, "method.window_start") is not None
+            else (OmegaConf.select(cfg, "method.windows.start") or 0.0)
+        )
+        force_constant = float(
+            OmegaConf.select(cfg, "method.force_constant")
+            or OmegaConf.select(cfg, "method.restraint.force_constant")
+            or 1000
+        )
         cv_name = cv_names[0] if cv_names else "cv1"
 
-        lines.append("# Umbrella Sampling — Harmonic Restraint")
+        lines.append("# Umbrella Sampling — Harmonic Restraint (single window)")
         lines.append(
             f"restraint: RESTRAINT ARG={cv_name} AT={window_center} KAPPA={force_constant}"
         )
@@ -310,10 +341,29 @@ def _build_plumed_content(cfg, cvs: list[dict], work_dir: str = "") -> str:
         )
 
     elif method_name in ("steered", "steered_md"):
-        initial = float(OmegaConf.select(cfg, "method.initial_value") or 0)
-        final = float(OmegaConf.select(cfg, "method.final_value") or 4.0)
-        force_constant = float(OmegaConf.select(cfg, "method.force_constant") or 500)
+        # Reads the actual (nested) pull.* config; previously read non-existent
+        # flat keys and hardcoded AT0=0/AT1=4.0/KAPPA=500. The endpoint is derived
+        # from the pull rate × total run time when a rate is given.
+        initial = float(OmegaConf.select(cfg, "method.initial_value") or 0.0)
+        force_constant = float(
+            OmegaConf.select(cfg, "method.force_constant")
+            or OmegaConf.select(cfg, "method.pull.force_constant")
+            or 500
+        )
         nsteps = int(OmegaConf.select(cfg, "method.nsteps") or 5000000)
+        dt = float(OmegaConf.select(cfg, "gromacs.dt") or 0.002)
+        rate = float(
+            OmegaConf.select(cfg, "method.pull.rate")
+            or OmegaConf.select(cfg, "method.pull_rate")
+            or 0.0
+        )
+        final_cfg = OmegaConf.select(cfg, "method.final_value")
+        if rate > 0:
+            final = initial + rate * nsteps * dt  # nm reached at the configured pull velocity
+        elif final_cfg is not None:
+            final = float(final_cfg)
+        else:
+            final = 4.0
         cv_name = cv_names[0] if cv_names else "cv1"
 
         lines.append("# Steered MD — Moving Restraint")
@@ -405,8 +455,13 @@ async def validate_checkpoint(session_id: str, filename: str):
     if not session:
         raise HTTPException(404, "Session not found")
 
-    work_dir = Path(session.work_dir)
-    ckpt_path = work_dir / filename
+    work_dir = Path(session.work_dir).resolve()
+    # `filename` is an untrusted query param and torch.jit.load/torch.load
+    # deserialise it (pickle / TorchScript), so a traversal here is RCE on
+    # arbitrary server files. Constrain the resolved path to the work_dir.
+    ckpt_path = (work_dir / filename).resolve()
+    if not ckpt_path.is_relative_to(work_dir):
+        raise HTTPException(400, "Invalid checkpoint path")
     if not ckpt_path.exists():
         return {
             "valid": False,

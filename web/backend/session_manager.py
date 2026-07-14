@@ -90,6 +90,13 @@ def _evict_if_needed() -> None:
                 break
         if evict_key is None:
             break  # All sessions have active simulations — can't evict
+        # Best-effort: stop any lingering Docker container before dropping the
+        # only handle to its runner (guards against leaking a GPU container from
+        # a restored session whose process handle we no longer hold).
+        try:
+            _sessions[evict_key].agent._gmx._cleanup()
+        except Exception:
+            pass
         _sessions.pop(evict_key)
 
 
@@ -204,8 +211,6 @@ def _infer_status_from_log(
     expected_nsteps : target step count for "finished" detection
     started_after : ignore logs with mtime before this timestamp (0 = no filter)
     """
-    import time as _time
-
     for log_path in log_candidates:
         if not log_path.exists():
             continue
@@ -230,9 +235,10 @@ def _infer_status_from_log(
             info = parse_gromacs_log_progress(str(log_path))
             if expected_nsteps is not None and info and int(info.get("step", 0)) >= expected_nsteps:
                 result = {"status": "finished", "detected_by": "step_reached"}
-            elif _time.time() - mtime > 60:
-                # Log hasn't been written to in >60s — process likely died silently.
-                result = {"status": "failed", "detected_by": "stale_log"}
+            # NOTE: a stale log (no writes for a while) is deliberately NOT treated
+            # as failure. GROMACS legitimately pauses output for >60s (PME tuning,
+            # large systems, checkpoint flush). Terminal state is decided by actual
+            # process exit in get_simulation_status(), not by log mtime.
 
         if result is not None:
             _infer_cache[cache_key] = (mtime, result)
@@ -261,7 +267,42 @@ def infer_run_status_from_disk(session_root: Path, work_dir: Path) -> str | None
         [work_dir / "simulation" / "md.log", work_dir / "md.log"],
         expected_nsteps=expected_nsteps,
     )
-    return result["status"] if result else None
+    if result:
+        return result["status"]
+
+    # No terminal verdict from the log. This is the HANDLE-LOST path (no live
+    # process to protect), so a run still marked "running" whose process is gone
+    # — server restart, OOM-kill, container death, host reboot — would otherwise
+    # be stuck "running" forever. Fall back to a *generous* staleness check: a
+    # genuinely live mdrun writes md.log continuously, and legitimate pauses (PME
+    # tuning, checkpoint flush) last seconds, so idleness far beyond that means
+    # the run died. This never fires for a healthy run (fresh log mtime).
+    import time as _time
+
+    stale_secs = 900  # 15 min
+    now = _time.time()
+    log = next(
+        (p for p in (work_dir / "simulation" / "md.log", work_dir / "md.log") if p.exists()),
+        None,
+    )
+    if log is not None:
+        try:
+            if now - log.stat().st_mtime > stale_secs:
+                return "failed"
+        except Exception:
+            pass
+        return None  # log recently written → assume still alive
+    # No log at all: fall back to how long ago the run was recorded as started.
+    try:
+        import json as _json
+
+        meta = _json.loads((session_root / "session.json").read_text())
+        started = float(meta.get("started_at") or 0.0)
+        if started and now - started > stale_secs:
+            return "failed"
+    except Exception:
+        pass
+    return None
 
 
 def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
@@ -274,12 +315,20 @@ def _infer_terminal_status_from_outputs(session: Session) -> dict | None:
 
     output_prefix = str(sim_meta.get("output_prefix") or "simulation/md")
     try:
-        expected_nsteps = int(sim_meta["expected_nsteps"]) if sim_meta.get("expected_nsteps") is not None else None
+        expected_nsteps = (
+            int(sim_meta["expected_nsteps"])
+            if sim_meta.get("expected_nsteps") is not None
+            else None
+        )
     except Exception:
         expected_nsteps = None
 
     return _infer_status_from_log(
-        [work_dir / f"{output_prefix}.log", work_dir / "simulation" / "md.log", work_dir / "md.log"],
+        [
+            work_dir / f"{output_prefix}.log",
+            work_dir / "simulation" / "md.log",
+            work_dir / "md.log",
+        ],
         expected_nsteps=expected_nsteps,
         started_after=started_at,
     )
@@ -315,12 +364,26 @@ def get_simulation_status(session_id: str) -> dict:
                 result["finished_at"] = fa
             return result
 
+        # During pre-production equilibration the live mdrun handle belongs to a
+        # STAGE (EM/NVT/NPT), not the production run. Report "running" + the stage
+        # so a stage's clean exit isn't misread as the production run finishing.
+        # The background worker owns stage transitions and marks failure itself.
+        stage = (session.sim_status or {}).get("stage")
+        if stage in ("minimizing", "nvt", "npt"):
+            return _with_timestamps({"running": True, "status": "running", "stage": stage})
+
         if runner is not None:
             proc = getattr(runner, "_mdrun_proc", None)
-            inferred = _infer_terminal_status_from_outputs(session)
-            # Terminal state is defined by file-derived step progress (or fatal log errors),
-            # not by subprocess lifecycle.
-            if inferred and inferred["status"] in {"finished", "failed"}:
+
+            # Case 1: we hold a live process handle → liveness is authoritative.
+            if proc is not None:
+                rc = proc.poll()
+                if rc is None:
+                    # Still running. Do NOT kill on log heuristics: step-reached
+                    # fires before the final checkpoint flush, and a stale log is
+                    # not death — either would truncate output / leak GPU work.
+                    return _with_timestamps({"running": True, "status": "running", "pid": proc.pid})
+                # Process has ACTUALLY exited — now it is safe to finalise/clean up.
                 try:
                     runner._cleanup()
                 except Exception:
@@ -329,29 +392,31 @@ def get_simulation_status(session_id: str) -> dict:
                     runner._mdrun_proc = None
                 except Exception:
                     pass
-                status = {"running": False, **inferred}
-                if proc is not None:
-                    status["pid"] = proc.pid
+                # Prefer the log's verdict for the finished/failed distinction
+                # (e.g. step target reached), else fall back to the exit code.
+                inferred = _infer_terminal_status_from_outputs(session)
+                if inferred and inferred["status"] in {"finished", "failed"}:
+                    status = {"running": False, **inferred}
+                else:
+                    # Decide the terminal state from the ACTUAL process exit code
+                    # (see test_lifecycle_fixes #8). Handle-lost/crashed runs with
+                    # no exit code are covered separately by the disk staleness
+                    # fallback in infer_run_status_from_disk().
+                    status = {
+                        "running": False,
+                        "status": "finished" if rc == 0 else "failed",
+                    }
+                status["pid"] = proc.pid
+                status["exit_code"] = rc
                 return _with_timestamps(status)
-            if proc is None:
-                return _with_timestamps({"running": False, "status": "standby"})
-            rc = proc.poll()
-            if rc is None:
-                return _with_timestamps({"running": True, "status": "running", "pid": proc.pid})
-            try:
-                runner._mdrun_proc = None
-            except Exception:
-                pass
-            # If process exited before step-based completion:
-            # rc=0 → treat as finished (clean exit), rc!=0 → failed.
-            return _with_timestamps(
-                {
-                    "running": False,
-                    "status": "finished" if rc == 0 else "failed",
-                    "pid": proc.pid,
-                    "exit_code": rc,
-                }
-            )
+
+            # Case 2: no live handle (restored session / server restarted). We can
+            # only read the log: trust explicit finished/failed markers, but never
+            # synthesise failure from a stale log (see _infer_status_from_log).
+            inferred = _infer_terminal_status_from_outputs(session)
+            if inferred and inferred["status"] in {"finished", "failed"}:
+                return _with_timestamps({"running": False, **inferred})
+            return _with_timestamps({"running": False, "status": "standby"})
     except Exception:
         pass
     return {"running": False, "status": "standby"}

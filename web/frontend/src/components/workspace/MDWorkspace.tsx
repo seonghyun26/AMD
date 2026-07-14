@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
+  Check,
   Settings,
   Cpu,
   Zap,
@@ -84,7 +85,8 @@ import {
   updateResultCards,
   type CustomCVConfig,
   getSessionRunStatus,
-  getAvailableGpu,
+  listGpus,
+  type GpuInfo,
   getPlumedPreview,
   generatePlumedFile,
   getMolecules,
@@ -93,6 +95,7 @@ import {
   getColvar,
 } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
+import { useProjectStore } from "@/store/projectStore";
 
 // ── Helpers, constants, and UI primitives imported from ./helpers and ./ui ──
 
@@ -204,7 +207,7 @@ function DeleteConfirmPopup({
       >
         <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Move to archive?</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          <span className="font-mono text-gray-700 dark:text-gray-300">{name}</span> will be moved to the session&apos;s
+          <span className="font-mono text-gray-700 dark:text-gray-300">{name}</span> will be moved to the simulation&apos;s
           archive folder. Use the archive button in the Files tab to restore it.
         </p>
         <div className="flex gap-2 justify-end">
@@ -358,6 +361,10 @@ function EnergyCardContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, loading, sessionId, cfg.xvgPrefix]);
 
+  // Read theme before any conditional return so hook order stays stable (Rules of Hooks).
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   if (loading || extracting) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
@@ -402,9 +409,6 @@ function EnergyCardContent({
   let minVal = Infinity, maxVal = -Infinity, sumVal = 0;
   for (const v of yVals) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; sumVal += v; }
   const meanVal = yVals.length > 0 ? sumVal / yVals.length : 0;
-
-  const { theme } = useTheme();
-  const isDark = theme === "dark";
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const axisBase: any = {
@@ -1799,6 +1803,9 @@ function FilesTab({ sessionId }: { sessionId: string }) {
 function ProgressTab({
   sessionId,
   runStatus,
+  stage,
+  equilibrate = true,
+  solvated = true,
   exitCode,
   totalSteps,
   timestepPs,
@@ -1811,6 +1818,9 @@ function ProgressTab({
 }: {
   sessionId: string;
   runStatus: "standby" | "running" | "finished" | "failed" | "paused";
+  stage?: string | null;
+  equilibrate?: boolean;
+  solvated?: boolean;
   exitCode: number | null;
   totalSteps: number;
   timestepPs: number;
@@ -1921,6 +1931,16 @@ function ProgressTab({
       ?? names.find((f) => f.lower.endsWith(".pdb"));
     return { trajectoryFile: traj, topologyFile: topo };
   }, [allFiles, filesLoadedFor, sessionId]);
+  // Track when the PRODUCTION run actually started (first live md.log reading),
+  // so ns/day is measured against production wall time, not the total run time
+  // which now includes EM/NVT/NPT equilibration (which would understate it).
+  const [prodStartMs, setProdStartMs] = useState<number | null>(null);
+  useEffect(() => { setProdStartMs(null); }, [sessionId]);
+  useEffect(() => {
+    if (runStatus === "running" && liveProgress != null) setProdStartMs((p) => p ?? Date.now());
+    else if (runStatus === "standby") setProdStartMs(null);
+  }, [runStatus, liveProgress]);
+
   const targetSteps = Number.isFinite(totalSteps) && totalSteps > 0 ? totalSteps : 0;
   const pctRaw = targetSteps > 0 && liveProgress
     ? Math.max(0, Math.min(100, (liveProgress.step / targetSteps) * 100))
@@ -1940,11 +1960,51 @@ function ProgressTab({
   const simNs = liveProgress ? liveProgress.time_ps / 1000 : 0;
   const totalSimPs = totalSteps * timestepPs;
   const totalSimNs = totalSimPs / 1000;
-  const computedNsPerDay = elapsedMs != null && elapsedMs > 0 && simNs > 0
-    ? (simNs * 86400000) / elapsedMs
-    : null;
+  // Prefer GROMACS's own reported ns/day (written to the log at run end); while
+  // running, derive it from PRODUCTION wall time (since md.log first appeared),
+  // not the total elapsed which includes equilibration.
+  const prodElapsedMs =
+    prodStartMs != null && (runStatus === "running" || runStatus === "paused")
+      ? Math.max(0, nowMs - prodStartMs)
+      : null;
+  const computedNsPerDay =
+    liveProgress && liveProgress.ns_per_day > 0
+      ? liveProgress.ns_per_day
+      : prodElapsedMs != null && prodElapsedMs > 1000 && simNs > 0
+        ? (simNs * 86400000) / prodElapsedMs
+        : null;
+  // Pre-production equilibration (EM/NVT/NPT) — surfaced distinctly from the
+  // production run so the progress bar/steps aren't misread as production yet.
+  const STAGE_LABEL: Record<string, string> = {
+    minimizing: "Minimizing",
+    nvt: "NVT equilibration",
+    npt: "NPT equilibration",
+  };
+  const equilStage = runStatus === "running" && stage && stage !== "production" ? stage : null;
+
+  // Stage-order overview: EM → NVT → [NPT] → Simulation.
+  const orderSteps: { key: string; label: string }[] = equilibrate
+    ? [
+        { key: "minimizing", label: "EM" },
+        { key: "nvt", label: "NVT" },
+        ...(solvated ? [{ key: "npt", label: "NPT" }] : []),
+        { key: "production", label: "Simulation" },
+      ]
+    : [{ key: "production", label: "Simulation" }];
+  const prodIdx = orderSteps.findIndex((s) => s.key === "production");
+  const activeIdx =
+    runStatus === "finished"
+      ? orderSteps.length // all done
+      : runStatus === "standby"
+        ? -1
+        : stage === "production" || (runStatus === "running" && !equilStage)
+          ? prodIdx
+          : orderSteps.findIndex((s) => s.key === stage);
+
   const runStatusBadge = runStatus === "running"
-    ? { label: "Running",  className: "text-green-400" }
+    ? equilStage
+      ? { label: STAGE_LABEL[equilStage] ?? "Equilibrating", className: "text-cyan-400" }
+      : { label: "Running",  className: "text-green-400" }
     : runStatus === "paused"
       ? { label: "Paused", className: "text-amber-400" }
       : runStatus === "finished"
@@ -1961,6 +2021,42 @@ function ProgressTab({
         accent="emerald"
         action={<span className={`text-xs font-semibold ${runStatusBadge.className}`}>{runStatusBadge.label}</span>}
       >
+        {orderSteps.length > 1 && (
+          <div className="flex items-center gap-1 flex-wrap">
+            {orderSteps.map((s, i) => {
+              const done = i < activeIdx;
+              const active = i === activeIdx && runStatus !== "finished";
+              const failed = runStatus === "failed" && i === activeIdx;
+              return (
+                <Fragment key={s.key}>
+                  {i > 0 && <ChevronRight size={12} className="text-gray-300 dark:text-gray-700 flex-shrink-0" />}
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                      failed
+                        ? "border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30"
+                        : done
+                          ? "border-emerald-300/60 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30"
+                          : active
+                            ? "border-cyan-300 dark:border-cyan-700 text-cyan-600 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40"
+                            : "border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-600"
+                    }`}
+                  >
+                    {done ? <Check size={11} /> : active && !failed ? <Loader2 size={11} className="animate-spin" /> : null}
+                    {s.label}
+                  </span>
+                </Fragment>
+              );
+            })}
+          </div>
+        )}
+        {equilStage && (
+          <div className="flex items-center gap-2 rounded-lg border border-cyan-300/50 dark:border-cyan-800/50 bg-cyan-50/60 dark:bg-cyan-950/30 px-3 py-2 text-xs text-cyan-700 dark:text-cyan-300">
+            <Loader2 size={13} className="animate-spin flex-shrink-0" />
+            <span>
+              Equilibrating before production — <span className="font-semibold">{STAGE_LABEL[equilStage] ?? equilStage}</span>. The production run starts automatically when this finishes.
+            </span>
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-gray-50/70 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-800 rounded-lg p-2">
             <p className="text-xs text-gray-500 uppercase tracking-wider">Wall Time</p>
@@ -1984,9 +2080,11 @@ function ProgressTab({
             <span>
               {runStatus === "finished"
                 ? `${targetSteps.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
-                : liveProgress
-                  ? `${liveProgress.step.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
-                  : "Waiting for md.log..."}
+                : equilStage
+                  ? `${STAGE_LABEL[equilStage] ?? "Equilibrating"}…`
+                  : liveProgress
+                    ? `${liveProgress.step.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
+                    : "Waiting for md.log..."}
             </span>
             <span>{(runStatus === "finished" || (liveProgress && targetSteps > 0)) ? `${pct.toFixed(1)}%` : "0.0%"}</span>
           </div>
@@ -2029,7 +2127,13 @@ function ProgressTab({
         action={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setAgentOpen(true)}
+              onClick={() => {
+                const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
+                useSessionStore.getState().requestAssistant(
+                  `Analyze the results of the "${nick}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`,
+                  "Analyze results"
+                );
+              }}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
             >
               <Bot size={11} />
@@ -2299,7 +2403,13 @@ function MoleculeTab({
         action={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setAgentOpen(true)}
+              onClick={() => {
+                const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
+                useSessionStore.getState().requestAssistant(
+                  `Help me pick a molecular system for the "${nick}" simulation. List the structure/topology input files already present, identify what system is set up, and suggest suitable PDB structures (with IDs) if something is missing.`,
+                  "Find a molecular system"
+                );
+              }}
               className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-100/40 dark:hover:bg-blue-900/30 transition-colors font-medium"
             >
               <Bot size={12} />
@@ -2464,35 +2574,19 @@ function MoleculeTab({
 // ── GROMACS tab ────────────────────────────────────────────────────────
 
 function GpuCpuToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const isGpu = value !== "" && value !== "cpu";
-  const [gpuLabel, setGpuLabel] = useState(isGpu ? `GPU ${value}` : "GPU (auto)");
-  const [checking, setChecking] = useState(false);
+  // value: "cpu" → CPU; "auto"/"" → auto-select GPU; "N" → specific GPU N.
+  const isCpu = value === "cpu";
+  const gpuSel = isCpu || value === "" || value === "auto" ? "auto" : value;
+  const [gpus, setGpus] = useState<GpuInfo[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const selectGpu = () => {
-    setChecking(true);
-    getAvailableGpu()
-      .then((r) => {
-        if (r.available && r.gpu_id) {
-          onChange(r.gpu_id);
-          setGpuLabel(`GPU ${r.gpu_id}`);
-        } else {
-          setGpuLabel("No GPU free");
-          // Stay on CPU if no GPU available
-        }
-      })
-      .catch(() => { setGpuLabel("GPU (error)"); })
-      .finally(() => setChecking(false));
+  const refresh = () => {
+    setLoading(true);
+    listGpus().then(setGpus).catch(() => setGpus([])).finally(() => setLoading(false));
   };
+  useEffect(() => { refresh(); }, []);
 
-  const selectCpu = () => {
-    onChange("");
-    setGpuLabel("GPU (auto)");
-  };
-
-  // On mount, if GPU is selected, verify it
-  useEffect(() => {
-    if (isGpu) setGpuLabel(`GPU ${value}`);
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fmtGb = (mb: number) => (mb / 1024).toFixed(1);
 
   return (
     <div>
@@ -2500,30 +2594,63 @@ function GpuCpuToggle({ value, onChange }: { value: string; onChange: (v: string
       <div className="flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden h-[38px]">
         <button
           type="button"
-          onClick={selectGpu}
-          disabled={checking}
-          className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors ${
-            isGpu
-              ? "bg-emerald-100/40 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 border-r border-gray-300 dark:border-gray-700"
-              : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 border-r border-gray-300 dark:border-gray-700"
+          onClick={() => onChange(gpuSel)}
+          className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors border-r border-gray-300 dark:border-gray-700 ${
+            !isCpu
+              ? "bg-emerald-100/40 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400"
+              : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
           }`}
         >
-          {checking ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-          {isGpu ? gpuLabel : "GPU"}
+          <Zap size={12} /> GPU
         </button>
         <button
           type="button"
-          onClick={selectCpu}
+          onClick={() => onChange("cpu")}
           className={`flex-1 flex items-center justify-center gap-1.5 text-sm font-medium transition-colors ${
-            !isGpu
+            isCpu
               ? "bg-blue-100/40 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
               : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
           }`}
         >
-          <Cpu size={12} />
-          CPU
+          <Cpu size={12} /> CPU
         </button>
       </div>
+      {!isCpu && (
+        <div className="mt-2 flex items-center gap-1.5">
+          <select
+            value={gpuSel}
+            onChange={(e) => onChange(e.target.value)}
+            className="flex-1 min-w-0 border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="auto">Auto — GPU with most free memory</option>
+            {gpus.map((g) => {
+              const free = g.memory_free_mb ?? (g.memory_total_mb - g.memory_used_mb);
+              const denied = g.allowed === false;
+              return (
+                <option key={g.index} value={String(g.index)} disabled={denied}>
+                  GPU {g.index} · {g.name} · {fmtGb(free)}/{fmtGb(g.memory_total_mb)} GB free · {g.utilization_pct}% util{denied ? " · reserved" : ""}
+                </option>
+              );
+            })}
+          </select>
+          <button
+            type="button"
+            onClick={() => onChange("auto")}
+            title="Auto-select the GPU with the most free memory"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
+          >
+            Auto
+          </button>
+          <button
+            type="button"
+            onClick={refresh}
+            title="Refresh GPU list"
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2547,6 +2674,8 @@ function GromacsTab({
   const method  = (cfg.method  ?? {}) as Record<string, unknown>;
   const system  = (cfg.system  ?? {}) as Record<string, unknown>;
   const isLocked = runStatus === "running" || runStatus === "finished";
+  const equilibrate = gromacs.equilibrate !== false; // default on
+  const solvated = String(system.water_model ?? "tip3p") !== "none";
   const [agentOpen, setAgentOpen] = useState(false);
 
   return (
@@ -2558,7 +2687,13 @@ function GromacsTab({
           <div className="flex items-center gap-2">
             {!isLocked && (
               <button
-                onClick={() => setAgentOpen(true)}
+                onClick={() => {
+                  const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
+                  useSessionStore.getState().requestAssistant(
+                    `Review the GROMACS parameters configured for the "${nick}" simulation (see its config.yaml / .mdp) and suggest sensible values or flag anything unusual for this system — thermostat, timestep, cutoffs, electrostatics, constraints and run length.`,
+                    "Suggest GROMACS settings"
+                  );
+                }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
               >
                 <Bot size={11} />
@@ -2693,6 +2828,63 @@ function GromacsTab({
           );
         })()}
 
+        {/* Initialization / equilibration */}
+        <Section
+          icon={<Layers size={13} />}
+          title="Initialization"
+          accent="indigo"
+          action={
+            <button
+              type="button"
+              onClick={() => { onChange("gromacs.equilibrate", !equilibrate); onSave(); }}
+              title={equilibrate ? "Equilibration enabled" : "Equilibration disabled"}
+              className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${equilibrate ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${equilibrate ? "left-[18px]" : "left-0.5"}`} />
+            </button>
+          }
+        >
+          {equilibrate ? (
+            <>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
+                Relax the system before production: energy minimization → NVT{solvated ? " → NPT" : ""} → simulation.
+              </p>
+              <FieldGrid>
+                <Field
+                  label="EM max steps"
+                  type="number"
+                  value={String(gromacs.equil_em_steps ?? 50000)}
+                  onChange={(v) => onChange("gromacs.equil_em_steps", Number(v))}
+                  onBlur={onSave}
+                  hint="Minimizer; stops early at emtol."
+                />
+                <Field
+                  label="NVT"
+                  type="number"
+                  value={String(gromacs.equil_nvt_ps ?? 100)}
+                  onChange={(v) => onChange("gromacs.equil_nvt_ps", Number(v))}
+                  onBlur={onSave}
+                  unit="ps"
+                />
+                {solvated && (
+                  <Field
+                    label="NPT"
+                    type="number"
+                    value={String(gromacs.equil_npt_ps ?? 100)}
+                    onChange={(v) => onChange("gromacs.equil_npt_ps", Number(v))}
+                    onBlur={onSave}
+                    unit="ps"
+                  />
+                )}
+              </FieldGrid>
+            </>
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-500">
+              Equilibration off — production starts directly from the built system (velocities assigned at the reference temperature).
+            </p>
+          )}
+        </Section>
+
         {/* Thermostat */}
         <Section icon={<Thermometer size={13} />} title="Temperature" accent="amber">
           <FieldGrid>
@@ -2759,10 +2951,10 @@ function AdvancedSection({
 
       {open && (
         <fieldset disabled={isLocked} className={isLocked ? "space-y-3 opacity-70" : "space-y-3"}>
-        <div className="p-3 space-y-5 border-t border-gray-300/40 dark:border-gray-700/40 bg-gray-50/20 dark:bg-gray-900/20">
+        <div className="adv-params p-3 space-y-5 border-t border-gray-300/40 dark:border-gray-700/40 bg-gray-50/20 dark:bg-gray-900/20">
           {/* Non-bonded cutoffs */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Non-bonded Cutoffs</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Non-bonded Cutoffs</p>
             <FieldGrid>
               <Field
                 label="Coulomb cutoff"
@@ -2785,7 +2977,7 @@ function AdvancedSection({
 
           {/* Electrostatics */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Electrostatics</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Electrostatics</p>
             <FieldGrid>
               <SelectField
                 label="Coulomb type"
@@ -2819,7 +3011,7 @@ function AdvancedSection({
 
           {/* Neighbor list */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Neighbor List</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Neighbor List</p>
             <FieldGrid>
               <SelectField
                 label="Cutoff scheme"
@@ -2844,7 +3036,7 @@ function AdvancedSection({
 
           {/* Constraints */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Constraints</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Constraints</p>
             <FieldGrid>
               <SelectField
                 label="Constraints"
@@ -2872,7 +3064,7 @@ function AdvancedSection({
 
           {/* Output frequencies */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Output Frequencies (steps)</p>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Output Frequencies (steps)</p>
             <FieldGrid>
               <Field
                 label="nstxout"
@@ -2925,10 +3117,11 @@ function AdvancedSection({
             </FieldGrid>
           </div>
 
-          {/* Pressure */}
+          {/* Pressure — 3 fields on one reflowing row (avoids the orphaned τ a
+              fixed 2-col grid produced). */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Pressure Coupling</p>
-            <FieldGrid>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2">Pressure Coupling</p>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(9rem, 1fr))" }}>
               <SelectField
                 label="Barostat"
                 value={String(gromacs.pcoupl ?? "no")}
@@ -2957,7 +3150,7 @@ function AdvancedSection({
                 onBlur={onSave}
                 unit="ps"
               />
-            </FieldGrid>
+            </div>
           </div>
         </div>
         </fieldset>
@@ -3289,7 +3482,7 @@ function MethodTab({
     setPlumedMessage(null);
     try {
       await generatePlumedFile(sessionId);
-      setPlumedMessage("plumed.dat written to session directory.");
+      setPlumedMessage("plumed.dat written to simulation directory.");
     } catch (err: unknown) {
       setPlumedMessage(err instanceof Error ? err.message : "Generation failed.");
     } finally {
@@ -3307,7 +3500,13 @@ function MethodTab({
           <div className="flex items-center gap-2">
             {needsPlumed && !isLocked && (
               <button
-                onClick={() => setAgentOpen(true)}
+                onClick={() => {
+                  const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
+                  useSessionStore.getState().requestAssistant(
+                    `Suggest good collective variables (CVs) for the "${nick}" simulation given its molecular system and enhanced-sampling method. For each CV, give the PLUMED-style definition (1-based atom indices) and explain why it is informative.`,
+                    "Suggest CVs"
+                  );
+                }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
               >
                 <Bot size={11} />
@@ -3865,7 +4064,7 @@ function MethodTab({
                     handleGeneratePlumed();
                   }}
                   disabled={plumedLoading || isLocked}
-                  title="Write plumed.dat to session"
+                  title="Write plumed.dat to simulation"
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200/60 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-800/40 transition-colors disabled:opacity-50"
                 >
                   Generate
@@ -3933,6 +4132,7 @@ function NewSessionForm({
   const [gromacs, setGromacs] = useState("vacuum");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3949,6 +4149,7 @@ function NewSessionForm({
         preset,
         system,
         gromacs,
+        projectId: activeProjectId ?? undefined,
       });
       onCreated(session_id, work_dir, savedNick, seeded_files ?? []);
     } catch (err) {
@@ -3965,7 +4166,7 @@ function NewSessionForm({
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 mb-3 shadow-lg">
             <FlaskConical size={22} className="text-white" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New Session</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New Simulation</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -3984,8 +4185,10 @@ function NewSessionForm({
             />
           </div>
 
-          {/* Three selectors side by side */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Three selectors side by side — auto-fit on the workspace's actual
+              width (not the viewport), so they reflow to 2/1 columns when the
+              assistant panel is widened and this column gets narrow. */}
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))" }}>
 
             {/* Molecule system */}
             <div className="rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-900/60 p-3 flex flex-col gap-1.5">
@@ -4067,7 +4270,7 @@ function NewSessionForm({
             disabled={loading}
             className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-all text-sm shadow-lg shadow-blue-900/30"
           >
-            {loading ? "Creating…" : "Create Session"}
+            {loading ? "Creating…" : "Create Simulation"}
           </button>
         </form>
       </div>
@@ -4095,6 +4298,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const [moleculeLoading, setMoleculeLoading] = useState(false);
   const [simState, setSimState] = useState<SimState>("standby");
   const [simRunStatus, setSimRunStatus] = useState<"standby" | "running" | "finished" | "failed" | "paused">("standby");
+  const [simStage, setSimStage] = useState<string | null>(null);
   const [simExitCode, setSimExitCode] = useState<number | null>(null);
   const [simStartedAt, setSimStartedAt] = useState<number | null>(null);
   const [simFinishedAt, setSimFinishedAt] = useState<number | null>(null);
@@ -4103,7 +4307,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [resultCards, setResultCards] = useState<ResultCardDef[]>([]);
   const [gromacsSaveState, setGromacsSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const { setSession, sessions, addSession, setSessionMolecule, setSessionRunStatus, setSessionResultCards, appendSSEEvent, clearMessages } = useSessionStore();
+  const { setSession, sessions, addSession, setSessionMolecule, setSessionRunStatus, setSessionResultCards, appendSSEEvent } = useSessionStore();
   // Stable ref — lets the restore effect read latest sessions without re-running
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -4141,8 +4345,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       })
       .filter(Boolean) as ResultCardDef[];
     setResultCards(restoredCards);
-    // Clear chat messages so previous session's conversation doesn't bleed into the new session
-    clearMessages();
+    // Note: chat messages are the project-level assistant conversation now — they
+    // persist across simulation switches, so we do NOT clear them here.
     // Fetch authoritative wall-clock timestamps from session.json on disk.
     // The Zustand store may not have them yet (e.g. after page refresh or session switch).
     if (sessionId) {
@@ -4260,16 +4464,32 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       try {
         const status = await getSimulationStatus(sessionId);
         if (cancelled) return;
+        setSimStage(status.stage ?? null);
         // Re-check after async gap — reset effect may have updated status to "failed" or "paused"
         if ((simRunStatusRef.current as string) === "failed" || (simRunStatusRef.current as string) === "paused") return;
-        const mappedStatus: "standby" | "running" | "finished" | "failed" | "paused" =
-          status.status === "finished" ? "finished"
-            : status.status === "failed" ? "failed"
-            : (status.status as string) === "paused" ? "paused"
-            : status.running ? "running"
-            : simRunStatusRef.current === "running"
-              ? (status.exit_code != null && status.exit_code !== 0 ? "failed" : "finished")
-            : "standby";
+        let mappedStatus: "standby" | "running" | "finished" | "failed" | "paused";
+        if (status.status === "finished") mappedStatus = "finished";
+        else if (status.status === "failed") mappedStatus = "failed";
+        else if ((status.status as string) === "paused") mappedStatus = "paused";
+        else if (status.running) mappedStatus = "running";
+        else if (simRunStatusRef.current === "running") {
+          if (status.exit_code != null && status.exit_code !== 0) {
+            mappedStatus = "failed";
+          } else {
+            // Backend gave no terminal verdict and the exit code is 0/unknown —
+            // don't assume success. Trust the run_status the pipeline persisted
+            // (it detects real failures, e.g. a run that produced no output).
+            const persisted = await getSessionRunStatus(sessionId).catch(() => null);
+            if (cancelled) return;
+            const rs = persisted?.run_status;
+            mappedStatus =
+              rs === "finished" || rs === "failed" || rs === "paused"
+                ? rs
+                : status.exit_code === 0 ? "finished" : "running";
+          }
+        } else {
+          mappedStatus = "standby";
+        }
         setSimRunStatus(mappedStatus);
         if (mappedStatus === "failed") setSimExitCode(status.exit_code ?? null);
         if (mappedStatus === "finished") { setSimExitCode(status.exit_code ?? 0); setSimFinishedAt((prev) => prev ?? (status.finished_at ? status.finished_at * 1000 : Date.now())); }
@@ -4344,7 +4564,13 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     setSimFinishedAt(null);
     try {
       const result = await startSimulation(sessionId);
-      appendSSEEvent({ type: "text_delta", text: `Simulation started (PID ${result.pid}). Output files: ${Object.values(result.expected_files).join(", ")}` });
+      const msg =
+        result.status === "equilibrating"
+          ? "Simulation started — running energy minimization, then NVT/NPT equilibration before production."
+          : result.expected_files
+            ? `Simulation started (PID ${result.pid}). Output files: ${Object.values(result.expected_files).join(", ")}`
+            : "Simulation started.";
+      appendSSEEvent({ type: "text_delta", text: msg });
       appendSSEEvent({ type: "agent_done", final_text: "" });
       setSimStartedAt(Date.now());
     } catch (err) {
@@ -4471,8 +4697,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             <FlaskConical size={28} className="text-gray-400 dark:text-gray-600" />
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No session selected</p>
-            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Select a session from the sidebar or create a new one to get started.</p>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No simulation selected</p>
+            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Select a simulation from the sidebar or create a new one to get started.</p>
           </div>
         </div>
         <button
@@ -4480,7 +4706,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors shadow-lg shadow-blue-900/30"
         >
           <Plus size={14} />
-          New Session
+          New Simulation
         </button>
       </div>
     );
@@ -4494,6 +4720,9 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           <ProgressTab
             sessionId={sessionId}
             runStatus={simRunStatus}
+            stage={simStage}
+            equilibrate={(cfg.gromacs as Record<string, unknown> | undefined)?.equilibrate !== false}
+            solvated={String((cfg.system as Record<string, unknown> | undefined)?.water_model ?? "tip3p") !== "none"}
             exitCode={simExitCode}
             totalSteps={Number(((cfg.method as Record<string, unknown> | undefined)?.nsteps ?? 0))}
             timestepPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.dt ?? 0.002))}
@@ -4543,7 +4772,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={24} className="animate-spin text-gray-400" />
-              <span className="text-sm text-gray-500">Loading session…</span>
+              <span className="text-sm text-gray-500">Loading simulation…</span>
             </div>
           </div>
         ) : renderTab()}

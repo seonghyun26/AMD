@@ -1,4 +1,4 @@
-import type { ConfigOptions, SessionConfig } from "./types";
+import type { ConfigOptions, Project, SessionConfig } from "./types";
 import { getToken } from "./auth";
 
 const BASE = "/api";
@@ -54,7 +54,7 @@ async function json<T>(res: Response): Promise<T> {
 // ── Sessions ──────────────────────────────────────────────────────────
 
 export async function createSession(
-  params: { workDir: string; nickname: string; username: string; preset: string; system?: string; state?: string; gromacs?: string }
+  params: { workDir: string; nickname: string; username: string; preset: string; system?: string; state?: string; gromacs?: string; projectId?: string }
 ): Promise<{ session_id: string; work_dir: string; nickname: string; seeded_files: string[] }> {
   const res = await authFetch(`${BASE}/sessions`, {
     method: "POST",
@@ -67,9 +67,102 @@ export async function createSession(
       system: params.system ?? "",
       state: params.state ?? "",
       gromacs: params.gromacs ?? "",
+      project_id: params.projectId ?? "",
     }),
   });
   return json(res);
+}
+
+// ── Projects ──────────────────────────────────────────────────────────
+
+export interface ProjectSimulation {
+  session_id: string;
+  work_dir: string;
+  nickname: string;
+  run_status?: "standby" | "running" | "finished" | "failed" | "paused";
+  selected_molecule?: string;
+  updated_at?: string;
+  result_cards?: unknown[];
+}
+
+export async function listProjects(username: string): Promise<{ projects: Project[] }> {
+  return json(await authFetch(`${BASE}/projects?username=${encodeURIComponent(username)}`));
+}
+
+export async function createProject(params: {
+  name: string; username: string; system?: string; molecule?: string; goal?: string;
+}): Promise<{ project: Project }> {
+  const res = await authFetch(`${BASE}/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: params.name,
+      username: params.username,
+      system: params.system ?? "",
+      molecule: params.molecule ?? "",
+      goal: params.goal ?? "",
+    }),
+  });
+  return json(res);
+}
+
+export async function updateProjectName(projectId: string, name: string): Promise<{ project: Project }> {
+  const res = await authFetch(`${BASE}/projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return json(res);
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  const res = await authFetch(`${BASE}/projects/${projectId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+}
+
+export async function listProjectSimulations(
+  projectId: string
+): Promise<{ simulations: ProjectSimulation[] }> {
+  return json(await authFetch(`${BASE}/projects/${projectId}/simulations`));
+}
+
+// ── Assistant (project-level / general) chat persistence ──────────────
+
+export async function getAssistantMessages(projectId: string | null): Promise<{ messages: unknown[] }> {
+  const path = projectId ? `/projects/${projectId}/messages` : `/assistant/messages`;
+  return json(await authFetch(`${BASE}${path}`));
+}
+
+export async function saveAssistantMessages(projectId: string | null, messages: unknown[]): Promise<void> {
+  const path = projectId ? `/projects/${projectId}/messages` : `/assistant/messages`;
+  await authFetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages }),
+  });
+}
+
+// ── Account avatar ────────────────────────────────────────────────────
+
+/** Authed image URL for the current user's avatar. `version` busts the cache
+ *  after an upload. Uses ?token= because <img> can't send an auth header. */
+export function avatarUrl(version: number): string {
+  return `${BASE}/account/avatar?token=${encodeURIComponent(getToken())}&v=${version}`;
+}
+
+export async function uploadAvatar(file: File): Promise<void> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await authFetch(`${BASE}/account/avatar`, { method: "POST", body: fd });
+  if (!res.ok) {
+    let msg = "Upload failed";
+    try { msg = (await res.json()).detail || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+}
+
+export async function deleteAvatar(): Promise<void> {
+  await authFetch(`${BASE}/account/avatar`, { method: "DELETE" });
 }
 
 export async function listSessions(username: string): Promise<{
@@ -190,11 +283,17 @@ export async function uploadFile(
 }
 
 export function downloadUrl(sessionId: string, path: string): string {
-  return `${BASE}/sessions/${sessionId}/files/download?path=${encodeURIComponent(path)}`;
+  // Browser <a>/<img> requests can't send the Authorization header, so pass the
+  // JWT as a query param — the backend accepts either (see JWTAuthMiddleware).
+  const t = getToken();
+  const tok = t ? `&token=${encodeURIComponent(t)}` : "";
+  return `${BASE}/sessions/${sessionId}/files/download?path=${encodeURIComponent(path)}${tok}`;
 }
 
 export function downloadZipUrl(sessionId: string): string {
-  return `${BASE}/sessions/${sessionId}/files/download-zip`;
+  const t = getToken();
+  const tok = t ? `?token=${encodeURIComponent(t)}` : "";
+  return `${BASE}/sessions/${sessionId}/files/download-zip${tok}`;
 }
 
 export async function deleteFile(sessionId: string, path: string): Promise<{ archived: string }> {
@@ -280,6 +379,8 @@ export function getRamachandranImageUrl(
     if (settings.log_scale !== undefined) params.set("log_scale", String(settings.log_scale));
     if (settings.show_start !== undefined) params.set("show_start", String(settings.show_start));
   }
+  const t = getToken();
+  if (t) params.set("token", t);  // <img>/fetch can't send the auth header
   const qs = params.size ? `?${params}` : "";
   return `${BASE}/sessions/${sessionId}/analysis/ramachandran.png${qs}`;
 }
@@ -412,14 +513,14 @@ export async function getMolecules(): Promise<{
 
 export async function startSimulation(
   sessionId: string
-): Promise<{ status: string; pid: number; expected_files: Record<string, string> }> {
+): Promise<{ status: string; stage?: string; pid?: number; expected_files?: Record<string, string> }> {
   const res = await authFetch(`${BASE}/sessions/${sessionId}/simulate`, { method: "POST" });
   return json(res);
 }
 
 export async function getSimulationStatus(
   sessionId: string
-): Promise<{ running: boolean; status?: "standby" | "running" | "finished" | "failed"; pid?: number; exit_code?: number; started_at?: number; finished_at?: number }> {
+): Promise<{ running: boolean; status?: "standby" | "running" | "finished" | "failed"; stage?: string; pid?: number; exit_code?: number; started_at?: number; finished_at?: number }> {
   return json(await authFetch(`${BASE}/sessions/${sessionId}/simulate/status`));
 }
 
@@ -485,11 +586,21 @@ export interface GpuInfo {
   name: string;
   memory_used_mb: number;
   memory_total_mb: number;
+  memory_free_mb?: number;
   utilization_pct: number;
   temperature_c: number;
-  session_id: string | null;
-  session_nickname: string | null;
-  available: boolean;
+  allowed?: boolean;
+  session_id?: string | null;
+  session_nickname?: string | null;
+  available?: boolean;
+}
+
+export async function listGpus(): Promise<GpuInfo[]> {
+  try {
+    return (await getServerStatus()).gpus ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export interface ServerStatus {

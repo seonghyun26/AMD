@@ -2,9 +2,10 @@
 # Start the AMD web server.
 #
 # Usage:
-#   ./start.sh          Build frontend (if needed) + start FastAPI on :8000
-#   ./start.sh --dev    Dev mode: FastAPI :8000 + file watcher (auto-rebuilds on changes)
-#   ./start.sh --build  Force-rebuild the frontend even if out/ exists
+#   ./start.sh                    Build frontend (if needed) + start FastAPI on :8000
+#   ./start.sh --port 8001        Start FastAPI on a specific port
+#   ./start.sh --dev --port 8001  Dev mode + file watcher on a specific port
+#   ./start.sh --build            Force-rebuild the frontend even if out/ exists
 
 set -e
 
@@ -27,12 +28,42 @@ fi
 
 DEV=0
 FORCE_BUILD=0
-for arg in "$@"; do
-  case $arg in
-    --dev)   DEV=1 ;;
-    --build) FORCE_BUILD=1 ;;
+PORT="${AMD_PORT:-8000}"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --dev)
+      DEV=1
+      ;;
+    --build)
+      FORCE_BUILD=1
+      ;;
+    --port)
+      if [ "$#" -lt 2 ]; then
+        echo "ERROR: --port requires a port number"
+        exit 2
+      fi
+      PORT="$2"
+      shift
+      ;;
+    --port=*)
+      PORT="${1#*=}"
+      ;;
+    -h|--help)
+      sed -n '2,9p' "$0"
+      exit 0
+      ;;
+    *)
+      echo "ERROR: Unknown option: $1"
+      exit 2
+      ;;
   esac
+  shift
 done
+
+if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+  echo "ERROR: Invalid port: $PORT"
+  exit 2
+fi
 
 # ── Dependency checks ─────────────────────────────────────────────────
 
@@ -52,7 +83,7 @@ if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
   npm --prefix "$FRONTEND_DIR" install --silent
 fi
 
-# ── Dev mode: Next.js HMR on :3000 + FastAPI on :8000 ────────────────
+# ── Dev mode: frontend watcher + FastAPI ─────────────────────────────
 
 if [ "$DEV" -eq 1 ]; then
   cleanup() {
@@ -69,13 +100,13 @@ if [ "$DEV" -eq 1 ]; then
   fi
 
   echo "Dev mode (watch + auto-rebuild):"
-  echo "  Server  → http://localhost:8000  (FastAPI, auto-reload)"
+  echo "  Server  → http://localhost:$PORT  (FastAPI, auto-reload)"
   echo "  Watcher → rebuilds frontend on source changes"
-  echo "  Open http://localhost:8000 in your browser."
+  echo "  Open http://localhost:$PORT in your browser."
   echo ""
 
   cd "$REPO_ROOT"
-  python -m uvicorn web.backend.main:app --host 0.0.0.0 --port 8000 --reload &
+  python -m uvicorn web.backend.main:app --host 0.0.0.0 --port "$PORT" --reload &
   BACKEND_PID=$!
 
   node "$FRONTEND_DIR/watch.mjs" &
@@ -100,9 +131,9 @@ else
 fi
 
 echo ""
-echo "Starting AMD server → http://localhost:8000"
+echo "Starting AMD server → http://localhost:$PORT"
 echo "Press Ctrl+C to stop."
 echo ""
 
 cd "$REPO_ROOT"
-exec python -m uvicorn web.backend.main:app --host 0.0.0.0 --port 8000
+exec python -m uvicorn web.backend.main:app --host 0.0.0.0 --port "$PORT"

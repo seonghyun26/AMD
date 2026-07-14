@@ -48,6 +48,9 @@ class GROMACSRunner:
         self.work_dir = Path(work_dir)
         self._mdrun_proc: subprocess.Popen | None = None
         self._docker_image: str | None = os.environ.get("GMX_DOCKER_IMAGE")
+        # Path to the --cidfile for the current mdrun container (Docker only), so
+        # cleanup stops the EXACT container instead of guessing by image ancestor.
+        self._cid_path: Path | None = None
         # Ensure mdrun is terminated if Python exits unexpectedly
         atexit.register(self._cleanup)
 
@@ -58,6 +61,7 @@ class GROMACSRunner:
         gmx_args: list[str],
         work_dir: Path,
         gpu_id: str | None = None,
+        cidfile: Path | None = None,
     ) -> list[str]:
         """Return the full command list, Docker-wrapped when image is configured."""
         if self._docker_image:
@@ -72,12 +76,17 @@ class GROMACSRunner:
                 "-v",
                 f"{work_dir.resolve()}:/work",
             ]
+            if cidfile is not None:
+                # Record the container ID so _cleanup stops this exact container.
+                docker_prefix += ["--cidfile", str(cidfile)]
             # Mount custom force fields (e.g. charmm36m) so GROMACS can find them
             ff_dir = Path(__file__).parents[2] / "data" / "forcefields"
             if ff_dir.is_dir():
                 docker_prefix += [
-                    "-v", f"{ff_dir.resolve()}:/ff_extra:ro",
-                    "-e", "GMXLIB=/ff_extra",
+                    "-v",
+                    f"{ff_dir.resolve()}:/ff_extra:ro",
+                    "-e",
+                    "GMXLIB=/ff_extra",
                 ]
             if gpu_id:
                 docker_prefix += ["--gpus", f"device={gpu_id}"]
@@ -112,13 +121,24 @@ class GROMACSRunner:
         return result
 
     def _find_docker_container(self, pid: int) -> str | None:
-        """Find the Docker container ID for a running `docker run` process."""
+        """Return the Docker container ID for the current mdrun.
+
+        Prefers the exact container recorded via ``--cidfile`` (correct even when
+        other sessions run the same image concurrently); only falls back to the
+        image-ancestor heuristic when exactly one container matches, so we never
+        stop an unrelated run.
+        """
         if not self._docker_image:
             return None
+        # Exact match: the --cidfile written by `docker run` for THIS mdrun.
+        if self._cid_path is not None:
+            try:
+                cid = self._cid_path.read_text().strip()
+                if cid:
+                    return cid
+            except Exception:
+                pass
         try:
-            # `docker run` with --rm: the container name is auto-generated.
-            # We can find it by matching the PID of the `docker run` process
-            # to the container via `docker ps` filtering by the image.
             result = subprocess.run(
                 ["docker", "ps", "-q", "--filter", f"ancestor={self._docker_image}"],
                 capture_output=True,
@@ -126,8 +146,8 @@ class GROMACSRunner:
                 timeout=5,
             )
             containers = result.stdout.strip().splitlines()
-            if containers:
-                return containers[-1]  # most recent container for this image
+            if len(containers) == 1:  # unambiguous — safe to use
+                return containers[0]
         except Exception:
             pass
         return None
@@ -171,6 +191,12 @@ class GROMACSRunner:
             pass
         finally:
             self._mdrun_proc = None
+            if self._cid_path is not None:
+                try:
+                    self._cid_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                self._cid_path = None
 
     # ── Public API ──────────────────────────────────────────────────────
 
@@ -181,9 +207,16 @@ class GROMACSRunner:
         coordinate_file: str,
         output_tpr: str,
         index_file: str | None = None,
+        restraint_file: str | None = None,
+        checkpoint_file: str | None = None,
         max_warnings: int = 0,
     ) -> dict[str, Any]:
-        """Prepare a GROMACS .tpr run input file."""
+        """Prepare a GROMACS .tpr run input file.
+
+        ``restraint_file`` (-r) supplies the reference coordinates for position
+        restraints (needed for -DPOSRES NVT/NPT equilibration); ``checkpoint_file``
+        (-t) supplies velocities/state to continue from a previous stage.
+        """
         args = [
             "grompp",
             "-f",
@@ -199,6 +232,10 @@ class GROMACSRunner:
         ]
         if index_file:
             args += ["-n", index_file]
+        if restraint_file:
+            args += ["-r", restraint_file]
+        if checkpoint_file:
+            args += ["-t", checkpoint_file]
 
         result = self._classify_grompp_output(self._run(args))
         out = result.to_dict()
@@ -249,7 +286,10 @@ class GROMACSRunner:
         if plumed_file:
             args += ["-plumed", plumed_file]
         if gpu_id:
-            args += ["-gpu_id", gpu_id]
+            # `docker run --gpus device=N` exposes only that GPU to the container,
+            # remapped to container-local index 0. So gmx (inside the container)
+            # must be told 0, not the host index. Non-Docker runs pass it as-is.
+            args += ["-gpu_id", "0" if self._docker_image else gpu_id]
         if cpt_file:
             args += ["-cpi", cpt_file, "-append"]
         elif append:
@@ -257,8 +297,24 @@ class GROMACSRunner:
         if extra_flags:
             args.extend(extra_flags)
 
+        # For Docker runs, record the container ID via --cidfile so cleanup can
+        # stop THIS exact container (safe under concurrent sessions). Docker
+        # requires the cidfile not to pre-exist.
+        cid_path: Path | None = None
+        if self._docker_image:
+            # Absolute path: `docker --cidfile` resolves against the docker
+            # client's cwd, so a relative work_dir makes docker fail with
+            # "failed to create the container ID file" (exit 127). The -v mount
+            # already uses .resolve(); the cidfile must match.
+            cid_path = (self.work_dir / ".mdrun.cid").resolve()
+            try:
+                cid_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+        self._cid_path = cid_path
+
         self._mdrun_proc = subprocess.Popen(
-            self._build_cmd(args, self.work_dir, gpu_id=gpu_id),
+            self._build_cmd(args, self.work_dir, gpu_id=gpu_id, cidfile=cid_path),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # merge stderr into stdout for live tailing
             cwd=str(self.work_dir),

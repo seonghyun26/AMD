@@ -13,6 +13,11 @@ restraint:
 nsteps_per_window: 5000000   # 10 ns per window at dt=0.002 ps
 equilibration_steps: 500000  # 1 ns equilibration per window (not used for WHAM)
 
+# Run length for the (single-window) restrained run this backbone launches.
+# Mirrors nsteps_per_window; without a top-level method.nsteps the run length
+# would silently fall through to the (vestigial) gromacs.nsteps default.
+nsteps: 5000000
+
 wham:
   bins: 200
   tolerance: 1.0e-6

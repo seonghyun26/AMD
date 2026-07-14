@@ -17,11 +17,10 @@ from typing import Any
 from web.backend.db import (
     get_session_indexed,
     list_sessions_indexed,
+    session_index_count,
     update_session_index,
     upsert_session,
-    session_index_count,
 )
-
 
 # ── Filesystem helpers (locked I/O) ──────────────────────────────────
 
@@ -90,6 +89,38 @@ def update_session_json(session_id: str, updates: dict[str, Any]) -> bool:
                 fcntl.flock(fh, fcntl.LOCK_UN)
         # Keep SQLite index in sync
         update_session_index(session_id, updates)
+        return True
+    except Exception:
+        return False
+
+
+def mutate_session_json(session_id: str, mutator) -> bool:
+    """Locked read-modify-write of session.json via a callback.
+
+    ``mutator(data: dict) -> dict | None`` receives a copy of the current JSON
+    and returns the new dict to write, or ``None`` to leave the file unchanged.
+    The SQLite index is synced with the result, so the two layers never drift.
+    This is the single write path for *stateful* updates (FSM transitions) that
+    the flat-merge ``update_session_json`` cannot express.
+    """
+    sf = _scan_session_file(session_id)
+    if not sf:
+        return False
+    try:
+        with sf.open("r+") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                data = json.load(fh)
+                new_data = mutator(dict(data))
+                if new_data is None:
+                    return False
+                fh.seek(0)
+                fh.write(json.dumps(new_data, indent=2))
+                fh.truncate()
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+        # update_session_index filters to indexable columns, so pass the whole dict.
+        update_session_index(session_id, new_data)
         return True
     except Exception:
         return False

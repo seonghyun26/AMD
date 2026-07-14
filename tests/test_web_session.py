@@ -1,6 +1,5 @@
 """Tests for web backend session manager — unit tests that don't require GROMACS."""
 
-
 import pytest
 
 from web.backend.session_manager import (

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Camera, Crosshair, Film, Loader2, Pause, Play, Settings, X } from "lucide-react";
 import { downloadUrl, getFileContent } from "@/lib/api";
+import { getToken } from "@/lib/auth";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { useTheme } from "@/lib/theme";
 
@@ -203,16 +204,25 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
 
       // NGL 2.4+ requires TrajectoryDatasource to be configured before addTrajectory.
       // We set it to route through our backend endpoints.
+      // Auth: NGL fetches these URLs directly (no auth header), so the JWT is
+      // passed as a ?token= query param. getCountUrl gets it inline; frame
+      // requests carry it via getFrameParams (NGL's query-string hook).
+      const _tok = getToken();
       window.NGL.TrajectoryDatasource = {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        getCountUrl: (trajPath: string) => `${trajPath}/numframes`,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        getCountUrl: (trajPath: string) =>
+          `${trajPath}/numframes${_tok ? `?token=${encodeURIComponent(_tok)}` : ""}`,
         getFrameUrl: (trajPath: string, frameIndex: number) => `${trajPath}/frame/${frameIndex}`,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        getFrameParams: (_trajPath: string, atomIndices: any) =>
-          atomIndices?.length
-            ? `atomIndices=${(atomIndices as number[][]).map((r) => r.join(",")).join(";")}`
-            : "",
+        getFrameParams: (_trajPath: string, atomIndices: any) => {
+          const parts: string[] = [];
+          if (_tok) parts.push(`token=${encodeURIComponent(_tok)}`);
+          if (atomIndices?.length) {
+            parts.push(
+              `atomIndices=${(atomIndices as number[][]).map((r) => r.join(",")).join(";")}`
+            );
+          }
+          return parts.join("&");
+        },
       };
 
       suppressNglDeprecationWarnings();

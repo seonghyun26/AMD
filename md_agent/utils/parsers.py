@@ -152,9 +152,13 @@ def parse_colvar_file(
             if headers:
                 try:
                     vals = list(map(float, line.split()))
-                    rows.append(dict(zip(headers, vals)))
                 except ValueError:
-                    pass
+                    # Torn/partial line — GROMACS is mid-write at EOF. Stop here so
+                    # we don't count it as consumed; it'll be complete next poll.
+                    # (Advancing the caller's bookmark past it would drop or, when
+                    # advancing by len(rows), duplicate a row.)
+                    break
+                rows.append(dict(zip(headers, vals)))
             data_line_count += 1
 
     return rows
