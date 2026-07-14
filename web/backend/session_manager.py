@@ -211,8 +211,6 @@ def _infer_status_from_log(
     expected_nsteps : target step count for "finished" detection
     started_after : ignore logs with mtime before this timestamp (0 = no filter)
     """
-    import time as _time
-
     for log_path in log_candidates:
         if not log_path.exists():
             continue

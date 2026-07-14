@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 from pathlib import Path
 
+from fastapi import APIRouter
+
 # GPUs reserved on this machine (never auto-selected; not offered as "allowed").
 # Mirrors AMD_GPU_DENY_LIST used by the run launcher.
 _GPU_DENY_LIST: set[str] = set(os.getenv("AMD_GPU_DENY_LIST", "0,1,2,3").split(","))
-
-from fastapi import APIRouter
 
 router = APIRouter()
 

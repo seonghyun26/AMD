@@ -23,6 +23,11 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 from web.backend import authz  # noqa: E402
+
+# Ensure the projects/CV tables exist and legacy sessions are wrapped in projects
+# exactly once (idempotent).
+from web.backend import cv_store as _cv_store  # noqa: E402
+from web.backend import project_store as _project_store  # noqa: E402
 from web.backend.jwt_auth import verify_token  # noqa: E402
 from web.backend.routers import (  # noqa: E402
     account,
@@ -39,11 +44,6 @@ from web.backend.routers import (  # noqa: E402
     simulate,
     trajectory,
 )
-
-# Ensure the projects/CV tables exist and legacy sessions are wrapped in projects
-# exactly once (idempotent).
-from web.backend import cv_store as _cv_store  # noqa: E402
-from web.backend import project_store as _project_store  # noqa: E402
 
 _project_store.init_projects_db()
 _cv_store.init_cv_db()
