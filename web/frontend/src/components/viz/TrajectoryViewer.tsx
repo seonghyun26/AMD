@@ -213,25 +213,21 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
 
       // NGL 2.4+ requires TrajectoryDatasource to be configured before addTrajectory.
       // We set it to route through our backend endpoints.
-      // Auth: NGL fetches these URLs directly (no auth header), so the JWT is
-      // passed as a ?token= query param. getCountUrl gets it inline; frame
-      // requests carry it via getFrameParams (NGL's query-string hook).
+      // Auth: NGL fetches these URLs directly (no auth header), so the JWT must
+      // be on both request URLs. getFrameParams is sent as the POST body.
       const _tok = getToken();
+      const withToken = (url: string) =>
+        _tok ? `${url}?token=${encodeURIComponent(_tok)}` : url;
       window.NGL.TrajectoryDatasource = {
         getCountUrl: (trajPath: string) =>
-          `${trajPath}/numframes${_tok ? `?token=${encodeURIComponent(_tok)}` : ""}`,
-        getFrameUrl: (trajPath: string, frameIndex: number) => `${trajPath}/frame/${frameIndex}`,
+          withToken(`${trajPath}/numframes`),
+        getFrameUrl: (trajPath: string, frameIndex: number) =>
+          withToken(`${trajPath}/frame/${frameIndex}`),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        getFrameParams: (_trajPath: string, atomIndices: any) => {
-          const parts: string[] = [];
-          if (_tok) parts.push(`token=${encodeURIComponent(_tok)}`);
-          if (atomIndices?.length) {
-            parts.push(
-              `atomIndices=${(atomIndices as number[][]).map((r) => r.join(",")).join(";")}`
-            );
-          }
-          return parts.join("&");
-        },
+        getFrameParams: (_trajPath: string, atomIndices: any) =>
+          atomIndices?.length
+            ? `atomIndices=${(atomIndices as number[][]).map((r) => r.join(",")).join(";")}`
+            : "",
       };
 
       suppressNglDeprecationWarnings();
