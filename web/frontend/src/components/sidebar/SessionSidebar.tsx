@@ -539,7 +539,10 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
 
           {/* ── Agent Backbone ── */}
           <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Agent Backbone</h4>
+            <h4 className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <Bot size={12} />
+              Agent Backbone
+            </h4>
             <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden h-[36px]">
               {AGENT_BACKENDS.map((b, i) => {
                 // CLI backends use their existing subscription login.
@@ -548,6 +551,7 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
                 const disabled = !isVerified;
                 return (
                   <button
+                    type="button"
                     key={b.id}
                     onClick={() => !disabled && handleSetBackend(b.id)}
                     disabled={disabled}
@@ -564,7 +568,6 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
                           : "bg-gray-50 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                     } ${i < AGENT_BACKENDS.length - 1 ? "border-r border-gray-200 dark:border-gray-700" : ""}`}
                   >
-                    <Bot size={11} />
                     {b.label}
                     {isActive && !disabled && <Check size={10} />}
                   </button>
