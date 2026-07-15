@@ -47,6 +47,7 @@ declare global {
 }
 
 type LoadingStage = "ngl" | "topology" | "trajectory" | "frames" | null;
+type PlaybackSpeed = 1 | 2 | 4 | 10 | 100 | 1000;
 
 const LOADING_LABELS: Record<NonNullable<LoadingStage>, string> = {
   ngl:        "Loading viewer…",
@@ -151,7 +152,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const [gifGenerating, setGifGenerating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef                     = useRef<HTMLDivElement>(null);
-  const [playbackSpeed, setPlaybackSpeed] = useState<1 | 2 | 4 | 10 | 100>(1);
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const speedMenuRef                    = useRef<HTMLDivElement>(null);
 
@@ -399,21 +400,17 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
 
   const frameUpdateRaf = useRef<number | null>(null);
 
-  const applySpeed = (player: typeof playerRef.current, speed: number) => {
+  const applySpeed = (player: typeof playerRef.current, speed: PlaybackSpeed) => {
     if (!player) return;
     const baseTimeout = 80;
-    // At high speeds, skip frames aggressively instead of shrinking timeout below 16ms (screen refresh).
-    // speed  1 → step 1,  timeout 80   (12 fps)
-    // speed  2 → step 1,  timeout 40   (25 fps)
-    // speed  4 → step 2,  timeout 40   (25 fps, 2x skip = effective 4x)
-    // speed 10 → step 5,  timeout 32   (31 fps, 5x skip = effective ~10x)
-    // speed 100→ step 50, timeout 16   (60 fps, 50x skip = effective ~100x)
-    const step = speed <= 2 ? 1 : Math.max(1, Math.round(speed / 2));
-    const timeout = Math.max(16, Math.round(baseTimeout / Math.min(speed, 5)));
+    // Keep (baseTimeout / timeout) * step close to the requested multiplier.
+    // Once the display interval reaches 16 ms, increase the frame step instead.
+    const timeout = Math.max(16, Math.round(baseTimeout / speed));
+    const step = Math.max(1, Math.round((speed * timeout) / baseTimeout));
     player.setParameters({ timeout, step });
   };
 
-  const handlePlay = (speed?: 1 | 2 | 4 | 10 | 100) => {
+  const handlePlay = (speed?: PlaybackSpeed) => {
     if (!playerRef.current) return;
     applySpeed(playerRef.current, speed ?? playbackSpeed);
     playerRef.current.play();
@@ -426,7 +423,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     setPlaying(false);
   };
 
-  const handleSpeedChange = (speed: 1 | 2 | 4 | 10 | 100) => {
+  const handleSpeedChange = (speed: PlaybackSpeed) => {
     setPlaybackSpeed(speed);
     setSpeedMenuOpen(false);
     if (playerRef.current) {
@@ -729,7 +726,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             </button>
             {speedMenuOpen && (
               <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden z-30">
-                {([1, 2, 4, 10, 100] as const).map((s) => (
+                {([1, 2, 4, 10, 100, 1000] as const).map((s) => (
                   <button
                     key={s}
                     onClick={() => handleSpeedChange(s)}
