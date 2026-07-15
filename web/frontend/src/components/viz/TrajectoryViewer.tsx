@@ -102,7 +102,13 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const trajectoryRef    = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const initialOrientRef = useRef<any>(null);
-  const repsRef          = useRef({ ball: true, stick: true, ribbon: false, surface: false });
+  const repsRef          = useRef({
+    ball: true,
+    stick: true,
+    ribbon: false,
+    surface: false,
+    solvent: true,
+  });
 
   const [reps, setReps] = useState(repsRef.current);
   useEffect(() => { repsRef.current = reps; }, [reps]);
@@ -158,10 +164,13 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const applyRepresentations = (component: any, currentReps?: typeof reps) => {
     const r = currentReps ?? repsRef.current;
     component.removeAllRepresentations();
-    if (r.ball)    component.addRepresentation("spacefill", { colorScheme: "element", radiusScale: 0.2 });
-    if (r.stick)   component.addRepresentation("licorice",  { colorScheme: "element" });
+    const atomSele = r.solvent ? undefined : "not water";
+    const withSele = (params: Record<string, unknown>) =>
+      atomSele ? { ...params, sele: atomSele } : params;
+    if (r.ball)    component.addRepresentation("spacefill", withSele({ colorScheme: "element", radiusScale: 0.2 }));
+    if (r.stick)   component.addRepresentation("licorice",  withSele({ colorScheme: "element" }));
     if (r.ribbon)  component.addRepresentation("cartoon",   { sele: "protein", colorScheme: "residueindex" });
-    if (r.surface) component.addRepresentation("surface",   { color: "white", opacity: 0.1 });
+    if (r.surface) component.addRepresentation("surface",   withSele({ color: "white", opacity: 0.1 }));
   };
 
   useEffect(() => {
@@ -603,6 +612,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             { key: "stick",   label: "Stick"   },
             { key: "ribbon",  label: "Cartoon" },
             { key: "surface", label: "Surface" },
+            { key: "solvent", label: "Solvent" },
           ].map(({ key, label }) => {
             const on = reps[key as keyof typeof reps];
             return (
