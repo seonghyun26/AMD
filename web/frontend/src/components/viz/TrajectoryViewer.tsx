@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Camera, Crosshair, Film, Loader2, Pause, Play, Settings, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Camera, Crosshair, Film, Loader2, Minimize2, Pause, Play, Settings, X } from "lucide-react";
 import { downloadUrl, getFileContent } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
@@ -31,6 +31,10 @@ interface Props {
   trajectoryPath: string | null;
   /** True while the parent is still fetching the file list */
   isLoading?: boolean;
+  /** Parent-provided ref that receives the fullscreen-toggle fn (button lives in the section header) */
+  fsControl?: { current: (() => void) | null };
+  /** Notifies the parent when fullscreen is entered/exited so it can swap its button icon */
+  onFullscreenChange?: (fs: boolean) => void;
 }
 
 declare global {
@@ -50,6 +54,29 @@ const LOADING_LABELS: Record<NonNullable<LoadingStage>, string> = {
   trajectory: "Loading trajectory…",
   frames:     "Reading frames…",
 };
+
+const FRAME_CACHE_BUDGET_BYTES = 64 * 1024 * 1024;
+
+// NGL 2.4 keeps every visited remote frame indefinitely. Retain nearby frames
+// for smooth scrubbing while bounding memory during long trajectories.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function trimFrameCache(trajectory: any, currentFrame: number, atomCount: number) {
+  if (!trajectory?.frameCache || currentFrame < 0) return;
+  const bytesPerFrame = Math.max(1, atomCount * 3 * Float32Array.BYTES_PER_ELEMENT + 9 * Float32Array.BYTES_PER_ELEMENT);
+  const maxFrames = Math.max(4, Math.min(240, Math.floor(FRAME_CACHE_BUDGET_BYTES / bytesPerFrame)));
+  const cachedFrames = Object.keys(trajectory.frameCache)
+    .map(Number)
+    .filter(Number.isInteger);
+  if (cachedFrames.length <= maxFrames) return;
+
+  cachedFrames.sort((a, b) => Math.abs(a - currentFrame) - Math.abs(b - currentFrame));
+  for (const frameIndex of cachedFrames.slice(maxFrames)) {
+    delete trajectory.frameCache[frameIndex];
+    delete trajectory.boxCache?.[frameIndex];
+    delete trajectory.pathCache?.[frameIndex];
+  }
+  trajectory.frameCacheSize = maxFrames;
+}
 
 function parseStructureInfo(
   content: string,
@@ -90,7 +117,7 @@ function encodePathsB64(xtc: string, top: string): string {
     .replace(/=/g, "");
 }
 
-export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPath, isLoading = false }: Props) {
+export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPath, isLoading = false, fsControl, onFullscreenChange }: Props) {
   const containerRef     = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stageRef         = useRef<any>(null);
@@ -127,6 +154,9 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 2 | 4 | 10 | 100>(1);
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const speedMenuRef                    = useRef<HTMLDivElement>(null);
+
+  const rootRef                         = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSeeking = useRef(false);
@@ -269,6 +299,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           trajectoryRef.current = traj;
           if (traj?.signals?.frameChanged) {
             traj.signals.frameChanged.add((i: number) => {
+              trimFrameCache(traj, i, comp.structure?.atomCount ?? 0);
               if (isSeeking.current) return;
               // Throttle React state updates to screen refresh rate
               if (frameUpdateRaf.current != null) return;
@@ -356,6 +387,16 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     stageRef.current?.setParameters({ backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
   }, [theme]);
 
+  // Track native fullscreen changes (incl. Esc to exit) and resize the GL stage
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(document.fullscreenElement === rootRef.current);
+      requestAnimationFrame(() => { try { stageRef.current?.handleResize?.(); } catch { /* ignore */ } });
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
   const frameUpdateRaf = useRef<number | null>(null);
 
   const applySpeed = (player: typeof playerRef.current, speed: number) => {
@@ -418,6 +459,23 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
       }, 150);
     } catch { /* ignore */ }
   };
+
+  const toggleFullscreen = useCallback(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (document.fullscreenElement === el) {
+      document.exitFullscreen?.().catch(() => { /* ignore */ });
+    } else if (!document.fullscreenElement) {
+      el.requestFullscreen?.().catch(() => { /* ignore */ });
+    }
+  }, []);
+
+  // Expose the toggle + fullscreen state to the parent (the button lives in the section header)
+  useEffect(() => {
+    if (fsControl) fsControl.current = toggleFullscreen;
+    return () => { if (fsControl) fsControl.current = null; };
+  }, [fsControl, toggleFullscreen]);
+  useEffect(() => { onFullscreenChange?.(isFullscreen); }, [isFullscreen, onFullscreenChange]);
 
   const handleResetView = () => {
     if (!stageRef.current) return;
@@ -551,11 +609,14 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   };
 
   return (
-    <div className="space-y-2">
+    <div
+      ref={rootRef}
+      className={`space-y-2 ${isFullscreen ? "flex flex-col h-full w-full bg-white dark:bg-gray-900 p-3" : ""}`}
+    >
       {/* Viewer canvas */}
       <div
-        className="relative rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-white dark:bg-gray-900 overflow-hidden"
-        style={{ height: "360px" }}
+        className={`relative rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-white dark:bg-gray-900 overflow-hidden ${isFullscreen ? "flex-1 min-h-0" : ""}`}
+        style={isFullscreen ? undefined : { height: "360px" }}
       >
         {error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-red-400 gap-2 z-10">
@@ -580,6 +641,18 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           </div>
         ) : null}
         <div ref={containerRef} className="w-full h-full" />
+
+        {isFullscreen && (
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            title="Exit fullscreen"
+            aria-label="Exit fullscreen"
+            className="absolute top-2 right-2 z-20 flex h-7 w-7 items-center justify-center rounded-md border border-gray-300/50 dark:border-gray-700/50 bg-white/80 dark:bg-gray-900/75 text-gray-600 dark:text-gray-300 transition-colors hover:text-gray-900 dark:hover:text-white"
+          >
+            <Minimize2 size={13} />
+          </button>
+        )}
 
         {/* Upper-left overlay: atom/residue counts */}
         {structInfo && (

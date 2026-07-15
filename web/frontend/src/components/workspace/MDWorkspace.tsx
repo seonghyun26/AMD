@@ -34,6 +34,8 @@ import {
   RotateCcw,
   Lock,
   Search,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 
 import type { AgentType } from "@/lib/agentStream";
@@ -1836,6 +1838,8 @@ function ProgressTab({
   const [filesLoadedFor, setFilesLoadedFor] = useState("");
   const [filesLoading, setFilesLoading] = useState(false);
   const [trajectoryKey, setTrajectoryKey] = useState(0);
+  const trajFsToggle = useRef<(() => void) | null>(null);
+  const [trajFullscreen, setTrajFullscreen] = useState(false);
   const [addPlotOpen, setAddPlotOpen] = useState(false);
   const [cvSetupOpen, setCvSetupOpen] = useState(false);
   const [liveProgress, setLiveProgress] = useState<{ step: number; time_ps: number; ns_per_day: number } | null>(null);
@@ -2099,14 +2103,29 @@ function ProgressTab({
         title="Trajectory"
         accent="blue"
         action={
-          runStatus === "finished" ? (
-            <button
-              onClick={() => { refreshFiles(); setTrajectoryKey((k) => k + 1); }}
-              className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
-              title="Refresh trajectory"
-            >
-              <RefreshCw size={13} className={filesLoading ? "animate-spin" : ""} />
-            </button>
+          (runStatus === "finished" || runStatus === "failed") ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => trajFsToggle.current?.()}
+                disabled={filesLoading || !topologyFile || !trajectoryFile}
+                aria-label={trajFullscreen ? "Exit trajectory fullscreen" : "Open trajectory fullscreen"}
+                className="p-1 text-gray-500 hover:text-gray-300 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                title={trajFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              >
+                {trajFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              </button>
+              {runStatus === "finished" && (
+                <button
+                  type="button"
+                  onClick={() => { refreshFiles(); setTrajectoryKey((k) => k + 1); }}
+                  className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+                  title="Refresh trajectory"
+                >
+                  <RefreshCw size={13} className={filesLoading ? "animate-spin" : ""} />
+                </button>
+              )}
+            </div>
           ) : undefined
         }
       >
@@ -2116,6 +2135,8 @@ function ProgressTab({
           topologyPath={(runStatus === "finished" || runStatus === "failed") ? (topologyFile?.path ?? null) : null}
           trajectoryPath={(runStatus === "finished" || runStatus === "failed") ? (trajectoryFile?.path ?? null) : null}
           isLoading={(runStatus === "finished" || runStatus === "failed") && (filesLoading || filesLoadedFor !== sessionId)}
+          fsControl={trajFsToggle}
+          onFullscreenChange={setTrajFullscreen}
         />
       </Section>
 
