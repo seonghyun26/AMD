@@ -403,9 +403,11 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const applySpeed = (player: typeof playerRef.current, speed: PlaybackSpeed) => {
     if (!player) return;
     const baseTimeout = 80;
+    const minTimeout = 50;
     // Keep (baseTimeout / timeout) * step close to the requested multiplier.
-    // Once the display interval reaches 16 ms, increase the frame step instead.
-    const timeout = Math.max(16, Math.round(baseTimeout / speed));
+    // Trajectory frames are fetched asynchronously, so avoid scheduling requests
+    // faster than the viewer/backend can normally resolve them.
+    const timeout = Math.max(minTimeout, Math.round(baseTimeout / speed));
     const step = Math.max(1, Math.round((speed * timeout) / baseTimeout));
     player.setParameters({ timeout, step });
   };
