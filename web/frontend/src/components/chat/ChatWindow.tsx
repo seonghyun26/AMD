@@ -1,14 +1,24 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSessionStore } from "@/store/sessionStore";
 import MessageBubble from "./MessageBubble";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 
 export default function ChatWindow() {
   const messages = useSessionStore((s) => s.messages);
   const isStreaming = useSessionStore((s) => s.isStreaming);
   const containerRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    nearBottomRef.current = nearBottom;
+    setShowScrollButton(el.scrollHeight > el.clientHeight && !nearBottom);
+  }, []);
 
   // Auto-scroll to the latest message — but scroll ONLY this container (using
   // scrollIntoView would scroll every ancestor, i.e. the whole page), and only
@@ -16,9 +26,18 @@ export default function ChatWindow() {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [messages, isStreaming]);
+    if (nearBottomRef.current) el.scrollTop = el.scrollHeight;
+    const frameId = requestAnimationFrame(updateScrollState);
+    return () => cancelAnimationFrame(frameId);
+  }, [messages, isStreaming, updateScrollState]);
+
+  const scrollToBottom = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    nearBottomRef.current = true;
+    setShowScrollButton(false);
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
 
   if (messages.length === 0) {
     return (
@@ -32,21 +51,39 @@ export default function ChatWindow() {
   }
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-      {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} />
-      ))}
+    <div className="relative flex-1 min-h-0">
+      <div
+        ref={containerRef}
+        onScroll={updateScrollState}
+        className="h-full overflow-y-auto overflow-x-hidden"
+      >
+        {messages.map((msg) => (
+          <MessageBubble key={msg.id} message={msg} />
+        ))}
 
-      {isStreaming && (
-        <div className="flex gap-3 px-4 py-3">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-orange-400 to-rose-500 text-white text-xs font-bold flex-shrink-0">
-            AI
+        {isStreaming && (
+          <div className="flex gap-3 px-4 py-3">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-orange-400 to-rose-500 text-white text-xs font-bold flex-shrink-0">
+              AI
+            </div>
+            <div className="flex items-center gap-2 text-gray-400">
+              <Loader2 size={14} className="animate-spin" />
+              <span className="text-sm">Thinking…</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-gray-400">
-            <Loader2 size={14} className="animate-spin" />
-            <span className="text-sm">Thinking…</span>
-          </div>
-        </div>
+        )}
+      </div>
+
+      {showScrollButton && (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          title="Scroll to latest message"
+          aria-label="Scroll to latest message"
+          className="absolute bottom-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 shadow-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          <ChevronDown size={16} />
+        </button>
       )}
     </div>
   );
