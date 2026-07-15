@@ -70,8 +70,8 @@ const REP_LABELS: { key: keyof RepState; label: string }[] = [
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyRepresentations(component: any, reps: RepState) {
   component.removeAllRepresentations();
-  // When solvent is hidden, restrict the atom representations to non-water.
-  const atomSele = reps.solvent ? undefined : "not water";
+  // Treat water and dissolved ions as one solvent display group.
+  const atomSele = reps.solvent ? undefined : "not (water or ion)";
   const withSele = (params: Record<string, unknown>) =>
     atomSele ? { ...params, sele: atomSele } : params;
   if (reps.ball) {

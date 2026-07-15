@@ -164,7 +164,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const applyRepresentations = (component: any, currentReps?: typeof reps) => {
     const r = currentReps ?? repsRef.current;
     component.removeAllRepresentations();
-    const atomSele = r.solvent ? undefined : "not water";
+    const atomSele = r.solvent ? undefined : "not (water or ion)";
     const withSele = (params: Record<string, unknown>) =>
       atomSele ? { ...params, sele: atomSele } : params;
     if (r.ball)    component.addRepresentation("spacefill", withSele({ colorScheme: "element", radiusScale: 0.2 }));
