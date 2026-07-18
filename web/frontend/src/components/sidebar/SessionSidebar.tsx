@@ -7,6 +7,7 @@ import { useProjectStore } from "@/store/projectStore";
 import { logout, getUsername } from "@/lib/auth";
 import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, uploadAvatar, deleteAvatar, type ServerStatus, type GpuInfo } from "@/lib/api";
 import UserAvatar from "@/components/common/UserAvatar";
+import PopupPresence from "@/components/ui/PopupPresence";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/theme";
 
@@ -181,7 +182,7 @@ function SessionItem({
   return (
     <>
       {/* Delete confirmation modal */}
-      {confirming && (
+      <PopupPresence show={confirming}>
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={cancelConfirm}
@@ -219,9 +220,9 @@ function SessionItem({
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
 
-      {infoOpen && (
+      <PopupPresence show={infoOpen} duration={400}>
         <div
           ref={infoPopupRef}
           role="dialog"
@@ -277,7 +278,7 @@ function SessionItem({
             </div>
           </dl>
         </div>
-      )}
+      </PopupPresence>
 
     <div
       className={`group relative w-full rounded-lg transition-colors cursor-pointer flex overflow-hidden ${
@@ -455,9 +456,9 @@ function ApiKeyRow({
 }
 
 const AGENT_BACKENDS = [
-  { id: "anthropic",   label: "Claude" },
   { id: "claude_code", label: "Claude Code" },
   { id: "codex",       label: "Codex" },
+  { id: "anthropic",   label: "Claude" },
   { id: "openai",      label: "ChatGPT" },
   { id: "deepseek",    label: "DeepSeek" },
 ] as const;
@@ -594,7 +595,6 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
             <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800">
               <Settings size={15} className="text-gray-500 dark:text-gray-400" />
             </div>
-            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Account &amp; preferences</span>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
             <X size={15} />
@@ -605,7 +605,6 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
 
           {/* ── Account ── */}
           <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</h4>
             <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50">
               <UserAvatar size={44} fallback="initial" className="amd-brand-mark rounded-full text-slate-900 text-base font-semibold shadow" />
               <div className="min-w-0 flex-1">
@@ -639,53 +638,6 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
             {avatarError && <p className="text-[11px] text-red-500 dark:text-red-400 px-1">{avatarError}</p>}
           </div>
 
-          {/* ── API Keys ── */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">API Keys</h4>
-            <ApiKeyRow
-              label="Anthropic Claude"
-              color="bg-orange-400"
-              value={keys["anthropic"] ?? ""}
-              onChange={(v) => setKeyValue("anthropic", v)}
-              placeholder="sk-ant-..."
-              onSave={() => handleSaveKey("anthropic")}
-              saving={saving["anthropic"] ?? false}
-              saved={saved["anthropic"] ?? false}
-              verified={verified["anthropic"] ?? null}
-              verifying={verifying["anthropic"] ?? false}
-              verifyError={verifyErrors["anthropic"] ?? null}
-              onVerify={() => handleVerify("anthropic")}
-            />
-            <ApiKeyRow
-              label="OpenAI ChatGPT"
-              color="bg-emerald-400"
-              value={keys["openai"] ?? ""}
-              onChange={(v) => setKeyValue("openai", v)}
-              placeholder="sk-..."
-              onSave={() => handleSaveKey("openai")}
-              saving={saving["openai"] ?? false}
-              saved={saved["openai"] ?? false}
-              verified={verified["openai"] ?? null}
-              verifying={verifying["openai"] ?? false}
-              verifyError={verifyErrors["openai"] ?? null}
-              onVerify={() => handleVerify("openai")}
-            />
-            <ApiKeyRow
-              label="DeepSeek"
-              color="bg-blue-400"
-              value={keys["deepseek"] ?? ""}
-              onChange={(v) => setKeyValue("deepseek", v)}
-              placeholder="sk-..."
-              onSave={() => handleSaveKey("deepseek")}
-              saving={saving["deepseek"] ?? false}
-              saved={saved["deepseek"] ?? false}
-              verified={verified["deepseek"] ?? null}
-              verifying={verifying["deepseek"] ?? false}
-              verifyError={verifyErrors["deepseek"] ?? null}
-              onVerify={() => handleVerify("deepseek")}
-            />
-          </div>
-
           {/* ── Agent Backbone ── */}
           <div className="space-y-3">
             <h4 className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -694,23 +646,17 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
             </h4>
             <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden h-[36px]">
               {AGENT_BACKENDS.map((b, i) => {
-                // CLI backends use their existing subscription login.
-                const isVerified = b.id === "claude_code" || b.id === "codex" ? true : verified[b.id] === true;
                 const isActive = agentBackend === b.id;
-                const disabled = !isVerified;
                 return (
                   <button
                     type="button"
                     key={b.id}
-                    onClick={() => !disabled && handleSetBackend(b.id)}
-                    disabled={disabled}
-                    title={disabled ? `Add and verify your ${b.label} API key first` : `Use ${b.label} as agent backbone`}
+                    onClick={() => handleSetBackend(b.id)}
+                    title={`Use ${b.label} as agent backbone`}
                     className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
-                      isActive && !disabled
+                      isActive
                         ? "amd-selection-highlight"
-                        : disabled
-                          ? "bg-gray-50 dark:bg-gray-800/40 text-gray-300 dark:text-gray-600 cursor-not-allowed"
-                          : "bg-gray-50 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        : "bg-gray-50 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                     } ${i < AGENT_BACKENDS.length - 1 ? "border-r border-gray-200 dark:border-gray-700" : ""}`}
                   >
                     {b.label}
@@ -719,8 +665,56 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
               })}
             </div>
             <p className="text-[10px] text-gray-400 dark:text-gray-600">
-              API providers require a verified key; CLI backends use their saved login.
+              Claude Code and Codex use their saved login. API backbones show their key below.
             </p>
+            {agentBackend === "anthropic" && (
+              <ApiKeyRow
+                label="Claude API key"
+                color="bg-orange-400"
+                value={keys["anthropic"] ?? ""}
+                onChange={(v) => setKeyValue("anthropic", v)}
+                placeholder="sk-ant-..."
+                onSave={() => handleSaveKey("anthropic")}
+                saving={saving["anthropic"] ?? false}
+                saved={saved["anthropic"] ?? false}
+                verified={verified["anthropic"] ?? null}
+                verifying={verifying["anthropic"] ?? false}
+                verifyError={verifyErrors["anthropic"] ?? null}
+                onVerify={() => handleVerify("anthropic")}
+              />
+            )}
+            {agentBackend === "openai" && (
+              <ApiKeyRow
+                label="ChatGPT API key"
+                color="bg-emerald-400"
+                value={keys["openai"] ?? ""}
+                onChange={(v) => setKeyValue("openai", v)}
+                placeholder="sk-..."
+                onSave={() => handleSaveKey("openai")}
+                saving={saving["openai"] ?? false}
+                saved={saved["openai"] ?? false}
+                verified={verified["openai"] ?? null}
+                verifying={verifying["openai"] ?? false}
+                verifyError={verifyErrors["openai"] ?? null}
+                onVerify={() => handleVerify("openai")}
+              />
+            )}
+            {agentBackend === "deepseek" && (
+              <ApiKeyRow
+                label="DeepSeek API key"
+                color="bg-blue-400"
+                value={keys["deepseek"] ?? ""}
+                onChange={(v) => setKeyValue("deepseek", v)}
+                placeholder="sk-..."
+                onSave={() => handleSaveKey("deepseek")}
+                saving={saving["deepseek"] ?? false}
+                saved={saved["deepseek"] ?? false}
+                verified={verified["deepseek"] ?? null}
+                verifying={verifying["deepseek"] ?? false}
+                verifyError={verifyErrors["deepseek"] ?? null}
+                onVerify={() => handleVerify("deepseek")}
+              />
+            )}
           </div>
 
           {/* ── System Info ── */}
@@ -741,28 +735,24 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
                   {AGENT_BACKENDS.find((b) => b.id === agentBackend)?.label ?? "Claude"}
                 </span>
               </div>
-            </div>
-          </div>
-
-          {/* ── Appearance ── */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Appearance</h4>
-            <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50">
-              <div className="flex items-center gap-2.5">
-                {theme === "dark" ? <Moon size={15} className="text-indigo-400" /> : <Sun size={15} className="text-amber-500" />}
-                <span className="text-sm text-gray-700 dark:text-gray-300">{theme === "dark" ? "Dark" : "Light"} mode</span>
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  {theme === "dark" ? <Moon size={15} className="text-indigo-400" /> : <Sun size={15} className="text-amber-500" />}
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{theme === "dark" ? "Dark" : "Light"} mode</span>
+                </div>
+                <button
+                  onClick={toggle}
+                  aria-label="Toggle light and dark mode"
+                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+                    theme === "dark" ? "bg-indigo-600" : "bg-gray-300"
+                  }`}
+                >
+                  <span
+                    className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-[left] duration-200"
+                    style={{ left: theme === "dark" ? "22px" : "2px" }}
+                  />
+                </button>
               </div>
-              <button
-                onClick={toggle}
-                className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-                  theme === "dark" ? "bg-indigo-600" : "bg-gray-300"
-                }`}
-              >
-                <span
-                  className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-[left] duration-200"
-                  style={{ left: theme === "dark" ? "22px" : "2px" }}
-                />
-              </button>
             </div>
           </div>
 
@@ -1010,7 +1000,7 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
       </button>
 
       {/* Popover menu */}
-      {open && (
+      <PopupPresence show={open} duration={400}>
         <div data-popup-title="Profile" className="amd-popover-enter absolute bottom-full left-3 right-3 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden z-50">
           <button
             onClick={() => { setOpen(false); setServerStatusOpen(true); }}
@@ -1035,14 +1025,14 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
             Sign out
           </button>
         </div>
-      )}
+      </PopupPresence>
 
-      {settingsOpen && (
+      <PopupPresence show={settingsOpen}>
         <SettingsModal username={username} onClose={() => setSettingsOpen(false)} />
-      )}
-      {serverStatusOpen && (
+      </PopupPresence>
+      <PopupPresence show={serverStatusOpen}>
         <ServerStatusModal onClose={() => setServerStatusOpen(false)} />
-      )}
+      </PopupPresence>
     </div>
   );
 }
@@ -1063,7 +1053,7 @@ function ProjectItem({
 
   return (
     <>
-      {confirming && (
+      <PopupPresence show={confirming}>
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
@@ -1101,7 +1091,7 @@ function ProjectItem({
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
 
       <div className="group relative w-full rounded-lg transition-colors cursor-pointer flex overflow-hidden text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-200">
         <div className="flex-1 min-w-0 px-3 py-2.5" onClick={onOpen}>
@@ -1134,7 +1124,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
   // Collapsed strip — a thin rail that expands the panel when clicked.
   if (collapsed) {
     return (
-      <aside className="w-10 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full">
+      <aside className="w-10 flex-shrink-0 overflow-hidden bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
         <button
           onClick={onToggleCollapse}
           title="Expand simulations panel"
@@ -1150,7 +1140,7 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
   }
 
   return (
-    <aside className="w-64 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full">
+    <aside className="w-64 flex-shrink-0 overflow-hidden bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col h-full transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
       {/* Header — "Simulations" label + collapse control, pinned to the top */}
       <div className="flex items-center justify-between px-3 pt-3 pb-1.5 flex-shrink-0">
         <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-600">Simulations</p>
