@@ -362,6 +362,15 @@ html .amd-popover-enter {
   box-shadow: 0 3px 10px var(--amd-highlight-focus-glow);
 }
 
+.amd-highlight-on-hover:hover {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--amd-tab-surface), var(--amd-tab-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box;
+  color: var(--amd-highlight-text);
+  box-shadow: 0 3px 10px var(--amd-highlight-focus-glow);
+}
+
 .amd-check-icon,
 .amd-check-action {
   color: var(--amd-check-color);
