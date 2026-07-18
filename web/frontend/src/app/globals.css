@@ -16,6 +16,7 @@ html.light {
   --amd-brand-accent: #a78bfa;
   --amd-brand-ink: #1e1b4b;
   --amd-control-surface: #f8faff;
+  --amd-tab-surface: #f9fafb;
   --amd-control-surface-hover: #eef2ff;
   --amd-control-foreground: #3730a3;
   --amd-science: #67e8f9;
@@ -86,6 +87,7 @@ html.dark {
   --amd-input-surface: #1f2937;
   --amd-highlight-focus-glow: rgba(165, 180, 252, 0.2);
   --amd-control-surface: #172033;
+  --amd-tab-surface: #111827;
   --amd-control-surface-hover: #202a44;
   --amd-control-foreground: #c4b5fd;
   --amd-user-message-bg: linear-gradient(135deg, rgba(8, 47, 73, 0.94) 0%, rgba(30, 41, 99, 0.92) 58%, rgba(46, 16, 101, 0.86) 100%);
@@ -345,6 +347,15 @@ html .amd-popover-enter {
 
 .amd-highlight-field:focus {
   box-shadow: 0 0 0 3px var(--amd-highlight-focus-glow);
+}
+
+.amd-active-tab {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--amd-tab-surface), var(--amd-tab-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box;
+  color: var(--amd-highlight-text);
+  box-shadow: 0 3px 10px var(--amd-highlight-focus-glow);
 }
 
 .amd-check-icon,

@@ -281,12 +281,9 @@ export default function ChatInput({
   }, [pendingPrompt]);
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-800 p-3 bg-white/50 dark:bg-gray-900/50 flex-shrink-0">
+    <div className="p-3 bg-white/50 dark:bg-gray-900/50 flex-shrink-0">
       {contextActions.length > 0 && (
-        <div className="mb-3 flex items-center gap-2 overflow-x-auto border-b border-gray-200/80 dark:border-gray-800/80 pb-3">
-          <span className="flex-shrink-0 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-600">
-            AI requests
-          </span>
+        <div className="mb-3 flex items-center gap-2 overflow-x-auto">
           {contextActions.map((action) => (
             <button
               key={action.label}
