@@ -4299,7 +4299,9 @@ export default function MDWorkspace({
     if (!stored) return;
     if (stored.started_at) setSimStartedAt((prev) => prev ?? stored.started_at! * 1000);
     if (stored.finished_at) setSimFinishedAt((prev) => prev ?? stored.finished_at! * 1000);
-    if (stored.run_status === "finished" || stored.run_status === "failed" || stored.run_status === "paused") {
+    if (stored.run_status === "running" || stored.run_status === "finished" || stored.run_status === "failed" || stored.run_status === "paused") {
+      // Agent-started runs arrive through the refreshed session list. Adopt the
+      // live state here so Progress immediately starts polling stage/progress.
       setSimRunStatus((prev) => (prev === "standby" ? stored.run_status! : prev));
     }
 

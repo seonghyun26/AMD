@@ -190,7 +190,9 @@ export default function ChatInput({
     const sendScope = projectId; // scope this send belongs to
     setValue("");
     setMentionOpen(false);
-    addUserMessage(text, title);
+    // Shortcut actions send a detailed instruction to the harness, but the
+    // conversation should stay compact: show only the action title to the user.
+    addUserMessage(title || text);
     abortRef.current = new AbortController();
     const normalizedText = text.toLowerCase();
     const mentionedSession = [...sessions]
@@ -210,7 +212,9 @@ export default function ChatInput({
         appendSSEEvent(event);
         if (
           event.type === "tool_result" &&
-          (event.tool_name === "create_simulation" || event.tool_name === "run_analysis")
+          (event.tool_name === "create_simulation" ||
+            event.tool_name === "start_simulation" ||
+            event.tool_name === "run_analysis")
         ) {
           if (sendScope) await fetchSimulations(sendScope);
           else await fetchSessions();
