@@ -4,7 +4,6 @@
 integrator: md
 dt: 0.002
 temperature: 300
-nsteps: 5000000            # overridden by method.nsteps at runtime
 
 # Thermostat — single group because there is no solvent
 tcoupl: V-rescale

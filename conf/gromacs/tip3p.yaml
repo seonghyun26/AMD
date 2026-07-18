@@ -5,7 +5,6 @@ integrator: md
 dt: 0.002               # ps (2 fs timestep)
 temperature: 300        # K
 pressure: 1.0           # bar
-nsteps: 50000000        # overridden by method.nsteps at runtime
 
 # Thermostat
 tcoupl: V-rescale

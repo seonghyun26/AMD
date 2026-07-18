@@ -1,3 +1,2 @@
 # NVT ensemble overrides
 pcoupl: "no"
-nsteps: 50000       # 100 ps NVT equilibration

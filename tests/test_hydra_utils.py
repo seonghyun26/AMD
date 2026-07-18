@@ -73,7 +73,9 @@ class TestGenerateMdp:
 
     def test_method_nsteps_overrides_gromacs(self, tmp_path):
         cfg = _make_cfg("metad")
+        OmegaConf.update(cfg, "gromacs.nsteps", 999999, force_add=True)
         out = str(tmp_path / "md.mdp")
         generate_mdp_from_config(cfg, out)
         content = open(out).read()
-        assert "500000" in content
+        nsteps_lines = [line for line in content.splitlines() if line.startswith("nsteps")]
+        assert nsteps_lines == ["nsteps                         = 500000"]
