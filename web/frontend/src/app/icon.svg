@@ -1,22 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="aurora" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#67e8f9"/>
-      <stop offset="0.34" stop-color="#7dd3fc"/>
-      <stop offset="0.7" stop-color="#818cf8"/>
-      <stop offset="1" stop-color="#c4b5fd"/>
+    <linearGradient id="highlight" x1="8" y1="10" x2="56" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22d3ee"/>
+      <stop offset="0.55" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#a78bfa"/>
     </linearGradient>
+    <clipPath id="liquid">
+      <path d="M28 15v11L18.5 43.5A4 4 0 0 0 22.1 49h19.8a4 4 0 0 0 3.6-5.5L36 26V15Z"/>
+    </clipPath>
   </defs>
-  <rect x="1" y="1" width="30" height="30" rx="8" fill="url(#aurora)"/>
-  <rect x="1.75" y="1.75" width="28.5" height="28.5" rx="7.25" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.5"/>
 
-  <!-- Matches the current Lucide-style flask used in the app header. -->
-  <g transform="translate(4 4)" fill="none" stroke="#1e1b4b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55A1 1 0 0 0 5.62 22h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/>
-    <path d="M8.5 2h7"/>
-    <path d="M7 16h10"/>
+  <circle cx="13" cy="25" r="1.8" fill="#22d3ee"/>
+  <circle cx="51" cy="19" r="1.8" fill="#a78bfa"/>
+  <path d="M25.5 15h13M28 15v11L18.5 43.5A4 4 0 0 0 22.1 49h19.8a4 4 0 0 0 3.6-5.5L36 26V15" fill="#eef2ff" stroke="url(#highlight)" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+  <g clip-path="url(#liquid)">
+    <path d="M17 37c5-3 8 2 13-.5 5-2.6 8 2.2 13-.4 3.2-1.7 5-.8 7 .5V52H17Z" fill="url(#highlight)" opacity="0.22"/>
+    <path d="M17 37c5-3 8 2 13-.5 5-2.6 8 2.2 13-.4 3.2-1.7 5-.8 7 .5" fill="none" stroke="url(#highlight)" stroke-width="1.5"/>
   </g>
-
-  <circle cx="13.2" cy="22" r="1.15" fill="#22d3ee"/>
-  <circle cx="19" cy="20.4" r="0.85" fill="#8b5cf6"/>
+  <circle cx="27.5" cy="40.5" r="1.65" fill="#312e81"/>
+  <circle cx="36.5" cy="40.5" r="1.65" fill="#312e81"/>
+  <path d="M29 45h6" stroke="#312e81" stroke-width="1.7" stroke-linecap="round"/>
+  <circle cx="32" cy="30" r="1.65" fill="#22d3ee" opacity="0.8"/>
+  <circle cx="37" cy="34" r="1.1" fill="#a78bfa" opacity="0.85"/>
 </svg>

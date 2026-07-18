@@ -13,8 +13,8 @@ export const metadata: Metadata = {
   title: "AMD — Automating MD",
   description: "Claude-powered molecular dynamics simulation assistant",
   icons: {
-    icon: [{ url: "/icon.svg?v=20260718-aurora", type: "image/svg+xml" }],
-    shortcut: "/icon.svg?v=20260718-aurora",
+    icon: [{ url: "/icon.svg?v=20260718-science-assistant", type: "image/svg+xml" }],
+    shortcut: "/icon.svg?v=20260718-science-assistant",
   },
 };
 
