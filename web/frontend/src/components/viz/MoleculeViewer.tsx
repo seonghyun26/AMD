@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Loader2, AlertCircle, Crosshair, Camera, Settings } from "lucide-react";
+import { Loader2, AlertCircle, Crosshair, Camera, Settings } from "lucide-react";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { useTheme } from "@/lib/theme";
+import { viewerBackground } from "@/lib/colors";
+import PopupPresence from "@/components/ui/PopupPresence";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 
 function parseStructureInfo(
   content: string,
@@ -70,8 +73,8 @@ const REP_LABELS: { key: keyof RepState; label: string }[] = [
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyRepresentations(component: any, reps: RepState) {
   component.removeAllRepresentations();
-  // When solvent is hidden, restrict the atom representations to non-water.
-  const atomSele = reps.solvent ? undefined : "not water";
+  // Treat water and dissolved ions as one solvent display group.
+  const atomSele = reps.solvent ? undefined : "not (water or ion)";
   const withSele = (params: Record<string, unknown>) =>
     atomSele ? { ...params, sele: atomSele } : params;
   if (reps.ball) {
@@ -167,7 +170,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
       containerRef.current.innerHTML = "";
 
       suppressNglDeprecationWarnings();
-      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
+      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: viewerBackground(theme) });
       stageRef.current = stage;
 
       ro = new ResizeObserver(() => stage.handleResize());
@@ -246,7 +249,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
 
   // Update NGL background when theme changes
   useEffect(() => {
-    stageRef.current?.setParameters({ backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
+    stageRef.current?.setParameters({ backgroundColor: viewerBackground(theme) });
   }, [theme]);
 
   const handleResetView = () => {
@@ -365,14 +368,8 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
                 <Settings size={11} />
               </button>
 
-              {settingsOpen && (
-                <div className="absolute right-0 bottom-full mb-2 z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                    <span className="font-semibold text-gray-700 dark:text-gray-200">Export Settings</span>
-                    <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
-                      <X size={12} />
-                    </button>
-                  </div>
+              <PopupPresence show={settingsOpen} duration={400}>
+                <div data-popup-title="Export settings" className="amd-popover-enter absolute right-0 bottom-full mb-2 z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                   <div className="p-3 space-y-2">
                     {/* Factor */}
                     <div className="flex items-center gap-2">
@@ -398,8 +395,9 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
                       </div>
                     ))}
                   </div>
+                  <PopupTailClose onClick={() => setSettingsOpen(false)} label="Close export settings" />
                 </div>
-              )}
+              </PopupPresence>
             </div>
           </div>
         </div>
@@ -411,14 +409,14 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700"
+        data-popup-title="Molecule viewer"
+        className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700"
         style={{ width: "75vw", height: "75vh" }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-sm font-mono text-gray-800 dark:text-gray-200">{fileName}</span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">3D Viewer</span>
             {/* Toggle buttons in popup header */}
             <div className="flex gap-1 ml-2">
               {REP_LABELS.map(({ key, label }) => {
@@ -440,12 +438,6 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
               })}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          >
-            <X size={16} />
-          </button>
         </div>
 
         {/* Viewer */}
@@ -467,6 +459,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
         <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
           Drag to rotate · Scroll to zoom · Right-click to translate
         </div>
+        <PopupTailClose onClick={() => onClose?.()} label="Close molecule viewer" />
       </div>
     </div>
   );

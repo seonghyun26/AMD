@@ -7,6 +7,56 @@
 html.light {
   --background: #f8fafc;
   --foreground: #0f172a;
+  --amd-arc-cyan: #67e8f9;
+  --amd-arc-sky: #7dd3fc;
+  --amd-arc-indigo: #818cf8;
+  --amd-arc-violet: #c4b5fd;
+  --amd-brand-primary: #60a5fa;
+  --amd-brand-secondary: #818cf8;
+  --amd-brand-accent: #a78bfa;
+  --amd-brand-ink: #1e1b4b;
+  --amd-control-surface: #f8faff;
+  --amd-tab-surface: #f9fafb;
+  --amd-control-surface-hover: #eef2ff;
+  --amd-control-foreground: #3730a3;
+  --amd-science: #67e8f9;
+  --amd-success: #10b981;
+  --amd-warning: #f59e0b;
+  --amd-danger: #ef4444;
+  /* Pale aurora surfaces are intentionally paired with deep-indigo ink. */
+  --amd-brand-gradient: linear-gradient(135deg, #cffafe 0%, #dbeafe 36%, #e0e7ff 68%, #ede9fe 100%);
+  --amd-highlight: linear-gradient(135deg, rgba(207, 250, 254, 0.86) 0%, rgba(224, 231, 255, 0.88) 66%, rgba(237, 233, 254, 0.9) 100%);
+  --amd-highlight-text: #3730a3;
+  --amd-check-color: #4f46e5;
+  --amd-check-color-hover: #4338ca;
+  --amd-highlight-border-gradient: linear-gradient(135deg, #22d3ee 0%, #60a5fa 38%, #6366f1 70%, #a78bfa 100%);
+  --amd-project-surface: #ffffff;
+  --amd-project-border: #e5e7eb;
+  --amd-project-hover-shadow: 0 12px 30px rgba(79, 70, 229, 0.14);
+  --amd-input-surface: #ffffff;
+  --amd-highlight-focus-glow: rgba(99, 102, 241, 0.16);
+  --amd-user-message-bg: linear-gradient(135deg, rgba(236, 254, 255, 0.98) 0%, rgba(238, 242, 255, 0.98) 56%, rgba(245, 243, 255, 0.98) 100%);
+  --amd-user-message-border: rgba(99, 102, 241, 0.24);
+  --amd-user-message-text: #1e293b;
+  --amd-user-message-muted: #4338ca;
+  --amd-user-message-mention-bg: rgba(255, 255, 255, 0.68);
+  --amd-user-message-mention-text: #3730a3;
+  --amd-user-message-mention-ring: rgba(99, 102, 241, 0.18);
+  --amd-user-message-shadow: 0 10px 24px rgba(79, 70, 229, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  --amd-surface: #ffffff;
+  --amd-surface-muted: #f9fafb;
+  --amd-border: #e5e7eb;
+  --amd-text: #111827;
+  --amd-text-muted: #6b7280;
+  --amd-popup-shadow: 0 24px 64px rgba(15, 23, 42, 0.22), 0 8px 20px rgba(15, 23, 42, 0.12);
+  --amd-popup-chrome-bg: rgba(248, 250, 252, 0.98);
+  --amd-popup-chrome-text: #334155;
+  --amd-popup-chrome-shadow: rgba(15, 23, 42, 0.08);
+  --amd-motion-fast: 160ms;
+  --amd-motion-base: 240ms;
+  --amd-motion-emphasis: 360ms;
+  --amd-motion-popup: 500ms;
+  --amd-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: light;
 }
 
@@ -19,6 +69,39 @@ html.light body {
 html.dark {
   --background: #030712;
   --foreground: #f1f5f9;
+  --amd-surface: #111827;
+  --amd-surface-muted: #1f2937;
+  --amd-border: #374151;
+  --amd-text: #f3f4f6;
+  --amd-text-muted: #9ca3af;
+  --amd-brand-ink: #ecfeff;
+  --amd-brand-gradient: linear-gradient(135deg, #155e75 0%, #1e3a8a 52%, #4c1d95 100%);
+  --amd-highlight: linear-gradient(135deg, rgba(21, 94, 117, 0.44) 0%, rgba(30, 58, 138, 0.44) 54%, rgba(76, 29, 149, 0.4) 100%);
+  --amd-highlight-text: #e0e7ff;
+  --amd-check-color: #67e8f9;
+  --amd-check-color-hover: #bae6fd;
+  --amd-highlight-border-gradient: linear-gradient(135deg, #67e8f9 0%, #60a5fa 38%, #818cf8 70%, #c4b5fd 100%);
+  --amd-project-surface: #111827;
+  --amd-project-border: #1f2937;
+  --amd-project-hover-shadow: 0 14px 34px rgba(30, 58, 138, 0.32), 0 0 0 1px rgba(103, 232, 249, 0.08);
+  --amd-input-surface: #1f2937;
+  --amd-highlight-focus-glow: rgba(165, 180, 252, 0.2);
+  --amd-control-surface: #172033;
+  --amd-tab-surface: #111827;
+  --amd-control-surface-hover: #202a44;
+  --amd-control-foreground: #c4b5fd;
+  --amd-user-message-bg: linear-gradient(135deg, rgba(8, 47, 73, 0.94) 0%, rgba(30, 41, 99, 0.92) 58%, rgba(46, 16, 101, 0.86) 100%);
+  --amd-user-message-border: rgba(165, 180, 252, 0.34);
+  --amd-user-message-text: #eff6ff;
+  --amd-user-message-muted: #c4b5fd;
+  --amd-user-message-mention-bg: rgba(165, 180, 252, 0.14);
+  --amd-user-message-mention-text: #e0e7ff;
+  --amd-user-message-mention-ring: rgba(165, 180, 252, 0.24);
+  --amd-user-message-shadow: 0 12px 28px rgba(2, 6, 23, 0.3), inset 0 1px 0 rgba(224, 231, 255, 0.12);
+  --amd-popup-shadow: 0 26px 72px rgba(0, 0, 0, 0.46), 0 8px 22px rgba(0, 0, 0, 0.28);
+  --amd-popup-chrome-bg: rgba(15, 23, 42, 0.98);
+  --amd-popup-chrome-text: #cbd5e1;
+  --amd-popup-chrome-shadow: rgba(0, 0, 0, 0.28);
   color-scheme: dark;
 }
 
@@ -62,4 +145,545 @@ html.light * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
   font-size: 0.75rem;
   line-height: 1rem;
   font-weight: 500;
+}
+
+/* Popup motion: keep content at its natural size while a centered reveal opens
+   and the attached header/tail caps slide toward their final edges. */
+.amd-popup-enter,
+.amd-popover-enter,
+.amd-login-enter {
+  --amd-popup-open-duration: var(--amd-motion-popup);
+  will-change: clip-path;
+  animation: amd-popup-reveal var(--amd-popup-open-duration) var(--amd-ease-out) both;
+}
+
+.amd-popover-enter {
+  --amd-popup-open-duration: 400ms;
+}
+
+/* The simulation mention list is deliberately simpler than system popups: it
+   reveals straight upward from the composer without the head/tail rail effect. */
+.amd-mention-list-enter {
+  transform-origin: bottom center;
+  will-change: clip-path;
+  animation: amd-mention-list-expand-up 220ms var(--amd-ease-out) both;
+}
+
+/* Shared popup shell. Sizes and content remain component-specific. */
+html .amd-popup-enter,
+html .amd-popover-enter {
+  background-color: var(--amd-surface);
+  border: 1px solid var(--amd-border);
+  color: var(--amd-text);
+  box-shadow: var(--amd-popup-shadow);
+}
+
+html .amd-popup-enter {
+  border-radius: 1rem;
+}
+
+html .amd-popover-enter {
+  border-radius: 0.75rem;
+}
+
+/* Shared system popups carry full-width title and tail caps. During
+   amd-popup-reveal the caps begin together, then move apart while the popup
+   content opens in the space between them. Positioned popovers already
+   establish their own containing block; ordinary modal shells need one here. */
+.amd-popup-enter:not(.fixed):not(.absolute),
+.amd-popover-enter:not(.fixed):not(.absolute) {
+  position: relative;
+}
+
+.amd-popup-enter,
+.amd-popover-enter {
+  isolation: isolate;
+}
+
+.amd-popup-enter[data-popup-title]::before,
+.amd-popup-enter[data-popup-title]::after,
+.amd-popover-enter[data-popup-title]::before,
+.amd-popover-enter[data-popup-title]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background-color: var(--amd-popup-chrome-bg);
+  box-shadow: 0 4px 14px var(--amd-popup-chrome-shadow);
+  pointer-events: none;
+}
+
+.amd-popup-enter[data-popup-title]::before,
+.amd-popover-enter[data-popup-title]::before {
+  content: attr(data-popup-title);
+  top: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2.5rem;
+  overflow: hidden;
+  border-radius: inherit;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background:
+    var(--amd-highlight-border-gradient) bottom / 100% 2px no-repeat,
+    var(--amd-popup-chrome-bg);
+  color: var(--amd-popup-chrome-text);
+  font-size: 0.76rem;
+  font-weight: 500;
+  letter-spacing: 0.035em;
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: amd-popup-head-slide var(--amd-popup-open-duration) var(--amd-ease-out) both;
+}
+
+.amd-popup-enter[data-popup-title]::after,
+.amd-popover-enter[data-popup-title]::after {
+  bottom: 0;
+  height: 34px;
+  border-radius: inherit;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  background:
+    var(--amd-highlight-border-gradient) top / 100% 2px no-repeat,
+    var(--amd-popup-chrome-bg);
+  animation: amd-popup-tail-slide var(--amd-popup-open-duration) var(--amd-ease-out) both;
+}
+
+/* Reserve the cap space without replacing component-specific padding. */
+.amd-popup-enter[data-popup-title] > :first-child,
+.amd-popover-enter[data-popup-title] > :first-child {
+  margin-top: 34px;
+}
+
+.amd-popup-enter[data-popup-title] > :last-child:not(.amd-popup-tail-close),
+.amd-popover-enter[data-popup-title] > :last-child:not(.amd-popup-tail-close),
+.amd-popup-enter[data-popup-title] > :has(+ .amd-popup-tail-close),
+.amd-popover-enter[data-popup-title] > :has(+ .amd-popup-tail-close) {
+  margin-bottom: 34px;
+}
+
+.amd-popup-tail-close {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  z-index: 40;
+  display: inline-flex;
+  min-width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 7px;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--amd-popup-chrome-text);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  transition: color 140ms ease, filter 140ms ease, transform 140ms ease;
+}
+
+.amd-popup-tail-close:hover {
+  color: var(--amd-check-color);
+  filter: drop-shadow(0 0 5px var(--amd-highlight-focus-glow));
+  transform: translateX(-50%) scale(1.08);
+}
+
+.amd-popup-tail-close:focus-visible {
+  outline: 2px solid var(--amd-check-color);
+  outline-offset: -2px;
+}
+
+/* PopupPresence retains the shell while this exact reverse motion completes. */
+.amd-popup-presence-closing {
+  pointer-events: none;
+}
+
+.amd-popup-presence-closing .amd-popup-enter,
+.amd-popup-presence-closing .amd-popover-enter {
+  animation-name: amd-popup-conceal;
+  animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
+}
+
+.amd-popup-presence-closing .amd-popup-enter[data-popup-title]::before,
+.amd-popup-presence-closing .amd-popover-enter[data-popup-title]::before {
+  animation-name: amd-popup-head-return;
+  animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
+}
+
+.amd-popup-presence-closing .amd-popup-enter[data-popup-title]::after,
+.amd-popup-presence-closing .amd-popover-enter[data-popup-title]::after {
+  animation-name: amd-popup-tail-return;
+  animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
+}
+
+/* Modal layers that contain the shared shell use one consistent backdrop. */
+.fixed.inset-0:has(> .amd-popup-enter) {
+  background-color: rgba(15, 23, 42, 0.3);
+  backdrop-filter: blur(2px);
+  animation: amd-overlay-fade var(--amd-motion-base) ease-out both;
+}
+
+.amd-overlay-enter {
+  animation: amd-overlay-fade var(--amd-motion-base) ease-out both;
+}
+
+.amd-selection-highlight {
+  background: var(--amd-highlight);
+  color: var(--amd-highlight-text);
+}
+
+.amd-highlight-field {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--amd-input-surface), var(--amd-input-surface)) padding-box,
+    var(--amd-brand-gradient) border-box;
+  transition: box-shadow var(--amd-motion-fast) ease;
+}
+
+.amd-highlight-field:focus {
+  box-shadow: 0 0 0 3px var(--amd-highlight-focus-glow);
+}
+
+.amd-active-tab {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--amd-tab-surface), var(--amd-tab-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box;
+  color: var(--amd-highlight-text);
+  box-shadow: 0 3px 10px var(--amd-highlight-focus-glow);
+}
+
+.amd-highlight-on-hover:hover {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--amd-tab-surface), var(--amd-tab-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box;
+  color: var(--amd-highlight-text);
+  box-shadow: 0 3px 10px var(--amd-highlight-focus-glow);
+}
+
+/* Results cards keep their quiet dashed outline until hovered, then use the
+   full highlight gradient even when utility background classes are present. */
+.amd-result-add:hover {
+  border: 2px solid transparent !important;
+  background:
+    linear-gradient(var(--amd-tab-surface), var(--amd-tab-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box !important;
+  color: var(--amd-highlight-text) !important;
+  box-shadow: 0 3px 10px var(--amd-highlight-focus-glow);
+}
+
+.amd-check-icon,
+.amd-check-action {
+  color: var(--amd-check-color);
+}
+
+.amd-check-action:hover {
+  color: var(--amd-check-color-hover);
+}
+
+.amd-project-card {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--amd-project-surface), var(--amd-project-surface)) padding-box,
+    linear-gradient(var(--amd-project-border), var(--amd-project-border)) border-box;
+}
+
+.amd-project-card:hover {
+  background:
+    linear-gradient(var(--amd-project-surface), var(--amd-project-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box;
+  box-shadow: var(--amd-project-hover-shadow);
+  transform: translateY(-1px);
+}
+
+.amd-project-new:hover {
+  border-color: var(--amd-check-color);
+  box-shadow: 0 8px 24px var(--amd-highlight-focus-glow);
+}
+
+.amd-brand-mark {
+  background: var(--amd-brand-gradient);
+  color: var(--amd-brand-ink);
+}
+
+.amd-brand-mark > svg {
+  color: var(--amd-brand-ink);
+}
+
+.amd-primary-button {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--amd-control-surface), var(--amd-control-surface)) padding-box,
+    var(--amd-brand-gradient) border-box;
+  color: var(--amd-control-foreground);
+  transition:
+    background-color var(--amd-motion-fast) ease,
+    transform var(--amd-motion-fast) var(--amd-ease-out);
+}
+
+.amd-new-simulation-button {
+  border-width: 2px;
+}
+
+.amd-user-message {
+  background: var(--amd-user-message-bg);
+  color: var(--amd-user-message-text);
+  border: 1px solid var(--amd-user-message-border);
+  box-shadow: var(--amd-user-message-shadow);
+}
+
+.amd-user-message-title {
+  color: var(--amd-user-message-muted);
+  border-color: var(--amd-user-message-border);
+}
+
+.amd-user-message-mention {
+  display: inline;
+  color: var(--amd-user-message-mention-text);
+  font-weight: 650;
+}
+
+.amd-primary-button:hover:not(:disabled) {
+  background:
+    linear-gradient(var(--amd-control-surface), var(--amd-control-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box;
+  color: var(--amd-control-foreground);
+  box-shadow: 0 8px 20px var(--amd-highlight-focus-glow);
+  transform: translateY(-1px);
+}
+
+.amd-primary-button:active:not(:disabled) {
+  background:
+    linear-gradient(var(--amd-control-surface), var(--amd-control-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box;
+  transform: translateY(0);
+}
+
+.amd-ai-avatar-frame {
+  background: transparent;
+}
+
+@keyframes amd-popup-reveal {
+  0%, 32% {
+    clip-path: inset(calc(50% - 34px) 0 calc(50% - 34px) 0 round 0.85rem);
+  }
+  99.8% {
+    clip-path: inset(0 0 0 0 round 0.85rem);
+  }
+  100% { clip-path: none; }
+}
+
+@keyframes amd-popup-head-slide {
+  0%, 32% {
+    top: calc(50% - 34px);
+  }
+  100% {
+    top: 0;
+  }
+}
+
+@keyframes amd-popup-tail-slide {
+  0%, 32% {
+    bottom: calc(50% - 34px);
+  }
+  100% {
+    bottom: 0;
+  }
+}
+
+@keyframes amd-popup-conceal {
+  0% { clip-path: inset(0 0 0 0 round 0.85rem); }
+  68%, 100% {
+    clip-path: inset(calc(50% - 34px) 0 calc(50% - 34px) 0 round 0.85rem);
+  }
+}
+
+@keyframes amd-popup-head-return {
+  0% { top: 0; }
+  68%, 100% { top: calc(50% - 34px); }
+}
+
+@keyframes amd-popup-tail-return {
+  0% { bottom: 0; }
+  68%, 100% { bottom: calc(50% - 34px); }
+}
+
+@keyframes amd-mention-list-expand-up {
+  0% {
+    clip-path: inset(calc(100% - 2px) 0 0 0 round 0.75rem);
+  }
+  100% {
+    clip-path: inset(0 0 0 0 round 0.75rem);
+  }
+}
+
+@keyframes amd-overlay-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Profile system rail ──────────────────────────────────────────── */
+.profile-system-action {
+  transform-origin: center;
+  will-change: transform, opacity;
+  transition:
+    transform 300ms cubic-bezier(0.16, 1.25, 0.3, 1),
+    opacity 180ms ease,
+    border-color 120ms ease;
+}
+
+/* Closing is the inverse of the springy reveal: icons remain visible while
+   accelerating back under the avatar instead of blinking out in place. */
+.profile-system-menu-closing .profile-system-action {
+  transition-duration: 270ms, 250ms, 120ms;
+  transition-timing-function:
+    cubic-bezier(0.7, 0, 0.84, 0),
+    cubic-bezier(0.4, 0, 1, 1),
+    ease;
+}
+
+.profile-system-action-glyph {
+  transition: transform 90ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.profile-system-action:hover .profile-system-action-glyph {
+  transform: scale(1.13) rotate(-4deg);
+  background: var(--amd-highlight);
+}
+
+.profile-system-avatar {
+  isolation: isolate;
+  transition:
+    transform 180ms cubic-bezier(0.16, 1.15, 0.3, 1),
+    box-shadow 120ms ease;
+}
+
+.profile-system-avatar::before,
+.profile-system-avatar::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: -1;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  opacity: 0;
+  transform: scale(0.72) rotate(-125deg);
+  will-change: transform, opacity;
+}
+
+.profile-system-avatar::after {
+  inset: -7px;
+  transform: scale(0.72) rotate(-70deg);
+}
+
+.profile-system-avatar-open {
+  transform: scale(1.06) rotate(3deg);
+  box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.16), 0 8px 26px rgba(129, 140, 248, 0.24);
+}
+
+.profile-system-avatar-open::before,
+.profile-system-avatar-closing::before {
+  border-color: var(--amd-arc-cyan) transparent var(--amd-arc-indigo) transparent;
+}
+
+.profile-system-avatar-open::after,
+.profile-system-avatar-closing::after {
+  border-color: transparent var(--amd-arc-sky) transparent var(--amd-arc-violet);
+}
+
+.profile-system-avatar-open::before {
+  animation: amd-profile-arc-before 520ms cubic-bezier(0.16, 1, 0.3, 1) 0ms 1 normal both;
+}
+
+.profile-system-avatar-open::after {
+  animation: amd-profile-arc-after 520ms cubic-bezier(0.16, 1, 0.3, 1) 28ms 1 normal both;
+}
+
+.profile-system-avatar-closing::before {
+  animation: amd-profile-arc-before-close 260ms cubic-bezier(0.7, 0, 0.84, 0) 0ms both;
+}
+
+.profile-system-avatar-closing::after {
+  animation: amd-profile-arc-after-close 260ms cubic-bezier(0.7, 0, 0.84, 0) 14ms both;
+}
+
+@keyframes amd-profile-arc-before {
+  0% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-125deg);
+  }
+  28% { opacity: 1; }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(145deg);
+  }
+}
+
+@keyframes amd-profile-arc-after {
+  0% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-70deg);
+  }
+  28% { opacity: 1; }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(200deg);
+  }
+}
+
+@keyframes amd-profile-arc-before-close {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(145deg);
+  }
+  72% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-125deg);
+  }
+}
+
+@keyframes amd-profile-arc-after-close {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(200deg);
+  }
+  72% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-70deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .amd-popup-enter,
+  .amd-popup-enter::before,
+  .amd-popup-enter::after,
+  .amd-popover-enter,
+  .amd-popover-enter::before,
+  .amd-popover-enter::after,
+  .amd-popup-presence-closing .amd-popup-enter,
+  .amd-popup-presence-closing .amd-popover-enter,
+  .amd-mention-list-enter,
+  .amd-login-enter,
+  .amd-overlay-enter,
+  .profile-system-action,
+  .profile-system-action-glyph,
+  .profile-system-avatar,
+  .profile-system-avatar::before,
+  .profile-system-avatar::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+  }
 }

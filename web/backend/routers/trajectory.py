@@ -21,7 +21,7 @@ import struct
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse, Response
 
 from web.backend.session_manager import get_or_restore_session
@@ -82,6 +82,37 @@ def _count_frames(xtc_path: Path, top_path: Path) -> int:
     return n
 
 
+def _read_frame(trajectory_path: Path, frame_index: int) -> tuple[np.ndarray, np.ndarray]:
+    """Read one frame without reparsing the topology file."""
+    import mdtraj
+
+    with mdtraj.open(str(trajectory_path)) as trajectory:
+        trajectory.seek(frame_index)
+        coordinates, _time, _step, box_vectors = trajectory.read(n_frames=1)
+
+    if coordinates.shape[0] != 1:
+        raise IndexError(f"Frame {frame_index} is unavailable")
+
+    coords = np.ascontiguousarray(coordinates[0] * 10.0, dtype=np.float32)
+
+    if box_vectors is not None and len(box_vectors) == 1:
+        box = np.ascontiguousarray(box_vectors[0] * 10.0, dtype=np.float32)
+    else:
+        box = np.zeros((3, 3), dtype=np.float32)
+
+    return coords.reshape(-1), box.reshape(-1)
+
+
+def _load_frame_data(
+    trajectory_path: Path, topology_path: Path, frame_index: int
+) -> tuple[int, np.ndarray, np.ndarray]:
+    n_frames = _count_frames(trajectory_path, topology_path)
+    if frame_index < 0 or frame_index >= n_frames:
+        raise HTTPException(status_code=404, detail=f"Frame out of range: {frame_index}")
+    coords, box = _read_frame(trajectory_path, frame_index)
+    return n_frames, coords, box
+
+
 @router.get("/sessions/{session_id}/ngl-traj/{combined_b64}/numframes")
 async def get_numframes(session_id: str, combined_b64: str) -> PlainTextResponse:
     """Return frame count (NGL RemoteTrajectory protocol — GET)."""
@@ -101,7 +132,6 @@ async def get_frame(
     session_id: str,
     combined_b64: str,
     frame_index: int,
-    request: Request,  # accepts the POST body (atom indices) but ignores it
 ) -> Response:
     """Return frame data in NGL binary format (NGL RemoteTrajectory protocol — POST).
 
@@ -111,25 +141,13 @@ async def get_frame(
       [8-43]  Float32×9 — box vectors in Angstroms (row-major 3×3)
       [44+]   Float32×N*3 — XYZ coordinates in Angstroms
     """
-    import mdtraj
-
     xtc_str, top_str = _decode_paths(combined_b64)
     work = _get_work(session_id)
     xtc_path = _resolve_file(xtc_str, work)
     top_path = _resolve_file(top_str, work)
 
     try:
-        n_frames = _count_frames(xtc_path, top_path)
-        frame = mdtraj.load_frame(str(xtc_path), frame_index, top=str(top_path))
-
-        # Coordinates: nm → Angstroms, flat float32
-        coords = (frame.xyz[0] * 10.0).astype(np.float32).flatten()
-
-        # Box vectors: nm → Angstroms, row-major 3×3 flat float32
-        if frame.unitcell_vectors is not None:
-            box = (frame.unitcell_vectors[0] * 10.0).astype(np.float32).flatten()
-        else:
-            box = np.zeros(9, dtype=np.float32)
+        n_frames, coords, box = _load_frame_data(xtc_path, top_path, frame_index)
 
         # Pack header: Int32(frame_count) + 4 bytes padding
         header = struct.pack("<i", n_frames) + b"\x00" * 4
@@ -138,5 +156,7 @@ async def get_frame(
             content=header + box.tobytes() + coords.tobytes(),
             media_type="application/octet-stream",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load frame {frame_index}: {e}")

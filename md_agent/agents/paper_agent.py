@@ -142,7 +142,7 @@ def _make_config_tools(work_dir: str, session):
     def update_session_config(updates_json: str) -> str:
         """Apply MD settings to this session-root config.yaml and regenerate md.mdp.
         updates_json: JSON object with OmegaConf dot-key → value pairs.
-        Example: {"gromacs.temperature": 300, "gromacs.nsteps": 5000000, "system.forcefield": "amber99sb-ildn"}
+        Example: {"gromacs.temperature": 300, "method.nsteps": 5000000, "system.forcefield": "amber99sb-ildn"}
         Only modifies the config of the current session — never touches other sessions.
         """
         try:

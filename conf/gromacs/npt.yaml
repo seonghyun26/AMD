@@ -1,4 +1,3 @@
 # NPT ensemble overrides (short equilibration before production)
-nsteps: 50000       # 100 ps NPT equilibration
-nstlog: 500
-nstenergy: 500
+nstlog: 10000
+nstenergy: 1000

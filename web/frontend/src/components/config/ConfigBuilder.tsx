@@ -64,9 +64,9 @@ export default function ConfigBuilder({ sessionId }: Props) {
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Configuration</h3>
         <button
           onClick={handleSave}
-          className="flex items-center gap-1 text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors"
+          className="amd-primary-button flex items-center gap-1 text-xs px-2 py-1 rounded"
         >
-          {saved ? <CheckCircle2 size={12} /> : null}
+          {saved ? <CheckCircle2 size={12} className="amd-check-icon" /> : null}
           {saved ? "Saved" : "Save"}
         </button>
       </div>

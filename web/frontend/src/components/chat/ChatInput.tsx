@@ -1,17 +1,84 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, StopCircle, FlaskConical } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Bot, StopCircle, FlaskConical } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { streamAssistant } from "@/lib/sse";
+import type { AssistantActionInvocation } from "@/lib/types";
 
 interface Props {
   /** null = general assistant (home); otherwise this project's assistant. */
   projectId: string | null;
+  /** Currently open simulation; used only as trusted context for state queries. */
+  contextSessionId?: string | null;
   /** When set to a non-empty string, auto-sends that message once. */
   autoSend?: string;
   onAutoSendComplete?: () => void;
+  /** The selected workspace tab determines the assistant shortcuts shown above the composer. */
+  workspaceTab?: string;
 }
+
+type ContextAction = {
+  label: string;
+  title: string;
+  prompt: (nickname: string) => string;
+  action?: AssistantActionInvocation["name"];
+};
+
+const START_SIMULATION_ACTION: ContextAction = {
+  label: "Start simulation",
+  title: "Start simulation",
+  action: "start_simulation",
+  prompt: (nickname) =>
+    `Check the configuration and available storage for the "${nickname}" simulation, then start it only if there are no blocking problems.`,
+};
+
+const RUN_ANALYSIS_ACTION: ContextAction = {
+  label: "Run analysis",
+  title: "Run analysis",
+  action: "analyze_simulation",
+  prompt: (nickname) =>
+    `Run the five standard energy analyses for the completed "${nickname}" simulation: potential, kinetic, total energy, temperature, and pressure.`,
+};
+
+const TAB_CONTEXT_ACTIONS: Record<string, ContextAction[]> = {
+  progress: [],
+  molecule: [
+    {
+      label: "Inspect system",
+      title: "Find a molecular system",
+      action: "inspect_molecular_system",
+      prompt: (nickname) =>
+        `Help me inspect the molecular system for the "${nickname}" simulation. List the structure/topology input files already present, identify what system is set up, and suggest suitable PDB structures (with IDs) if something is missing.`,
+    },
+  ],
+  gromacs: [
+    {
+      label: "Review setup",
+      title: "Review initial configuration",
+      action: "review_initial_configuration",
+      prompt: (nickname) =>
+        `Review the GROMACS parameters configured for the "${nickname}" simulation (see its config.yaml / .mdp) and suggest sensible values or flag anything unusual for this system — thermostat, timestep, cutoffs, electrostatics, constraints and run length.`,
+    },
+  ],
+  method: [
+    {
+      label: "Research CVs",
+      title: "Research CV publications",
+      action: "research_cv_publications",
+      prompt: (nickname) =>
+        `Find relevant publications for collective variables (CVs) for the "${nickname}" system, then recommend CVs for its enhanced-sampling method with PLUMED-style definitions and evidence-based rationale.`,
+    },
+  ],
+  files: [
+    {
+      label: "Inspect files",
+      title: "Inspect simulation files",
+      prompt: (nickname) =>
+        `Inspect the local files for the "${nickname}" simulation. Summarize which inputs and outputs are present, what each important file is for, and flag only missing files that matter for the current simulation state.`,
+    },
+  ],
+};
 
 /** Detect a trailing `@query` token immediately before the caret (used for the
  *  simulation-name mention popup). Returns the query text and the `@` offset. */
@@ -23,7 +90,49 @@ function mentionAt(text: string, caret: number): { query: string; start: number 
   return { query: m[1], start: caret - m[1].length - 1 };
 }
 
-export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: Props) {
+function GradientSendIcon({ size = 19 }: { size?: number }) {
+  const gradientId = useId().replace(/:/g, "");
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="2" y1="22" x2="22" y2="2" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="var(--amd-arc-cyan)" />
+          <stop offset="0.42" stopColor="var(--amd-brand-primary)" />
+          <stop offset="0.72" stopColor="var(--amd-arc-indigo)" />
+          <stop offset="1" stopColor="var(--amd-arc-violet)" />
+        </linearGradient>
+      </defs>
+      <path
+        d="m22 2-7 20-4-9-9-4Z"
+        stroke={`url(#${gradientId})`}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M22 2 11 13"
+        stroke={`url(#${gradientId})`}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export default function ChatInput({
+  projectId,
+  contextSessionId,
+  autoSend,
+  onAutoSendComplete,
+  workspaceTab = "progress",
+}: Props) {
   const [value, setValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -39,7 +148,15 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
   const isStreaming = useSessionStore((s) => s.isStreaming);
   const sessions = useSessionStore((s) => s.sessions);
   const pendingPrompt = useSessionStore((s) => s.pendingPrompt);
-  const { addUserMessage, appendSSEEvent, persistAssistant, consumePendingPrompt } = useSessionStore();
+  const {
+    addUserMessage,
+    appendSSEEvent,
+    consumePendingPrompt,
+    fetchSessions,
+    fetchSimulations,
+    persistAssistant,
+    requestAssistant,
+  } = useSessionStore();
 
   // @-mention state — only active inside a project (simulations belong to one).
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -53,22 +170,55 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
       .filter((s) => (s.nickname || "").toLowerCase().includes(q))
       .slice(0, 8);
   }, [mentionOpen, projectId, mentionQuery, sessions]);
+  const selectedRunStatus = sessions.find((session) => session.session_id === contextSessionId)?.run_status;
+  const contextActions = !contextSessionId
+    ? []
+    : workspaceTab === "progress"
+      ? selectedRunStatus === "finished"
+        ? [RUN_ANALYSIS_ACTION]
+        : selectedRunStatus === "running" || selectedRunStatus === "paused"
+          ? []
+          : [START_SIMULATION_ACTION]
+      : TAB_CONTEXT_ACTIONS[workspaceTab] ?? [];
 
   useEffect(() => {
     if (hi > matches.length - 1) setHi(0);
   }, [matches.length, hi]);
 
-  const doSend = async (text: string, title?: string) => {
+  const doSend = async (text: string, title?: string, action?: AssistantActionInvocation) => {
     if (!text.trim() || isStreaming) return;
     const sendScope = projectId; // scope this send belongs to
     setValue("");
     setMentionOpen(false);
-    addUserMessage(text, title);
+    // Shortcut actions send a detailed instruction to the harness, but the
+    // conversation should stay compact: show only the action title to the user.
+    addUserMessage(title || text);
     abortRef.current = new AbortController();
+    const normalizedText = text.toLowerCase();
+    const mentionedSession = [...sessions]
+      .filter((session) => session.nickname && normalizedText.includes(`@${session.nickname.toLowerCase()}`))
+      .sort((a, b) => b.nickname.length - a.nickname.length)[0];
+    const resolvedContextSessionId =
+      action?.session_id || mentionedSession?.session_id || contextSessionId || undefined;
     try {
-      for await (const event of streamAssistant(sendScope, text, abortRef.current.signal)) {
+      for await (const event of streamAssistant(
+        sendScope,
+        text,
+        abortRef.current.signal,
+        action,
+        resolvedContextSessionId,
+      )) {
         if (projectIdRef.current !== sendScope) return; // switched away — don't touch the new scope
         appendSSEEvent(event);
+        if (
+          event.type === "tool_result" &&
+          (event.tool_name === "create_simulation" ||
+            event.tool_name === "start_simulation" ||
+            event.tool_name === "run_analysis")
+        ) {
+          if (sendScope) await fetchSimulations(sendScope);
+          else await fetchSessions();
+        }
       }
     } catch (err) {
       if (projectIdRef.current !== sendScope) return;
@@ -84,6 +234,15 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
 
   const handleSend = () => doSend(value);
   const handleStop = () => abortRef.current?.abort();
+  const handleContextAction = (action: ContextAction) => {
+    if (!contextSessionId || isStreaming) return;
+    const nickname = sessions.find((session) => session.session_id === contextSessionId)?.nickname || "selected";
+    requestAssistant(
+      action.prompt(nickname),
+      action.title,
+      action.action ? { name: action.action, session_id: contextSessionId } : undefined,
+    );
+  };
 
   const refreshMention = (text: string, caret: number) => {
     if (!projectId) { setMentionOpen(false); return; }
@@ -141,16 +300,32 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
   useEffect(() => {
     if (!pendingPrompt) return;
     consumePendingPrompt();
-    if (!isStreaming) doSend(pendingPrompt.text, pendingPrompt.title);
+    if (!isStreaming) doSend(pendingPrompt.text, pendingPrompt.title, pendingPrompt.action);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingPrompt]);
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-800 p-3 bg-white/50 dark:bg-gray-900/50 flex-shrink-0">
-      <div className="relative flex gap-2 items-end">
+    <div className="p-3 bg-white/50 dark:bg-gray-900/50 flex-shrink-0">
+      {contextActions.length > 0 && (
+        <div className="mb-3 flex items-center gap-2 overflow-x-auto">
+          {contextActions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => handleContextAction(action)}
+              disabled={isStreaming}
+              className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200/70 bg-gradient-to-r from-cyan-50 via-blue-50 to-indigo-50 px-2.5 py-1.5 text-[11px] font-medium text-indigo-700 transition-colors hover:from-cyan-100 hover:via-blue-100 hover:to-indigo-100 disabled:cursor-not-allowed disabled:opacity-45 dark:border-indigo-500/30 dark:from-cyan-950/50 dark:via-blue-950/50 dark:to-indigo-950/50 dark:text-indigo-200 dark:hover:from-cyan-950/70 dark:hover:via-blue-950/70 dark:hover:to-indigo-950/70"
+            >
+              <Bot size={12} />
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="relative">
         {/* @-mention dropdown — simulations in this project */}
         {mentionOpen && matches.length > 0 && (
-          <div className="absolute bottom-full left-0 mb-2 w-72 max-w-full max-h-60 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl z-50 py-1">
+          <div className="amd-mention-list-enter absolute bottom-full left-0 mb-2 w-72 max-w-full max-h-60 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl z-50 py-1">
             <p className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Simulations</p>
             {matches.map((s, i) => (
               <button
@@ -179,24 +354,26 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
           onClick={(e) => refreshMention(value, (e.target as HTMLTextAreaElement).selectionStart ?? value.length)}
           placeholder={projectId ? "Ask about this project's simulations…  (@ to mention one)" : "Ask the assistant…"}
           rows={3}
-          className="flex-1 resize-none border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
+          className="amd-highlight-field w-full resize-none rounded-xl py-2 pl-3 pr-12 text-sm text-gray-900 dark:text-gray-100 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500"
         />
         {isStreaming ? (
           <button
             onClick={handleStop}
-            className="p-2.5 rounded-xl bg-red-900/60 text-red-400 hover:bg-red-800 transition-colors flex-shrink-0"
+            className="absolute right-2.5 top-1/2 -mt-1 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border-0 bg-transparent text-red-500 transition-[filter,opacity] hover:brightness-110 dark:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60"
             title="Stop"
+            aria-label="Stop response"
           >
-            <StopCircle size={20} />
+            <StopCircle size={18} />
           </button>
         ) : (
           <button
             onClick={handleSend}
             disabled={!value.trim()}
-            className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors flex-shrink-0"
+            className="absolute right-2.5 top-1/2 -mt-1 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border-0 bg-transparent transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
             title="Send (Enter)"
+            aria-label="Send message"
           >
-            <Send size={20} />
+            <GradientSendIcon />
           </button>
         )}
       </div>

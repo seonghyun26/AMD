@@ -8,3 +8,13 @@ box_distance: 1.2        # nm
 topology: topol.top
 coordinates: chignolin.gro
 index: null
+
+# CHARMM36m cutoff profile: force-switch Lennard-Jones interactions from
+# 1.0 to 1.2 nm, with the matching 1.2 nm neighbor and PME cutoffs.
+gromacs:
+  rlist: 1.2
+  rcoulomb: 1.2
+  vdwtype: Cut-off
+  vdw_modifier: Force-switch
+  rvdw_switch: 1.0
+  rvdw: 1.2

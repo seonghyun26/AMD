@@ -24,22 +24,21 @@ import {
   Binary,
   Layers,
   MessageSquare,
-  Bot,
   Download,
   Trash2,
   ChevronDown,
   ChevronRight,
-  X,
   Archive,
   RotateCcw,
   Lock,
   Search,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 
 import type { AgentType } from "@/lib/agentStream";
 import { getUsername } from "@/lib/auth";
 import dynamic from "next/dynamic";
-const AgentModal = dynamic(() => import("@/components/agents/AgentModal"), { ssr: false });
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 const TrajectoryViewer = dynamic(() => import("@/components/viz/TrajectoryViewer"), { ssr: false });
 const MoleculeViewer = dynamic(() => import("@/components/viz/MoleculeViewer"), { ssr: false });
@@ -48,7 +47,11 @@ const CVSetupModal = dynamic(() => import("@/components/viz/CVSetupModal"), { ss
 const InlineCVPicker = dynamic(() => import("@/components/viz/InlineCVPicker"), { ssr: false });
 const CustomCVResultCard = dynamic(() => import("@/components/viz/CustomCVResultCard"), { ssr: false });
 import FileUpload from "@/components/files/FileUpload";
+import PopupPresence from "@/components/ui/PopupPresence";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 import { useTheme } from "@/lib/theme";
+import { UI_COLORS, colorWithAlpha } from "@/lib/colors";
+import { PLOT_COLORS, PLOT_CONFIG, plotAxis, plotLayout } from "@/lib/plotTheme";
 import { uuid } from "@/lib/utils";
 import { Section, Field, FieldGrid, SelectField, PillTabs } from "./ui";
 import {
@@ -62,7 +65,6 @@ import {
 import {
   getSessionConfig,
   updateSessionConfig,
-  generateSessionFiles,
   listFiles,
   downloadUrl,
   downloadZipUrl,
@@ -133,7 +135,8 @@ function FilePreviewModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+        data-popup-title="File preview"
+        className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
         style={{ width: "min(900px, 92vw)", height: "80vh" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -149,12 +152,6 @@ function FilePreviewModal({
               <Download size={12} />
               Download
             </a>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            >
-              <X size={15} />
-            </button>
           </div>
         </div>
 
@@ -183,6 +180,7 @@ function FilePreviewModal({
             </pre>
           )}
         </div>
+        <PopupTailClose onClick={onClose} label="Close file preview" />
       </div>
     </div>
   );
@@ -202,21 +200,15 @@ function DeleteConfirmPopup({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
       <div
-        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl p-5 w-full max-w-sm"
+        data-popup-title="Move to archive"
+        className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl p-5 w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Move to archive?</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           <span className="font-mono text-gray-700 dark:text-gray-300">{name}</span> will be moved to the simulation&apos;s
           archive folder. Use the archive button in the Files tab to restore it.
         </p>
         <div className="flex gap-2 justify-end">
-          <button
-            onClick={onCancel}
-            className="px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            Cancel
-          </button>
           <button
             onClick={onConfirm}
             className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-900/60 hover:bg-red-100 dark:hover:bg-red-800/70 border border-red-300/60 dark:border-red-700/60 text-red-600 dark:text-red-300 hover:text-red-700 dark:hover:text-red-100 transition-colors"
@@ -224,6 +216,7 @@ function DeleteConfirmPopup({
             Move to archive
           </button>
         </div>
+        <PopupTailClose onClick={onCancel} label="Cancel archive action" />
       </div>
     </div>
   );
@@ -236,11 +229,11 @@ interface ResultCardDef { id: string; type: ResultCardType; meta?: CustomCVConfi
 
 type EnergyCardType = Exclude<ResultCardType, "ramachandran" | "custom_cv" | "mlcv">;
 const ENERGY_TERM_CONFIG: Record<EnergyCardType, { label: string; xvgPrefix: string; unit: string; color: string; fillColor: string }> = {
-  energy_potential:    { label: "Potential Energy", xvgPrefix: "potential",   unit: "kJ/mol", color: "#f59e0b", fillColor: "rgba(245,158,11,0.10)"  },
-  energy_kinetic:      { label: "Kinetic Energy",   xvgPrefix: "kinetic",     unit: "kJ/mol", color: "#38bdf8", fillColor: "rgba(56,189,248,0.10)"  },
-  energy_total:        { label: "Total Energy",     xvgPrefix: "total",       unit: "kJ/mol", color: "#a78bfa", fillColor: "rgba(167,139,250,0.10)" },
-  energy_temperature:  { label: "Temperature",      xvgPrefix: "temperature", unit: "K",      color: "#f87171", fillColor: "rgba(248,113,113,0.10)" },
-  energy_pressure:     { label: "Pressure",         xvgPrefix: "pressure",    unit: "bar",    color: "#34d399", fillColor: "rgba(52,211,153,0.10)"  },
+  energy_potential:    { label: "Potential Energy", xvgPrefix: "potential",   unit: "kJ/mol", color: UI_COLORS.plot.energy.potential,   fillColor: colorWithAlpha(UI_COLORS.plot.energy.potential, 0.10) },
+  energy_kinetic:      { label: "Kinetic Energy",   xvgPrefix: "kinetic",     unit: "kJ/mol", color: UI_COLORS.plot.energy.kinetic,     fillColor: colorWithAlpha(UI_COLORS.plot.energy.kinetic, 0.10) },
+  energy_total:        { label: "Total Energy",     xvgPrefix: "total",       unit: "kJ/mol", color: UI_COLORS.plot.energy.total,       fillColor: colorWithAlpha(UI_COLORS.plot.energy.total, 0.10) },
+  energy_temperature:  { label: "Temperature",      xvgPrefix: "temperature", unit: "K",      color: UI_COLORS.plot.energy.temperature, fillColor: colorWithAlpha(UI_COLORS.plot.energy.temperature, 0.10) },
+  energy_pressure:     { label: "Pressure",         xvgPrefix: "pressure",    unit: "bar",    color: UI_COLORS.plot.energy.pressure,    fillColor: colorWithAlpha(UI_COLORS.plot.energy.pressure, 0.10) },
 };
 
 const ENERGY_CARD_TYPES: EnergyCardType[] = [
@@ -410,16 +403,7 @@ function EnergyCardContent({
   for (const v of yVals) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; sumVal += v; }
   const meanVal = yVals.length > 0 ? sumVal / yVals.length : 0;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const axisBase: any = {
-    zeroline: false,
-    color: isDark ? "#374151" : "#9ca3af",
-    tickfont: { size: compact ? 10 : 11, color: isDark ? "#6b7280" : "#6b7280" },
-    titlefont: { size: 12, color: cfg.color },
-    gridcolor: isDark ? "#1f2937" : "#e5e7eb",
-    gridwidth: 1,
-    showgrid: true,
-  };
+  const axisBase = plotAxis(isDark, { compact, accent: cfg.color });
 
   return (
     <Plot
@@ -433,19 +417,16 @@ function EnergyCardContent({
         fillcolor: cfg.fillColor,
         line: { color: cfg.color, width: compact ? 2 : 2.5, shape: "spline", smoothing: 0.3 },
       }]}
-      layout={{
+      layout={plotLayout(isDark, {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         xaxis: { ...axisBase, title: compact ? undefined : ("Time (ps)" as any), nticks: compact ? 5 : 8 },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         yaxis: { ...axisBase, title: cfg.unit as any, nticks: compact ? 5 : 6 },
         showlegend: false,
-        hovermode: "x unified",
-        hoverlabel: { bgcolor: isDark ? "#111827" : "#ffffff", bordercolor: cfg.color, font: { size: 12, color: isDark ? "#e5e7eb" : "#374151" } },
+        hoverlabel: { bordercolor: cfg.color },
         margin: compact ? { t: 4, l: 50, r: 6, b: 30 } : { t: 8, l: 56, r: 20, b: 40 },
-        paper_bgcolor: "transparent",
-        plot_bgcolor: "transparent",
-      }}
-      config={{ responsive: true, displayModeBar: false }}
+      })}
+      config={PLOT_CONFIG}
       style={{ width: "100%", height: "100%" }}
     />
   );
@@ -467,7 +448,7 @@ function ResultCard({
   const [stats, setStats] = useState<{ last: number; min: number; max: number; mean: number } | null>(null);
   const termCfg = ENERGY_TERM_CONFIG[card.type as EnergyCardType];
   const label = termCfg?.label ?? card.type;
-  const accentColor = termCfg?.color ?? "#6b7280";
+  const accentColor = termCfg?.color ?? UI_COLORS.neutral[500];
   const unit = termCfg?.unit ?? "";
 
   const handleRefresh = () => {
@@ -593,59 +574,48 @@ function ResultCard({
       </div>
 
       {/* Expanded modal */}
-      {expanded && (
+      <PopupPresence show={expanded}>
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setExpanded(false)}
         >
           <div
-            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
+            data-popup-title={label}
+            className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
             style={{ width: "min(1080px, 95vw)", height: "420px" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-                <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>{label}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
+            <div className="relative flex-1 min-h-0">
+              <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-lg border border-gray-200/70 bg-white/75 p-1 shadow-sm backdrop-blur-md dark:border-gray-700/70 dark:bg-gray-900/75">
                 <button onClick={handleDownload} title="Download" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   <Download size={12} />
                 </button>
                 <button onClick={handleRefresh} title="Refresh" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
                 </button>
-                <button onClick={() => setExpanded(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                  <X size={14} />
-                </button>
+              </div>
+              <div className="absolute inset-0 overflow-hidden">
+                <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact={false} refreshKey={refreshKey} maxPoints={50000} />
               </div>
             </div>
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact={false} refreshKey={refreshKey} maxPoints={50000} />
-            </div>
+            <PopupTailClose onClick={() => setExpanded(false)} label={`Close ${label} plot`} />
           </div>
         </div>
-      )}
+      </PopupPresence>
 
       {/* Delete confirmation */}
-      {confirmDelete && (
+      <PopupPresence show={confirmDelete}>
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setConfirmDelete(false)}
         >
           <div
-            className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72"
+            data-popup-title="Remove plot"
+            className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">{label}</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              >
-                Cancel
-              </button>
               <button
                 onClick={() => { setConfirmDelete(false); onDelete(); }}
                 className="px-3 py-1.5 rounded-lg text-xs border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
@@ -653,9 +623,10 @@ function ResultCard({
                 Remove
               </button>
             </div>
+            <PopupTailClose onClick={() => setConfirmDelete(false)} label="Cancel plot removal" />
           </div>
         </div>
-      )}
+      </PopupPresence>
     </>
   );
 }
@@ -709,15 +680,12 @@ function RamachandranExpandedModal({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
+        data-popup-title="Ramachandran"
+        className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
         style={{ width: "min(600px, 95vw)", height: "min(600px, 90vh)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-            <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>Ramachandran</span>
-          </div>
+        <div className="flex items-center justify-end px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-1.5">
             <button
               onClick={onRefresh}
@@ -747,14 +715,8 @@ function RamachandranExpandedModal({
               >
                 <Settings size={13} />
               </button>
-              {settingsOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                    <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
-                    <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
-                      <X size={12} />
-                    </button>
-                  </div>
+              <PopupPresence show={settingsOpen} duration={400}>
+                <div data-popup-title="Plot settings" className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                   <div className="p-3 space-y-3">
                     <div className="flex items-center gap-2">
                       <span className="w-20 text-gray-400 flex-shrink-0">DPI</span>
@@ -793,15 +755,10 @@ function RamachandranExpandedModal({
                       </button>
                     </div>
                   </div>
+                  <PopupTailClose onClick={() => setSettingsOpen(false)} label="Close plot settings" />
                 </div>
-              )}
+              </PopupPresence>
             </div>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            >
-              <X size={14} />
-            </button>
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center p-4">
@@ -826,6 +783,7 @@ function RamachandranExpandedModal({
             />
           )}
         </div>
+        <PopupTailClose onClick={onClose} label="Close Ramachandran plot" />
       </div>
     </div>
   );
@@ -853,7 +811,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
   const [plotSettings, setPlotSettings] = useState<Required<RamachandranPlotSettings>>({ ...RAMACHANDRAN_DEFAULTS });
-  const accentColor = "#06b6d4";
+  const accentColor = UI_COLORS.brand.science;
 
   // Revoke blob URL on unmount to prevent memory leak
   useEffect(() => {
@@ -958,14 +916,8 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                 <Settings size={13} />
               </button>
 
-              {settingsOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                    <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
-                    <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
-                      <X size={12} />
-                    </button>
-                  </div>
+              <PopupPresence show={settingsOpen} duration={400}>
+                <div data-popup-title="Plot settings" className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                   <div className="p-3 space-y-3">
                     {/* DPI */}
                     <div className="flex items-center gap-2">
@@ -1024,8 +976,9 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                       </button>
                     </div>
                   </div>
+                  <PopupTailClose onClick={() => setSettingsOpen(false)} label="Close plot settings" />
                 </div>
-              )}
+              </PopupPresence>
             </div>
             <button onClick={() => setConfirmDelete(true)} title="Remove" className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors">
               <Trash2 size={13} />
@@ -1056,7 +1009,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
       </div>
 
       {/* Expanded modal */}
-      {expanded && (
+      <PopupPresence show={expanded}>
         <RamachandranExpandedModal
           accentColor={accentColor}
           imgSrc={imgSrc}
@@ -1069,32 +1022,33 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
           onDownload={handleDownload}
           onUpdateSetting={updateSetting}
         />
-      )}
+      </PopupPresence>
 
-      {confirmDelete && (
+      <PopupPresence show={confirmDelete}>
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
+          <div data-popup-title="Remove plot" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">Ramachandran</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
               <button onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-3 py-1.5 rounded-lg text-xs border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">Remove</button>
             </div>
+            <PopupTailClose onClick={() => setConfirmDelete(false)} label="Cancel plot removal" />
           </div>
         </div>
-      )}
+      </PopupPresence>
     </>
   );
 }
 
 function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: () => void }) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [data, setData] = useState<Record<string, number[]> | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "empty" | "error">("loading");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [spinning, setSpinning] = useState(false);
-  const accentColor = "#8b5cf6";
+  const accentColor = UI_COLORS.brand.accent;
 
   useEffect(() => {
     setStatus("loading");
@@ -1122,7 +1076,7 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
     return mlKeys.length > 0 ? mlKeys : keys;
   }, [data]);
 
-  const MLCV_COLORS = ["#8b5cf6", "#ec4899", "#06b6d4", "#f59e0b"];
+  const MLCV_COLORS = PLOT_COLORS;
 
   const renderPlot = (compact: boolean) => {
     if (!data || mlcvColumns.length === 0) return null;
@@ -1137,16 +1091,14 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
           name: col,
           line: { color: MLCV_COLORS[i % MLCV_COLORS.length], width: compact ? 1.2 : 1.5 },
         }))}
-        layout={{
+        layout={plotLayout(isDark, {
           margin: compact ? { t: 8, r: 8, b: 30, l: 40 } : { t: 16, r: 16, b: 40, l: 55 },
-          paper_bgcolor: "rgba(0,0,0,0)",
-          plot_bgcolor: "rgba(0,0,0,0)",
-          xaxis: { title: compact ? undefined : { text: "Time (ps)" }, gridcolor: "rgba(128,128,128,0.15)", zerolinecolor: "rgba(128,128,128,0.2)", tickfont: { size: compact ? 9 : 11, color: "#9ca3af" } },
-          yaxis: { title: compact ? undefined : { text: "MLCV value" }, gridcolor: "rgba(128,128,128,0.15)", zerolinecolor: "rgba(128,128,128,0.2)", tickfont: { size: compact ? 9 : 11, color: "#9ca3af" } },
-          legend: { font: { size: 10, color: "#9ca3af" }, x: 1, xanchor: "right" as const, y: 1 },
+          xaxis: { title: compact ? undefined : { text: "Time (ps)" }, tickfont: { size: compact ? 9 : 11 } },
+          yaxis: { title: compact ? undefined : { text: "MLCV value" }, tickfont: { size: compact ? 9 : 11 } },
+          legend: { font: { size: 10 }, x: 1, xanchor: "right" as const, y: 1 },
           showlegend: mlcvColumns.length > 1,
-        }}
-        config={{ displayModeBar: false, responsive: true }}
+        })}
+        config={PLOT_CONFIG}
         style={{ width: "100%", height: "100%" }}
       />
     );
@@ -1183,40 +1135,33 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
         </div>
       </div>
 
-      {expanded && (
+      <PopupPresence show={expanded}>
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setExpanded(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ width: "min(1080px, 95vw)", height: "420px" }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-                <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>MLCV</span>
-              </div>
+          <div data-popup-title="MLCV" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ width: "min(1080px, 95vw)", height: "420px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-end px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center gap-1.5">
                 <button onClick={handleRefresh} title="Refresh" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
                 </button>
-                <button onClick={() => setExpanded(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                  <X size={14} />
-                </button>
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">{renderPlot(false)}</div>
+            <PopupTailClose onClick={() => setExpanded(false)} label="Close MLCV plot" />
           </div>
         </div>
-      )}
+      </PopupPresence>
 
-      {confirmDelete && (
+      <PopupPresence show={confirmDelete}>
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
+          <div data-popup-title="Remove plot" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">MLCV</span> plot will be removed.</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
               <button onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-3 py-1.5 rounded-lg text-xs border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">Remove</button>
             </div>
+            <PopupTailClose onClick={() => setConfirmDelete(false)} label="Cancel plot removal" />
           </div>
         </div>
-      )}
+      </PopupPresence>
     </>
   );
 }
@@ -1280,11 +1225,10 @@ function AddPlotModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-80"
+        data-popup-title="Add analysis"
+        className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-80"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-4">Add Analysis</h3>
-
         {/* Energy group */}
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider leading-none">Energy</p>
@@ -1320,7 +1264,7 @@ function AddPlotModal({
                 />
                 <span className="text-xs text-gray-700 dark:text-gray-300">{ENERGY_TERM_CONFIG[t].label}</span>
                 <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">{ENERGY_TERM_CONFIG[t].unit}</span>
-                {alreadyAdded && <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />}
+                {alreadyAdded && <CheckCircle2 size={11} className="amd-check-icon flex-shrink-0" />}
               </label>
             );
           })}
@@ -1345,7 +1289,7 @@ function AddPlotModal({
               <input type="checkbox" checked readOnly disabled className="accent-blue-500 w-3.5 h-3.5 flex-shrink-0" />
               <span className="text-xs text-gray-700 dark:text-gray-300">Ramachandran</span>
               <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">φ/ψ map</span>
-              <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />
+              <CheckCircle2 size={11} className="amd-check-icon flex-shrink-0" />
             </div>
           ) : (
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
@@ -1370,7 +1314,7 @@ function AddPlotModal({
               <input type="checkbox" checked readOnly disabled className="accent-violet-500 w-3.5 h-3.5 flex-shrink-0" />
               <span className="text-xs text-gray-700 dark:text-gray-300">MLCV</span>
               <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">ML collective variable</span>
-              <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />
+              <CheckCircle2 size={11} className="amd-check-icon flex-shrink-0" />
             </div>
           ) : (
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
@@ -1392,10 +1336,11 @@ function AddPlotModal({
         <button
           onClick={handleRun}
           disabled={checked.size === 0}
-          className="w-full py-2 rounded-xl text-xs font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="amd-primary-button w-full py-2 rounded-xl text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Run Analysis
         </button>
+        <PopupTailClose onClick={onClose} label="Close analysis picker" />
       </div>
     </div>
   );
@@ -1468,10 +1413,10 @@ function SimRunConfirmModal({
   const nsteps = Number(method.nsteps ?? 0);
   const dt     = Number(gromacs.dt    ?? 0.002); // ps per step
 
-  const freqXtc = Number(gromacs.nstxout_compressed ?? 10);
-  const freqTrr = Math.max(Number(gromacs.nstxout ?? 5000), Number(gromacs.nstvout ?? 5000));
+  const freqXtc = Number(gromacs.nstxout_compressed ?? 1000);
+  const freqTrr = Math.max(Number(gromacs.nstxout ?? 0), Number(gromacs.nstvout ?? 0));
   const freqEdr = Number(gromacs.nstenergy ?? 1000);
-  const freqLog = Number(gromacs.nstlog    ?? 1000);
+  const freqLog = Number(gromacs.nstlog    ?? 10000);
 
   const plumedCfg = (cfg.plumed ?? {}) as Record<string, unknown>;
   const cvsCfg = (plumedCfg.collective_variables ?? {}) as Record<string, unknown>;
@@ -1520,75 +1465,62 @@ function SimRunConfirmModal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Start Simulation</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Total: {simLabel} · {nsteps.toLocaleString()} steps</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors">
-            <X size={16} />
-          </button>
-        </div>
+    <div className="amd-mention-list-enter absolute bottom-full left-4 right-4 z-50 mb-2 max-h-[min(32rem,calc(100vh-6rem))] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-800">
+        <p className="text-xs text-gray-500 dark:text-gray-400">Total: {simLabel} · {nsteps.toLocaleString()} steps</p>
+      </div>
 
-        {/* Logging table */}
-        <div className="px-5 py-4">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">Output logging</p>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400">
-                  <th className="text-left px-3 py-2 font-medium">File</th>
-                  <th className="text-right px-3 py-2 font-medium">Every</th>
-                  <th className="text-right px-3 py-2 font-medium">Frames</th>
-                  <th className="text-right px-3 py-2 font-medium">Est. size</th>
+      {/* Logging table */}
+      <div className="px-5 py-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Output logging</p>
+        <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400">
+                <th className="px-3 py-2 text-left font-medium">File</th>
+                <th className="px-3 py-2 text-right font-medium">Every</th>
+                <th className="px-3 py-2 text-right font-medium">Frames</th>
+                <th className="px-3 py-2 text-right font-medium">Est. size</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60">
+              {rows.map((row) => (
+                <tr key={row.ext} className="text-gray-700 dark:text-gray-300">
+                  <td className="px-3 py-2">
+                    <span className="font-mono text-[11px] text-blue-500 dark:text-blue-400">{["colvar","hills","kernels"].includes(row.ext) ? row.ext.toUpperCase() : `.${row.ext}`}</span>
+                    <span className="ml-2 text-gray-400 dark:text-gray-500">{row.label.split("(")[1]?.replace(")", "") ?? ""}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">
+                    {row.freq > 0 ? `${row.freq.toLocaleString()} steps` : <span className="text-gray-300 dark:text-gray-600">off</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">
+                    {row.frames > 0 ? row.frames.toLocaleString() : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">{row.sizeLabel}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60">
-                {rows.map((row) => (
-                  <tr key={row.ext} className="text-gray-700 dark:text-gray-300">
-                    <td className="px-3 py-2">
-                      <span className="font-mono text-[11px] text-blue-500 dark:text-blue-400">{["colvar","hills","kernels"].includes(row.ext) ? row.ext.toUpperCase() : `.${row.ext}`}</span>
-                      <span className="ml-2 text-gray-400 dark:text-gray-500">{row.label.split("(")[1]?.replace(")", "") ?? ""}</span>
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">
-                      {row.freq > 0 ? `${row.freq.toLocaleString()} steps` : <span className="text-gray-300 dark:text-gray-600">off</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">
-                      {row.frames > 0 ? row.frames.toLocaleString() : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">{row.sizeLabel}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-2 text-xs text-gray-400 dark:text-gray-600 leading-relaxed">
-            Size estimates are approximate and may vary with solvent and settings.
-          </p>
+              ))}
+            </tbody>
+          </table>
         </div>
+        <p className="mt-2 text-xs leading-relaxed text-gray-400 dark:text-gray-600">
+          Size estimates are approximate and may vary with solvent and settings.
+        </p>
+      </div>
 
-        {/* Footer buttons */}
-        <div className="flex gap-3 justify-end px-5 pb-5">
-          <button
-            onClick={onEdit}
-            className="px-4 py-2 text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors font-medium"
-          >
-            Edit Settings
-          </button>
-          <button
-            onClick={onRun}
-            className="px-5 py-2 text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 flex items-center gap-1.5"
-          >
-            <Play size={12} fill="currentColor" />
-            Run
-          </button>
-        </div>
+      <div className="flex justify-end gap-3 border-t border-gray-100 px-5 py-3 dark:border-gray-800">
+        <button
+          onClick={onEdit}
+          className="rounded-lg bg-gray-100 px-4 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+        >
+          Edit Settings
+        </button>
+        <button
+          onClick={onRun}
+          className="amd-primary-button flex items-center gap-1.5 rounded-lg px-5 py-2 text-xs font-semibold"
+        >
+          <Play size={12} fill="currentColor" />
+          Run
+        </button>
       </div>
     </div>
   );
@@ -1784,16 +1716,18 @@ function FilesTab({ sessionId }: { sessionId: string }) {
         )}
       </Section>
 
-      {previewPath && (
-        <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />
-      )}
-      {deleteTarget && (
+      <PopupPresence show={Boolean(previewPath)}>
+        {previewPath && <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />}
+      </PopupPresence>
+      <PopupPresence show={Boolean(deleteTarget)}>
+        {deleteTarget && (
         <DeleteConfirmPopup
           name={deleteTarget.split("/").pop() ?? deleteTarget}
           onConfirm={() => handleDelete(deleteTarget)}
           onCancel={() => setDeleteTarget(null)}
         />
-      )}
+        )}
+      </PopupPresence>
     </div>
   );
 }
@@ -1809,6 +1743,8 @@ function ProgressTab({
   exitCode,
   totalSteps,
   timestepPs,
+  nvtEquilibrationPs,
+  nptEquilibrationPs,
   runStartedAt,
   runFinishedAt,
   resultCards,
@@ -1824,6 +1760,8 @@ function ProgressTab({
   exitCode: number | null;
   totalSteps: number;
   timestepPs: number;
+  nvtEquilibrationPs: number;
+  nptEquilibrationPs: number;
   runStartedAt: number | null;
   runFinishedAt?: number | null;
   resultCards: ResultCardDef[];
@@ -1831,11 +1769,12 @@ function ProgressTab({
   systemName: string;
   mlcvUsed: boolean;
 }) {
-  const [agentOpen, setAgentOpen] = useState(false);
   const [allFiles, setAllFiles] = useState<string[]>([]);
   const [filesLoadedFor, setFilesLoadedFor] = useState("");
   const [filesLoading, setFilesLoading] = useState(false);
   const [trajectoryKey, setTrajectoryKey] = useState(0);
+  const trajFsToggle = useRef<(() => void) | null>(null);
+  const [trajFullscreen, setTrajFullscreen] = useState(false);
   const [addPlotOpen, setAddPlotOpen] = useState(false);
   const [cvSetupOpen, setCvSetupOpen] = useState(false);
   const [liveProgress, setLiveProgress] = useState<{ step: number; time_ps: number; ns_per_day: number } | null>(null);
@@ -1884,17 +1823,23 @@ function ProgressTab({
     const tickNow = () => setNowMs(Date.now());
     const intervalNow = isActiveRun ? setInterval(tickNow, 1000) : null;
 
+    const logFiles = stage === "nvt"
+      ? ["nvt.log"]
+      : stage === "npt"
+        ? ["npt.log"]
+        : ["simulation/md.log", "md.log"];
+
     const pollProgress = async () => {
       try {
-        const primary = await getProgress(sessionId, "simulation/md.log");
-        if (cancelled) return;
-        if (primary.available && primary.progress) {
-          setLiveProgress(normalizeProgress(primary.progress));
-          return;
+        for (const logFile of logFiles) {
+          const result = await getProgress(sessionId, logFile);
+          if (cancelled) return;
+          if (result.available && result.progress) {
+            setLiveProgress(normalizeProgress(result.progress));
+            return;
+          }
         }
-        const fallback = await getProgress(sessionId, "md.log");
-        if (cancelled) return;
-        setLiveProgress(fallback.available ? normalizeProgress(fallback.progress) : null);
+        setLiveProgress(null);
       } catch {
         if (!cancelled) setLiveProgress(null);
       }
@@ -1907,7 +1852,7 @@ function ProgressTab({
       if (intervalNow) clearInterval(intervalNow);
       if (intervalProgress) clearInterval(intervalProgress);
     };
-  }, [sessionId, runStatus]);
+  }, [sessionId, runStatus, stage]);
 
   // Only use file lists that were fetched for the current session — memoized to avoid
   // rebuilding on every 1-second nowMs tick during running simulations.
@@ -1937,13 +1882,29 @@ function ProgressTab({
   const [prodStartMs, setProdStartMs] = useState<number | null>(null);
   useEffect(() => { setProdStartMs(null); }, [sessionId]);
   useEffect(() => {
-    if (runStatus === "running" && liveProgress != null) setProdStartMs((p) => p ?? Date.now());
-    else if (runStatus === "standby") setProdStartMs(null);
-  }, [runStatus, liveProgress]);
+    if (runStatus === "running" && stage === "production" && liveProgress != null) {
+      setProdStartMs((p) => p ?? Date.now());
+    } else if (runStatus === "standby" || stage === "nvt" || stage === "npt" || stage === "minimizing") {
+      setProdStartMs(null);
+    }
+  }, [runStatus, stage, liveProgress]);
 
+  // Pre-production equilibration (EM/NVT/NPT) — surfaced distinctly from the
+  // production run so the progress bar/steps aren't misread as production yet.
+  const STAGE_LABEL: Record<string, string> = {
+    minimizing: "Minimizing",
+    nvt: "NVT equilibration",
+    npt: "NPT equilibration",
+  };
+  const equilStage = runStatus === "running" && stage && stage !== "production" ? stage : null;
+  const safeTimestepPs = Number.isFinite(timestepPs) && timestepPs > 0 ? timestepPs : 0.002;
   const targetSteps = Number.isFinite(totalSteps) && totalSteps > 0 ? totalSteps : 0;
-  const pctRaw = targetSteps > 0 && liveProgress
-    ? Math.max(0, Math.min(100, (liveProgress.step / targetSteps) * 100))
+  const nvtSteps = Math.max(1, Math.round((Number.isFinite(nvtEquilibrationPs) ? nvtEquilibrationPs : 100) / safeTimestepPs));
+  const nptSteps = Math.max(1, Math.round((Number.isFinite(nptEquilibrationPs) ? nptEquilibrationPs : 100) / safeTimestepPs));
+  const stageTargetSteps = equilStage === "nvt" ? nvtSteps : equilStage === "npt" ? nptSteps : 0;
+  const progressTargetSteps = stageTargetSteps || targetSteps;
+  const pctRaw = progressTargetSteps > 0 && liveProgress
+    ? Math.max(0, Math.min(100, (liveProgress.step / progressTargetSteps) * 100))
     : 0;
   const pct = runStatus === "finished" ? 100 : pctRaw;
   // Only use the live `nowMs` ticker while the sim is actively running.
@@ -1958,8 +1919,7 @@ function ProgressTab({
         : null;
   const elapsedLabel = elapsedMs !== null ? formatElapsed(elapsedMs) : "—";
   const simNs = liveProgress ? liveProgress.time_ps / 1000 : 0;
-  const totalSimPs = totalSteps * timestepPs;
-  const totalSimNs = totalSimPs / 1000;
+  const displayTimeTargetNs = (stageTargetSteps || targetSteps) * safeTimestepPs / 1000;
   // Prefer GROMACS's own reported ns/day (written to the log at run end); while
   // running, derive it from PRODUCTION wall time (since md.log first appeared),
   // not the total elapsed which includes equilibration.
@@ -1973,24 +1933,15 @@ function ProgressTab({
       : prodElapsedMs != null && prodElapsedMs > 1000 && simNs > 0
         ? (simNs * 86400000) / prodElapsedMs
         : null;
-  // Pre-production equilibration (EM/NVT/NPT) — surfaced distinctly from the
-  // production run so the progress bar/steps aren't misread as production yet.
-  const STAGE_LABEL: Record<string, string> = {
-    minimizing: "Minimizing",
-    nvt: "NVT equilibration",
-    npt: "NPT equilibration",
-  };
-  const equilStage = runStatus === "running" && stage && stage !== "production" ? stage : null;
-
-  // Stage-order overview: EM → NVT → [NPT] → Simulation.
+  // Stage-order overview: EM → NVT → [NPT] → Main simulation.
   const orderSteps: { key: string; label: string }[] = equilibrate
     ? [
         { key: "minimizing", label: "EM" },
         { key: "nvt", label: "NVT" },
         ...(solvated ? [{ key: "npt", label: "NPT" }] : []),
-        { key: "production", label: "Simulation" },
+        { key: "production", label: "Main simulation" },
       ]
-    : [{ key: "production", label: "Simulation" }];
+    : [{ key: "production", label: "Main simulation" }];
   const prodIdx = orderSteps.findIndex((s) => s.key === "production");
   const activeIdx =
     runStatus === "finished"
@@ -2031,17 +1982,17 @@ function ProgressTab({
                 <Fragment key={s.key}>
                   {i > 0 && <ChevronRight size={12} className="text-gray-300 dark:text-gray-700 flex-shrink-0" />}
                   <span
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                    className={`inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                       failed
-                        ? "border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30"
+                        ? "border-red-500/80 bg-red-500 text-white shadow-sm shadow-red-500/20 dark:bg-red-500/90"
                         : done
-                          ? "border-emerald-300/60 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30"
+                          ? "border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700/70 dark:bg-blue-950/60 dark:text-blue-100"
                           : active
-                            ? "border-cyan-300 dark:border-cyan-700 text-cyan-600 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40"
-                            : "border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-600"
+                            ? "amd-active-tab"
+                            : "border-slate-200 bg-white/70 text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400"
                     }`}
                   >
-                    {done ? <Check size={11} /> : active && !failed ? <Loader2 size={11} className="animate-spin" /> : null}
+                    {done ? <Check size={11} className="amd-check-icon" /> : active && !failed ? <Loader2 size={11} className="animate-spin" /> : null}
                     {s.label}
                   </span>
                 </Fragment>
@@ -2050,7 +2001,7 @@ function ProgressTab({
           </div>
         )}
         {equilStage && (
-          <div className="flex items-center gap-2 rounded-lg border border-cyan-300/50 dark:border-cyan-800/50 bg-cyan-50/60 dark:bg-cyan-950/30 px-3 py-2 text-xs text-cyan-700 dark:text-cyan-300">
+          <div className="flex items-center gap-2 rounded-lg border border-indigo-200/80 bg-gradient-to-r from-cyan-50 to-indigo-50 px-3 py-2 text-xs text-indigo-900 shadow-sm dark:border-indigo-700/50 dark:from-cyan-950/60 dark:to-indigo-950/70 dark:text-indigo-100">
             <Loader2 size={13} className="animate-spin flex-shrink-0" />
             <span>
               Equilibrating before production — <span className="font-semibold">{STAGE_LABEL[equilStage] ?? equilStage}</span>. The production run starts automatically when this finishes.
@@ -2063,9 +2014,9 @@ function ProgressTab({
             <p className="text-sm font-mono text-gray-800 dark:text-gray-200">{elapsedLabel}</p>
           </div>
           <div className="bg-gray-50/70 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-800 rounded-lg p-2">
-            <p className="text-xs text-gray-500 uppercase tracking-wider">Sim Time</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">{equilStage ? "Stage Time" : "Sim Time"}</p>
             <p className="text-sm font-mono text-gray-800 dark:text-gray-200">
-              {simNs.toFixed(3)}{totalSimNs > 0 ? ` / ${totalSimNs.toFixed(1)} ns` : " ns"}
+              {simNs.toFixed(3)}{displayTimeTargetNs > 0 ? ` / ${displayTimeTargetNs.toFixed(1)} ns` : " ns"}
             </p>
           </div>
           <div className="bg-gray-50/70 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-800 rounded-lg p-2">
@@ -2080,16 +2031,21 @@ function ProgressTab({
             <span>
               {runStatus === "finished"
                 ? `${targetSteps.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
-                : equilStage
-                  ? `${STAGE_LABEL[equilStage] ?? "Equilibrating"}…`
+                : equilStage && liveProgress
+                  ? `${STAGE_LABEL[equilStage] ?? "Equilibrating"}: ${liveProgress.step.toLocaleString()} / ${progressTargetSteps.toLocaleString()} steps`
+                  : equilStage
+                    ? `Waiting for ${equilStage}.log...`
                   : liveProgress
                     ? `${liveProgress.step.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
                     : "Waiting for md.log..."}
             </span>
-            <span>{(runStatus === "finished" || (liveProgress && targetSteps > 0)) ? `${pct.toFixed(1)}%` : "0.0%"}</span>
+            <span>{(runStatus === "finished" || (liveProgress && progressTargetSteps > 0)) ? `${pct.toFixed(1)}%` : "0.0%"}</span>
           </div>
           <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${equilStage ? "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500" : "bg-emerald-500"}`}
+              style={{ width: `${pct}%` }}
+            />
           </div>
         </div>
       </Section>
@@ -2099,14 +2055,29 @@ function ProgressTab({
         title="Trajectory"
         accent="blue"
         action={
-          runStatus === "finished" ? (
-            <button
-              onClick={() => { refreshFiles(); setTrajectoryKey((k) => k + 1); }}
-              className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
-              title="Refresh trajectory"
-            >
-              <RefreshCw size={13} className={filesLoading ? "animate-spin" : ""} />
-            </button>
+          (runStatus === "finished" || runStatus === "failed") ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => trajFsToggle.current?.()}
+                disabled={filesLoading || !topologyFile || !trajectoryFile}
+                aria-label={trajFullscreen ? "Exit trajectory fullscreen" : "Open trajectory fullscreen"}
+                className="p-1 text-gray-500 hover:text-gray-300 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                title={trajFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              >
+                {trajFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              </button>
+              {runStatus === "finished" && (
+                <button
+                  type="button"
+                  onClick={() => { refreshFiles(); setTrajectoryKey((k) => k + 1); }}
+                  className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+                  title="Refresh trajectory"
+                >
+                  <RefreshCw size={13} className={filesLoading ? "animate-spin" : ""} />
+                </button>
+              )}
+            </div>
           ) : undefined
         }
       >
@@ -2116,6 +2087,8 @@ function ProgressTab({
           topologyPath={(runStatus === "finished" || runStatus === "failed") ? (topologyFile?.path ?? null) : null}
           trajectoryPath={(runStatus === "finished" || runStatus === "failed") ? (trajectoryFile?.path ?? null) : null}
           isLoading={(runStatus === "finished" || runStatus === "failed") && (filesLoading || filesLoadedFor !== sessionId)}
+          fsControl={trajFsToggle}
+          onFullscreenChange={setTrajFullscreen}
         />
       </Section>
 
@@ -2127,21 +2100,8 @@ function ProgressTab({
         action={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
-                useSessionStore.getState().requestAssistant(
-                  `Analyze the results of the "${nick}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`,
-                  "Analyze results"
-                );
-              }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
-            >
-              <Bot size={11} />
-              Analyze
-            </button>
-            <button
               onClick={() => setAddPlotOpen(true)}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-indigo-400 hover:bg-indigo-900/30 transition-colors font-medium"
+              className="amd-highlight-on-hover amd-result-add flex items-center gap-1 rounded-md border-2 border-transparent px-2 py-1 text-xs font-medium text-indigo-400 transition-all"
             >
               <Plus size={12} />
               Add
@@ -2154,7 +2114,7 @@ function ProgressTab({
           {resultCards.length === 0 ? (
             <button
               onClick={() => setAddPlotOpen(true)}
-              className="w-full rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/30 dark:bg-gray-900/30 hover:bg-gray-200/40 dark:hover:bg-gray-800/40 hover:border-gray-400 dark:hover:border-gray-600 transition-colors flex items-center justify-center gap-2 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400"
+              className="amd-highlight-on-hover amd-result-add flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-100/30 text-gray-400 transition-all hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-600 dark:hover:text-gray-400"
               style={{ height: "300px" }}
             >
               <Plus size={16} />
@@ -2173,7 +2133,7 @@ function ProgressTab({
               {/* Add button */}
               <button
                 onClick={() => setAddPlotOpen(true)}
-                className="flex-shrink-0 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/30 dark:bg-gray-900/30 hover:bg-gray-200/40 dark:hover:bg-gray-800/40 hover:border-gray-400 dark:hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400"
+                className="amd-highlight-on-hover amd-result-add flex flex-shrink-0 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-100/30 text-gray-400 transition-all hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-600 dark:hover:text-gray-400"
                 style={{ width: "120px", height: "300px" }}
               >
                 <Plus size={18} />
@@ -2184,7 +2144,7 @@ function ProgressTab({
         </div>
       </Section>
 
-      {addPlotOpen && (
+      <PopupPresence show={addPlotOpen}>
         <AddPlotModal
           onSelect={(types) => {
             setResultCards((prev) => [
@@ -2199,9 +2159,9 @@ function ProgressTab({
           sessionId={sessionId}
           mlcvUsed={mlcvUsed}
         />
-      )}
+      </PopupPresence>
 
-      {cvSetupOpen && (
+      <PopupPresence show={cvSetupOpen}>
         <CVSetupModal
           sessionId={sessionId}
           onConfirm={(cvDefs) => {
@@ -2214,11 +2174,8 @@ function ProgressTab({
           }}
           onClose={() => setCvSetupOpen(false)}
         />
-      )}
+      </PopupPresence>
 
-      {agentOpen && (
-        <AgentModal sessionId={sessionId} agentType="analysis" onClose={() => setAgentOpen(false)} />
-      )}
     </div>
   );
 }
@@ -2248,7 +2205,6 @@ function MoleculeTab({
   const [viewLoading, setViewLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const [agentOpen, setAgentOpen] = useState(false);
   const [expandedRoots, setExpandedRoots] = useState<Record<string, boolean>>({});
   const [molLibrary, setMolLibrary] = useState<{ id: string; label: string; states: { name: string; file: string }[] }[]>([]);
   const [molLibLoading, setMolLibLoading] = useState<string | null>(null);
@@ -2403,19 +2359,6 @@ function MoleculeTab({
         action={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
-                useSessionStore.getState().requestAssistant(
-                  `Help me pick a molecular system for the "${nick}" simulation. List the structure/topology input files already present, identify what system is set up, and suggest suitable PDB structures (with IDs) if something is missing.`,
-                  "Find a molecular system"
-                );
-              }}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-100/40 dark:hover:bg-blue-900/30 transition-colors font-medium"
-            >
-              <Bot size={12} />
-              Search
-            </button>
-            <button
               onClick={refreshFiles}
               className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
               title="Refresh"
@@ -2553,20 +2496,9 @@ function MoleculeTab({
         </Section>
       )}
 
-      {agentOpen && (
-        <AgentModal
-          sessionId={sessionId}
-          agentType="paper"
-          onClose={() => setAgentOpen(false)}
-          onPdbLoaded={(mol) => {
-            onSelectMolecule(mol);
-            setFileRefresh((n) => n + 1);
-          }}
-        />
-      )}
-      {previewPath && (
-        <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />
-      )}
+      <PopupPresence show={Boolean(previewPath)}>
+        {previewPath && <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />}
+      </PopupPresence>
     </div>
   );
 }
@@ -2676,30 +2608,24 @@ function GromacsTab({
   const isLocked = runStatus === "running" || runStatus === "finished";
   const equilibrate = gromacs.equilibrate !== false; // default on
   const solvated = String(system.water_model ?? "tip3p") !== "none";
-  const [agentOpen, setAgentOpen] = useState(false);
+  const timestepPs = Number(gromacs.dt ?? 0.002);
+  const timestepFs = timestepPs * 1000;
+  const nvtEquilibrationSteps = Math.max(
+    1,
+    Math.round(Number(gromacs.equil_nvt_ps ?? 100) / timestepPs),
+  );
+  const nptEquilibrationSteps = Math.max(
+    1,
+    Math.round(Number(gromacs.equil_npt_ps ?? 100) / timestepPs),
+  );
 
   return (
     <div className="p-4 space-y-4">
-      {/* Sticky header with agent button */}
+      {/* Sticky tab header */}
       <div className="sticky top-0 z-20 -mx-4 px-4 py-1.5 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur border-b border-gray-200/80 dark:border-gray-800/80">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">GROMACS Parameters</h3>
           <div className="flex items-center gap-2">
-            {!isLocked && (
-              <button
-                onClick={() => {
-                  const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
-                  useSessionStore.getState().requestAssistant(
-                    `Review the GROMACS parameters configured for the "${nick}" simulation (see its config.yaml / .mdp) and suggest sensible values or flag anything unusual for this system — thermostat, timestep, cutoffs, electrostatics, constraints and run length.`,
-                    "Suggest GROMACS settings"
-                  );
-                }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
-              >
-                <Bot size={11} />
-                Suggest Settings
-              </button>
-            )}
             {isLocked && (
               <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
                 <Lock size={12} />
@@ -2765,6 +2691,66 @@ function GromacsTab({
           </p>
         </Section>
 
+        {/* Initialization / equilibration */}
+        <Section
+          icon={<Layers size={13} />}
+          title="Initialization"
+          accent="indigo"
+          action={
+            <button
+              type="button"
+              onClick={() => { onChange("gromacs.equilibrate", !equilibrate); onSave(); }}
+              title={equilibrate ? "Equilibration enabled" : "Equilibration disabled"}
+              className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${equilibrate ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${equilibrate ? "left-[18px]" : "left-0.5"}`} />
+            </button>
+          }
+        >
+          {equilibrate ? (
+            <>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
+                Relax the system before production: energy minimization → NVT{solvated ? " → NPT" : ""} → Main simulation.
+                Tutorial defaults use 100 ps (50,000 steps at 2 fs) for both NVT and NPT.
+              </p>
+              <FieldGrid>
+                <Field
+                  label="EM step limit"
+                  type="number"
+                  value={String(gromacs.equil_em_steps ?? -1)}
+                  onChange={(v) => onChange("gromacs.equil_em_steps", Number(v))}
+                  onBlur={onSave}
+                  hint="-1 = no step limit; stops when Fmax < 1000 kJ mol⁻¹ nm⁻¹."
+                />
+                <Field
+                  label="NVT equilibration"
+                  type="number"
+                  value={String(gromacs.equil_nvt_ps ?? 100)}
+                  onChange={(v) => onChange("gromacs.equil_nvt_ps", Number(v))}
+                  onBlur={onSave}
+                  unit="ps"
+                  hint={`${nvtEquilibrationSteps.toLocaleString()} steps at ${timestepFs} fs.`}
+                />
+                {solvated && (
+                  <Field
+                    label="NPT equilibration"
+                    type="number"
+                    value={String(gromacs.equil_npt_ps ?? 100)}
+                    onChange={(v) => onChange("gromacs.equil_npt_ps", Number(v))}
+                    onBlur={onSave}
+                    unit="ps"
+                    hint={`${nptEquilibrationSteps.toLocaleString()} steps at ${timestepFs} fs.`}
+                  />
+                )}
+              </FieldGrid>
+            </>
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-500">
+              Equilibration off — production starts directly from the built system (velocities assigned at the reference temperature).
+            </p>
+          )}
+        </Section>
+
         {/* Simulation length */}
         {(() => {
           const nsteps = Number(method.nsteps ?? 0);
@@ -2828,63 +2814,6 @@ function GromacsTab({
           );
         })()}
 
-        {/* Initialization / equilibration */}
-        <Section
-          icon={<Layers size={13} />}
-          title="Initialization"
-          accent="indigo"
-          action={
-            <button
-              type="button"
-              onClick={() => { onChange("gromacs.equilibrate", !equilibrate); onSave(); }}
-              title={equilibrate ? "Equilibration enabled" : "Equilibration disabled"}
-              className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${equilibrate ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-700"}`}
-            >
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${equilibrate ? "left-[18px]" : "left-0.5"}`} />
-            </button>
-          }
-        >
-          {equilibrate ? (
-            <>
-              <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
-                Relax the system before production: energy minimization → NVT{solvated ? " → NPT" : ""} → simulation.
-              </p>
-              <FieldGrid>
-                <Field
-                  label="EM max steps"
-                  type="number"
-                  value={String(gromacs.equil_em_steps ?? 50000)}
-                  onChange={(v) => onChange("gromacs.equil_em_steps", Number(v))}
-                  onBlur={onSave}
-                  hint="Minimizer; stops early at emtol."
-                />
-                <Field
-                  label="NVT"
-                  type="number"
-                  value={String(gromacs.equil_nvt_ps ?? 100)}
-                  onChange={(v) => onChange("gromacs.equil_nvt_ps", Number(v))}
-                  onBlur={onSave}
-                  unit="ps"
-                />
-                {solvated && (
-                  <Field
-                    label="NPT"
-                    type="number"
-                    value={String(gromacs.equil_npt_ps ?? 100)}
-                    onChange={(v) => onChange("gromacs.equil_npt_ps", Number(v))}
-                    onBlur={onSave}
-                    unit="ps"
-                  />
-                )}
-              </FieldGrid>
-            </>
-          ) : (
-            <p className="text-xs text-gray-500 dark:text-gray-500">
-              Equilibration off — production starts directly from the built system (velocities assigned at the reference temperature).
-            </p>
-          )}
-        </Section>
-
         {/* Thermostat */}
         <Section icon={<Thermometer size={13} />} title="Temperature" accent="amber">
           <FieldGrid>
@@ -2914,9 +2843,6 @@ function GromacsTab({
       {/* Advanced — outside fieldset so toggle works when locked */}
       <AdvancedSection cfg={cfg} onChange={onChange} onSave={onSave} isLocked={isLocked} />
 
-      {agentOpen && (
-        <AgentModal sessionId={sessionId} agentType="paper" onClose={() => setAgentOpen(false)} />
-      )}
     </div>
   );
 }
@@ -3069,7 +2995,7 @@ function AdvancedSection({
               <Field
                 label="nstxout"
                 type="number"
-                value={String(gromacs.nstxout ?? "5000")}
+                value={String(gromacs.nstxout ?? "0")}
                 onChange={(v) => onChange("gromacs.nstxout", Number(v))}
                 onBlur={onSave}
                 hint="Coordinates to .trr"
@@ -3077,7 +3003,7 @@ function AdvancedSection({
               <Field
                 label="nstvout"
                 type="number"
-                value={String(gromacs.nstvout ?? "5000")}
+                value={String(gromacs.nstvout ?? "0")}
                 onChange={(v) => onChange("gromacs.nstvout", Number(v))}
                 onBlur={onSave}
                 hint="Velocities to .trr"
@@ -3093,7 +3019,7 @@ function AdvancedSection({
               <Field
                 label="nstlog"
                 type="number"
-                value={String(gromacs.nstlog ?? "1000")}
+                value={String(gromacs.nstlog ?? "10000")}
                 onChange={(v) => onChange("gromacs.nstlog", Number(v))}
                 onBlur={onSave}
                 hint="Energy to .log"
@@ -3101,7 +3027,7 @@ function AdvancedSection({
               <Field
                 label="nstxout-compressed"
                 type="number"
-                value={String(gromacs.nstxout_compressed ?? "10")}
+                value={String(gromacs.nstxout_compressed ?? "1000")}
                 onChange={(v) => onChange("gromacs.nstxout_compressed", Number(v))}
                 onBlur={onSave}
                 hint="Coordinates to .xtc"
@@ -3285,7 +3211,6 @@ function MethodTab({
   const hills = (method.hills ?? {}) as Record<string, unknown>;
   const plumedCfg = (cfg.plumed ?? {}) as Record<string, unknown>;
   const cvsCfg = (plumedCfg.collective_variables ?? {}) as Record<string, unknown>;
-  const [agentOpen, setAgentOpen] = useState(false);
   const [cvMode, setCvMode] = useState<"manual" | "mlcv">("manual");
   const [mlCheckpoints, setMlCheckpoints] = useState<string[]>([]);
   const [mlSelectedCkpt, setMlSelectedCkpt] = useState<string>(
@@ -3498,21 +3423,6 @@ function MethodTab({
             <span className="text-gray-500 dark:text-gray-400 font-normal">{currentMethod.long}</span> — {currentMethod.label}
           </h3>
           <div className="flex items-center gap-2">
-            {needsPlumed && !isLocked && (
-              <button
-                onClick={() => {
-                  const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
-                  useSessionStore.getState().requestAssistant(
-                    `Suggest good collective variables (CVs) for the "${nick}" simulation given its molecular system and enhanced-sampling method. For each CV, give the PLUMED-style definition (1-based atom indices) and explain why it is informative.`,
-                    "Suggest CVs"
-                  );
-                }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
-              >
-                <Bot size={11} />
-                Suggest CVs
-              </button>
-            )}
             {needsPlumed && (
               <button
                 onClick={() => { handlePreviewPlumed(); setPlumedPopupOpen(true); }}
@@ -3543,7 +3453,7 @@ function MethodTab({
               title={m.long}
               className={`flex-1 flex items-center justify-center text-xs font-medium transition-colors ${
                 m.id === currentMethodId
-                  ? "bg-indigo-100/50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300"
+                  ? "amd-selection-highlight"
                   : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
               } ${i < METHOD_OPTIONS.length - 1 ? "border-r border-gray-300 dark:border-gray-700" : ""}`}
             >
@@ -4021,17 +3931,16 @@ function MethodTab({
       )}
 
       {/* PLUMED preview popup modal */}
-      {plumedPopupOpen && (
+      <PopupPresence show={plumedPopupOpen}>
         <div className="fixed inset-0 z-60 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setPlumedPopupOpen(false)} />
-          <div className="relative w-[560px] max-h-[80vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+          <div data-popup-title="PLUMED input" className="amd-popup-enter relative w-[560px] max-h-[80vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40">
                   <FileText size={14} className="text-amber-600 dark:text-amber-400" />
                 </div>
-                <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">PLUMED Input File</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -4069,12 +3978,6 @@ function MethodTab({
                 >
                   Generate
                 </button>
-                <button
-                  onClick={() => setPlumedPopupOpen(false)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <X size={14} />
-                </button>
               </div>
             </div>
             {/* Body */}
@@ -4099,9 +4002,10 @@ function MethodTab({
                 <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-3">{plumedMessage}</p>
               )}
             </div>
+            <PopupTailClose onClick={() => setPlumedPopupOpen(false)} label="Close PLUMED input" />
           </div>
         </div>
-      )}
+      </PopupPresence>
 
       {/* Plain MD note */}
       {!needsPlumed && (
@@ -4112,9 +4016,6 @@ function MethodTab({
         </div>
       )}
 
-      {agentOpen && (
-        <AgentModal sessionId={sessionId} agentType="cv" onClose={() => setAgentOpen(false)} />
-      )}
     </div>
   );
 }
@@ -4124,7 +4025,7 @@ function MethodTab({
 function NewSessionForm({
   onCreated,
 }: {
-  onCreated: (id: string, workDir: string, nickname: string, seededFiles: string[]) => void;
+  onCreated: (id: string, workDir: string, nickname: string, seededFiles: string[], createdAt: string) => void;
 }) {
   const [nickname, setNickname] = useState(defaultNickname);
   const [preset, setPreset] = useState("md");
@@ -4142,7 +4043,7 @@ function NewSessionForm({
     const user = getUsername() || "default";
     const workDir = `outputs/${user}/${nick}/data`;
     try {
-      const { session_id, work_dir, nickname: savedNick, seeded_files } = await createSession({
+      const { session_id, work_dir, nickname: savedNick, seeded_files, created_at } = await createSession({
         workDir,
         nickname: nick,
         username: user,
@@ -4151,7 +4052,7 @@ function NewSessionForm({
         gromacs,
         projectId: activeProjectId ?? undefined,
       });
-      onCreated(session_id, work_dir, savedNick, seeded_files ?? []);
+      onCreated(session_id, work_dir, savedNick, seeded_files ?? [], created_at);
     } catch (err) {
       console.error("Session creation failed:", err);
       setError(briefError(err));
@@ -4163,7 +4064,7 @@ function NewSessionForm({
     <div className="flex h-full items-start justify-center p-6 overflow-y-auto">
       <div className="w-full max-w-4xl">
         <div className="mb-6 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 mb-3 shadow-lg">
+          <div className="amd-brand-mark inline-flex items-center justify-center w-12 h-12 rounded-xl mb-3 shadow-lg">
             <FlaskConical size={22} className="text-white" />
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New Simulation</h2>
@@ -4268,7 +4169,7 @@ function NewSessionForm({
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-all text-sm shadow-lg shadow-blue-900/30"
+            className="amd-primary-button w-full py-3 disabled:opacity-50 font-semibold rounded-xl text-sm"
           >
             {loading ? "Creating…" : "Create Simulation"}
           </button>
@@ -4280,16 +4181,38 @@ function NewSessionForm({
 
 // ── Main MDWorkspace ───────────────────────────────────────────────────
 
+function SimulationLoading() {
+  return (
+    <div className="flex h-full flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 size={24} className="animate-spin text-gray-400" />
+        <span className="text-sm text-gray-500">Loading simulation…</span>
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   sessionId: string | null;
   showNewForm: boolean;
+  selectionLoading?: boolean;
   onSessionCreated: (id: string, workDir: string, nickname: string) => void;
   onNewSession: () => void;
+  onSessionLoadComplete?: (id: string) => void;
+  onAssistantTabChange?: (tab: string) => void;
 }
 
 type SimState = "standby" | "running";
 
-export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, onNewSession }: Props) {
+export default function MDWorkspace({
+  sessionId,
+  showNewForm,
+  selectionLoading = false,
+  onSessionCreated,
+  onNewSession,
+  onSessionLoadComplete,
+  onAssistantTabChange,
+}: Props) {
   const [cfg, setCfg] = useState<Record<string, unknown>>({});
   const cfgRef = useRef<Record<string, unknown>>({});
   const [sessionLoading, setSessionLoading] = useState(!!sessionId);
@@ -4311,6 +4234,10 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   // Stable ref — lets the restore effect read latest sessions without re-running
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
+
+  useEffect(() => {
+    onAssistantTabChange?.(activeTab);
+  }, [activeTab, onAssistantTabChange]);
 
   // Reset simulation state when switching sessions, preserving terminal states from the store
   useEffect(() => {
@@ -4372,8 +4299,25 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     if (!stored) return;
     if (stored.started_at) setSimStartedAt((prev) => prev ?? stored.started_at! * 1000);
     if (stored.finished_at) setSimFinishedAt((prev) => prev ?? stored.finished_at! * 1000);
-    if (stored.run_status === "finished" || stored.run_status === "failed" || stored.run_status === "paused") {
+    if (stored.run_status === "running" || stored.run_status === "finished" || stored.run_status === "failed" || stored.run_status === "paused") {
+      // Agent-started runs arrive through the refreshed session list. Adopt the
+      // live state here so Progress immediately starts polling stage/progress.
       setSimRunStatus((prev) => (prev === "standby" ? stored.run_status! : prev));
+    }
+
+    // A completed assistant analysis updates result_cards server-side. Mirror it
+    // into the open workspace as soon as the chat refreshes the session list.
+    const storedTypes = (stored.result_cards ?? [])
+      .map((entry: unknown) => (typeof entry === "string" ? entry : (entry as { type?: string })?.type))
+      .filter((type): type is string => Boolean(type && VALID_RESULT_CARD_TYPES.has(type)));
+    if (storedTypes.length) {
+      setResultCards((current) => {
+        const currentTypes = new Set(current.map((card) => card.type));
+        const additions = storedTypes
+          .filter((type) => !currentTypes.has(type as ResultCardType))
+          .map((type) => ({ id: uuid(), type: type as ResultCardType }));
+        return additions.length ? [...current, ...additions] : current;
+      });
     }
   }, [sessionId, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -4422,6 +4366,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         setCfg(r.config);
         cfgRef.current = r.config;
         setSessionLoading(false);
+        onSessionLoadComplete?.(sessionId);
 
         // Derive work_dir and molecule file from the config (authoritative)
         const run = (r.config.run ?? {}) as Record<string, unknown>;
@@ -4448,6 +4393,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
           setSelectedMolecule(null);
           setMoleculeLoading(false);
           setSessionLoading(false);
+          onSessionLoadComplete?.(sessionId);
         }
       });
     return () => { cancelled = true; };
@@ -4535,8 +4481,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
 
   const handleSave = useCallback(async () => {
     if (!sessionId) return;
-    await updateSessionConfig(sessionId, cfgRef.current).catch(() => {});
-    await generateSessionFiles(sessionId).catch(() => {});
+    await updateSessionConfig(sessionId, cfgRef.current);
   }, [sessionId]);
 
   const handleGromacsSave = useCallback(async () => {
@@ -4547,7 +4492,13 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       gromacsSavedTimerRef.current = null;
     }
     setGromacsSaveState("saving");
-    await handleSave();
+    try {
+      await handleSave();
+    } catch (err) {
+      console.error("Failed to save GROMACS settings:", err);
+      if (seq === gromacsSaveSeqRef.current) setGromacsSaveState("idle");
+      return;
+    }
     if (seq !== gromacsSaveSeqRef.current) return;
     setGromacsSaveState("saved");
     gromacsSavedTimerRef.current = setTimeout(() => {
@@ -4646,8 +4597,9 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     };
     setCfg(updatedCfg);
     cfgRef.current = updatedCfg;
-    await updateSessionConfig(sessionId, updatedCfg).catch(() => {});
-    await generateSessionFiles(sessionId).catch(() => {});
+    await updateSessionConfig(sessionId, updatedCfg).catch((err) => {
+      console.error("Failed to save molecule selection:", err);
+    });
   };
 
   const handleSessionCreated = async (
@@ -4655,6 +4607,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     workDir: string,
     nickname: string,
     seededFiles: string[],
+    createdAt: string,
   ) => {
     const structExts = new Set(["pdb", "gro", "mol2", "xyz"]);
     const structFile = seededFiles.find((f) => structExts.has(f.split(".").pop()?.toLowerCase() ?? ""));
@@ -4666,6 +4619,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       work_dir: workDir,
       nickname,
       selected_molecule: structFile ?? "",
+      created_at: createdAt,
+      updated_at: createdAt,
       run_status: "standby",
     });
     setSession(id, { method: "", system: "", gromacs: "", plumed_cvs: "", workDir });
@@ -4683,6 +4638,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   };
 
   if (!sessionId) {
+    if (selectionLoading) return <SimulationLoading />;
     if (showNewForm) {
       return (
         <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 h-full">
@@ -4691,23 +4647,18 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       );
     }
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 h-full gap-6 px-8">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center">
-            <FlaskConical size={28} className="text-gray-400 dark:text-gray-600" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No simulation selected</p>
-            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Select a simulation from the sidebar or create a new one to get started.</p>
-          </div>
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 h-full gap-4 px-8 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center">
+          <FlaskConical size={28} className="text-gray-400 dark:text-gray-600" />
         </div>
         <button
           onClick={onNewSession}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors shadow-lg shadow-blue-900/30"
+          className="amd-primary-button amd-new-simulation-button flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium"
         >
           <Plus size={14} />
           New Simulation
         </button>
+        <p className="text-xs text-gray-400 dark:text-gray-600">Select a simulation from the list or start a new one.</p>
       </div>
     );
   }
@@ -4726,6 +4677,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             exitCode={simExitCode}
             totalSteps={Number(((cfg.method as Record<string, unknown> | undefined)?.nsteps ?? 0))}
             timestepPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.dt ?? 0.002))}
+            nvtEquilibrationPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.equil_nvt_ps ?? 100))}
+            nptEquilibrationPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.equil_npt_ps ?? 100))}
             runStartedAt={simStartedAt}
             runFinishedAt={simFinishedAt}
             resultCards={resultCards}
@@ -4767,23 +4720,16 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 h-full min-w-0">
       <PillTabs active={activeTab} onChange={setActiveTab} saveState={gromacsSaveState} />
 
-      <div className={`flex-1 overflow-y-auto [scrollbar-gutter:stable] ${sessionLoading ? "flex flex-col" : ""}`}>
-        {sessionLoading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 size={24} className="animate-spin text-gray-400" />
-              <span className="text-sm text-gray-500">Loading simulation…</span>
-            </div>
-          </div>
-        ) : renderTab()}
+      <div className={`flex-1 overflow-y-auto [scrollbar-gutter:stable] ${sessionLoading || selectionLoading ? "flex flex-col" : ""}`}>
+        {sessionLoading || selectionLoading ? <SimulationLoading /> : renderTab()}
       </div>
 
       {/* Simulation action button */}
-      <div className="flex-shrink-0 px-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 h-[72px] flex items-center w-full">
+      <div className={`relative flex h-[72px] w-full flex-shrink-0 items-center border-t border-gray-200 bg-gray-50/50 px-4 transition-opacity dark:border-gray-800 dark:bg-gray-900/50 ${sessionLoading || selectionLoading ? "pointer-events-none opacity-0" : ""}`}>
         {actionState === "standby" && (
           <button
-            onClick={() => setShowRunConfirm(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 text-sm"
+            onClick={() => setShowRunConfirm((open) => !open)}
+            className="amd-primary-button w-full flex items-center justify-center gap-2 py-3 font-semibold rounded-xl text-sm"
           >
             <Play size={16} fill="currentColor" />
             Start MD Simulation
@@ -4792,9 +4738,9 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         {actionState === "finished" && (
           <button
             disabled
-            className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold rounded-xl text-sm cursor-not-allowed border border-emerald-200 dark:border-emerald-800/50"
+            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-100 dark:bg-indigo-950/60 text-blue-800 dark:text-blue-100 font-semibold rounded-xl text-sm cursor-not-allowed border border-blue-200 dark:border-blue-700/60"
           >
-            <CheckCircle2 size={16} />
+            <CheckCircle2 size={16} className="amd-check-icon" />
             Simulation Finished
           </button>
         )}
@@ -4816,7 +4762,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
               {hasCheckpoint ? (
                 <button
                   onClick={handleResume}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 text-sm"
+                  className="amd-primary-button flex-1 flex items-center justify-center gap-2 py-3 font-semibold rounded-xl text-sm"
                 >
                   <Play size={14} fill="currentColor" />
                   Resume
@@ -4824,7 +4770,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
               ) : (
                 <button
                   onClick={() => { handleTerminate(); }}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 text-sm"
+                  className="amd-primary-button flex-1 flex items-center justify-center gap-2 py-3 font-semibold rounded-xl text-sm"
                 >
                   <RotateCcw size={14} />
                   Restart
@@ -4840,33 +4786,24 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             </div>
           </div>
         )}
+        {showRunConfirm && actionState === "standby" && (
+          <SimRunConfirmModal
+            cfg={cfg}
+            onEdit={() => { setShowRunConfirm(false); setActiveTab("gromacs"); }}
+            onRun={() => { setShowRunConfirm(false); handleStartMD(); }}
+            onClose={() => setShowRunConfirm(false)}
+          />
+        )}
       </div>
 
-      {/* Simulation run confirmation dialog */}
-      {showRunConfirm && (
-        <SimRunConfirmModal
-          cfg={cfg}
-          onEdit={() => { setShowRunConfirm(false); setActiveTab("gromacs"); }}
-          onRun={() => { setShowRunConfirm(false); handleStartMD(); }}
-          onClose={() => setShowRunConfirm(false)}
-        />
-      )}
-
       {/* Pause confirmation dialog */}
-      {pauseConfirmOpen && (
+      <PopupPresence show={pauseConfirmOpen}>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Pause Simulation?</h3>
+          <div data-popup-title="Pause simulation" className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
               This will pause the running mdrun process. A checkpoint is saved automatically — you can resume from where it stopped.
             </p>
             <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setPauseConfirmOpen(false)}
-                className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                Cancel
-              </button>
               <button
                 onClick={handleConfirmPause}
                 className="px-4 py-2 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors font-medium"
@@ -4874,9 +4811,10 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
                 Pause Simulation
               </button>
             </div>
+            <PopupTailClose onClick={() => setPauseConfirmOpen(false)} label="Cancel simulation pause" />
           </div>
         </div>
-      )}
+      </PopupPresence>
     </div>
   );
 }

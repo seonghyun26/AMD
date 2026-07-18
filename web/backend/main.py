@@ -3,13 +3,31 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
+import warnings
+from importlib.util import find_spec
 from pathlib import Path
 
-if not os.environ.get("ANTHROPIC_API_KEY"):
-    import warnings
 
-    warnings.warn("ANTHROPIC_API_KEY is not set — agent calls will fail", stacklevel=1)
+def _available_assistant_backbones() -> list[str]:
+    """Return locally usable assistant backbones without triggering a login."""
+    backbones: list[str] = []
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        backbones.append("anthropic_api")
+    if find_spec("claude_agent_sdk") is not None:
+        backbones.append("claude_code")
+    if shutil.which(os.environ.get("AMD_CODEX_COMMAND", "").strip() or "codex"):
+        backbones.append("codex")
+    return backbones
+
+
+if not _available_assistant_backbones():
+    warnings.warn(
+        "No AI assistant backbone is available. Configure ANTHROPIC_API_KEY, "
+        "install and authenticate Claude Code, or install and log in to Codex.",
+        stacklevel=1,
+    )
 
 # Allow imports of both web.backend.* and md_agent.* when running directly
 _repo_root = str(Path(__file__).parents[2])

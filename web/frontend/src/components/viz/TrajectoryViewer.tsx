@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Camera, Crosshair, Film, Loader2, Pause, Play, Settings, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Camera, Crosshair, Film, Loader2, Minimize2, Pause, Play, Settings } from "lucide-react";
 import { downloadUrl, getFileContent } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { useTheme } from "@/lib/theme";
+import { viewerBackground } from "@/lib/colors";
+import PopupPresence from "@/components/ui/PopupPresence";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 
 type ExportBg = "white" | "black" | "transparent";
 
@@ -31,6 +34,10 @@ interface Props {
   trajectoryPath: string | null;
   /** True while the parent is still fetching the file list */
   isLoading?: boolean;
+  /** Parent-provided ref that receives the fullscreen-toggle fn (button lives in the section header) */
+  fsControl?: { current: (() => void) | null };
+  /** Notifies the parent when fullscreen is entered/exited so it can swap its button icon */
+  onFullscreenChange?: (fs: boolean) => void;
 }
 
 declare global {
@@ -43,6 +50,7 @@ declare global {
 }
 
 type LoadingStage = "ngl" | "topology" | "trajectory" | "frames" | null;
+type PlaybackSpeed = 1 | 10 | 100 | 1000;
 
 const LOADING_LABELS: Record<NonNullable<LoadingStage>, string> = {
   ngl:        "Loading viewer…",
@@ -50,6 +58,29 @@ const LOADING_LABELS: Record<NonNullable<LoadingStage>, string> = {
   trajectory: "Loading trajectory…",
   frames:     "Reading frames…",
 };
+
+const FRAME_CACHE_BUDGET_BYTES = 64 * 1024 * 1024;
+
+// NGL 2.4 keeps every visited remote frame indefinitely. Retain nearby frames
+// for smooth scrubbing while bounding memory during long trajectories.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function trimFrameCache(trajectory: any, currentFrame: number, atomCount: number) {
+  if (!trajectory?.frameCache || currentFrame < 0) return;
+  const bytesPerFrame = Math.max(1, atomCount * 3 * Float32Array.BYTES_PER_ELEMENT + 9 * Float32Array.BYTES_PER_ELEMENT);
+  const maxFrames = Math.max(4, Math.min(240, Math.floor(FRAME_CACHE_BUDGET_BYTES / bytesPerFrame)));
+  const cachedFrames = Object.keys(trajectory.frameCache)
+    .map(Number)
+    .filter(Number.isInteger);
+  if (cachedFrames.length <= maxFrames) return;
+
+  cachedFrames.sort((a, b) => Math.abs(a - currentFrame) - Math.abs(b - currentFrame));
+  for (const frameIndex of cachedFrames.slice(maxFrames)) {
+    delete trajectory.frameCache[frameIndex];
+    delete trajectory.boxCache?.[frameIndex];
+    delete trajectory.pathCache?.[frameIndex];
+  }
+  trajectory.frameCacheSize = maxFrames;
+}
 
 function parseStructureInfo(
   content: string,
@@ -90,7 +121,7 @@ function encodePathsB64(xtc: string, top: string): string {
     .replace(/=/g, "");
 }
 
-export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPath, isLoading = false }: Props) {
+export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPath, isLoading = false, fsControl, onFullscreenChange }: Props) {
   const containerRef     = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stageRef         = useRef<any>(null);
@@ -102,7 +133,13 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const trajectoryRef    = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const initialOrientRef = useRef<any>(null);
-  const repsRef          = useRef({ ball: true, stick: true, ribbon: false, surface: false });
+  const repsRef          = useRef({
+    ball: true,
+    stick: true,
+    ribbon: false,
+    surface: false,
+    solvent: true,
+  });
 
   const [reps, setReps] = useState(repsRef.current);
   useEffect(() => { repsRef.current = reps; }, [reps]);
@@ -118,9 +155,15 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const [gifGenerating, setGifGenerating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef                     = useRef<HTMLDivElement>(null);
-  const [playbackSpeed, setPlaybackSpeed] = useState<1 | 2 | 4 | 10 | 100>(1);
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const speedMenuRef                    = useRef<HTMLDivElement>(null);
+  const playingRef                      = useRef(false);
+
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+
+  const rootRef                         = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSeeking = useRef(false);
@@ -158,10 +201,13 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const applyRepresentations = (component: any, currentReps?: typeof reps) => {
     const r = currentReps ?? repsRef.current;
     component.removeAllRepresentations();
-    if (r.ball)    component.addRepresentation("spacefill", { colorScheme: "element", radiusScale: 0.2 });
-    if (r.stick)   component.addRepresentation("licorice",  { colorScheme: "element" });
+    const atomSele = r.solvent ? undefined : "not (water or ion)";
+    const withSele = (params: Record<string, unknown>) =>
+      atomSele ? { ...params, sele: atomSele } : params;
+    if (r.ball)    component.addRepresentation("spacefill", withSele({ colorScheme: "element", radiusScale: 0.2 }));
+    if (r.stick)   component.addRepresentation("licorice",  withSele({ colorScheme: "element" }));
     if (r.ribbon)  component.addRepresentation("cartoon",   { sele: "protein", colorScheme: "residueindex" });
-    if (r.surface) component.addRepresentation("surface",   { color: "white", opacity: 0.1 });
+    if (r.surface) component.addRepresentation("surface",   withSele({ color: "white", opacity: 0.1 }));
   };
 
   useEffect(() => {
@@ -204,29 +250,25 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
 
       // NGL 2.4+ requires TrajectoryDatasource to be configured before addTrajectory.
       // We set it to route through our backend endpoints.
-      // Auth: NGL fetches these URLs directly (no auth header), so the JWT is
-      // passed as a ?token= query param. getCountUrl gets it inline; frame
-      // requests carry it via getFrameParams (NGL's query-string hook).
+      // Auth: NGL fetches these URLs directly (no auth header), so the JWT must
+      // be on both request URLs. getFrameParams is sent as the POST body.
       const _tok = getToken();
+      const withToken = (url: string) =>
+        _tok ? `${url}?token=${encodeURIComponent(_tok)}` : url;
       window.NGL.TrajectoryDatasource = {
         getCountUrl: (trajPath: string) =>
-          `${trajPath}/numframes${_tok ? `?token=${encodeURIComponent(_tok)}` : ""}`,
-        getFrameUrl: (trajPath: string, frameIndex: number) => `${trajPath}/frame/${frameIndex}`,
+          withToken(`${trajPath}/numframes`),
+        getFrameUrl: (trajPath: string, frameIndex: number) =>
+          withToken(`${trajPath}/frame/${frameIndex}`),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        getFrameParams: (_trajPath: string, atomIndices: any) => {
-          const parts: string[] = [];
-          if (_tok) parts.push(`token=${encodeURIComponent(_tok)}`);
-          if (atomIndices?.length) {
-            parts.push(
-              `atomIndices=${(atomIndices as number[][]).map((r) => r.join(",")).join(";")}`
-            );
-          }
-          return parts.join("&");
-        },
+        getFrameParams: (_trajPath: string, atomIndices: any) =>
+          atomIndices?.length
+            ? `atomIndices=${(atomIndices as number[][]).map((r) => r.join(",")).join(";")}`
+            : "",
       };
 
       suppressNglDeprecationWarnings();
-      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
+      const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: viewerBackground(theme) });
       stageRef.current = stage;
       ro = new ResizeObserver(() => stage.handleResize());
       ro.observe(containerRef.current);
@@ -264,6 +306,12 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           trajectoryRef.current = traj;
           if (traj?.signals?.frameChanged) {
             traj.signals.frameChanged.add((i: number) => {
+              trimFrameCache(traj, i, comp.structure?.atomCount ?? 0);
+              if (playingRef.current && Number.isFinite(traj.numframes) && i >= traj.numframes - 1) {
+                playerRef.current?.pause?.();
+                playingRef.current = false;
+                setPlaying(false);
+              }
               if (isSeeking.current) return;
               // Throttle React state updates to screen refresh rate
               if (frameUpdateRaf.current != null) return;
@@ -278,7 +326,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             if (cancelled) return;
             setTotalFrames(Number(n));
             applyRepresentations(comp, repsRef.current);
-            playerRef.current = new window.NGL.TrajectoryPlayer(traj, { step: 1, timeout: 80, mode: "loop" });
+            playerRef.current = new window.NGL.TrajectoryPlayer(traj, { step: 1, timeout: 80, mode: "once" });
             setLoadingStage(null);
             setReady(true);
           };
@@ -290,7 +338,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             traj.signals.countChanged.add(initPlayer);
           } else {
             applyRepresentations(comp, repsRef.current);
-            playerRef.current = new window.NGL.TrajectoryPlayer(traj, { step: 1, timeout: 80, mode: "loop" });
+            playerRef.current = new window.NGL.TrajectoryPlayer(traj, { step: 1, timeout: 80, mode: "once" });
             setLoadingStage(null);
             setReady(true);
           }
@@ -348,39 +396,49 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
 
   // Update NGL background when theme changes
   useEffect(() => {
-    stageRef.current?.setParameters({ backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
+    stageRef.current?.setParameters({ backgroundColor: viewerBackground(theme) });
   }, [theme]);
+
+  // Track native fullscreen changes (incl. Esc to exit) and resize the GL stage
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(document.fullscreenElement === rootRef.current);
+      requestAnimationFrame(() => { try { stageRef.current?.handleResize?.(); } catch { /* ignore */ } });
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
 
   const frameUpdateRaf = useRef<number | null>(null);
 
-  const applySpeed = (player: typeof playerRef.current, speed: number) => {
+  const applySpeed = (player: typeof playerRef.current, speed: PlaybackSpeed) => {
     if (!player) return;
     const baseTimeout = 80;
-    // At high speeds, skip frames aggressively instead of shrinking timeout below 16ms (screen refresh).
-    // speed  1 → step 1,  timeout 80   (12 fps)
-    // speed  2 → step 1,  timeout 40   (25 fps)
-    // speed  4 → step 2,  timeout 40   (25 fps, 2x skip = effective 4x)
-    // speed 10 → step 5,  timeout 32   (31 fps, 5x skip = effective ~10x)
-    // speed 100→ step 50, timeout 16   (60 fps, 50x skip = effective ~100x)
-    const step = speed <= 2 ? 1 : Math.max(1, Math.round(speed / 2));
-    const timeout = Math.max(16, Math.round(baseTimeout / Math.min(speed, 5)));
+    const minTimeout = 50;
+    // Keep (baseTimeout / timeout) * step close to the requested multiplier.
+    // Trajectory frames are fetched asynchronously, so avoid scheduling requests
+    // faster than the viewer/backend can normally resolve them.
+    const timeout = Math.max(minTimeout, Math.round(baseTimeout / speed));
+    const step = Math.max(1, Math.round((speed * timeout) / baseTimeout));
     player.setParameters({ timeout, step });
   };
 
-  const handlePlay = (speed?: 1 | 2 | 4 | 10 | 100) => {
+  const handlePlay = (speed?: PlaybackSpeed) => {
     if (!playerRef.current) return;
     applySpeed(playerRef.current, speed ?? playbackSpeed);
     playerRef.current.play();
+    playingRef.current = true;
     setPlaying(true);
   };
 
   const handlePause = () => {
     if (!playerRef.current) return;
     playerRef.current.pause();
+    playingRef.current = false;
     setPlaying(false);
   };
 
-  const handleSpeedChange = (speed: 1 | 2 | 4 | 10 | 100) => {
+  const handleSpeedChange = (speed: PlaybackSpeed) => {
     setPlaybackSpeed(speed);
     setSpeedMenuOpen(false);
     if (playerRef.current) {
@@ -413,6 +471,23 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
       }, 150);
     } catch { /* ignore */ }
   };
+
+  const toggleFullscreen = useCallback(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (document.fullscreenElement === el) {
+      document.exitFullscreen?.().catch(() => { /* ignore */ });
+    } else if (!document.fullscreenElement) {
+      el.requestFullscreen?.().catch(() => { /* ignore */ });
+    }
+  }, []);
+
+  // Expose the toggle + fullscreen state to the parent (the button lives in the section header)
+  useEffect(() => {
+    if (fsControl) fsControl.current = toggleFullscreen;
+    return () => { if (fsControl) fsControl.current = null; };
+  }, [fsControl, toggleFullscreen]);
+  useEffect(() => { onFullscreenChange?.(isFullscreen); }, [isFullscreen, onFullscreenChange]);
 
   const handleResetView = () => {
     if (!stageRef.current) return;
@@ -546,11 +621,14 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   };
 
   return (
-    <div className="space-y-2">
+    <div
+      ref={rootRef}
+      className={`space-y-2 ${isFullscreen ? "flex flex-col h-full w-full bg-white dark:bg-gray-900 p-3" : ""}`}
+    >
       {/* Viewer canvas */}
       <div
-        className="relative rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-white dark:bg-gray-900 overflow-hidden"
-        style={{ height: "360px" }}
+        className={`relative rounded-xl border border-gray-300/60 dark:border-gray-700/60 bg-white dark:bg-gray-900 overflow-hidden ${isFullscreen ? "flex-1 min-h-0" : ""}`}
+        style={isFullscreen ? undefined : { height: "360px" }}
       >
         {error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-red-400 gap-2 z-10">
@@ -575,6 +653,18 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           </div>
         ) : null}
         <div ref={containerRef} className="w-full h-full" />
+
+        {isFullscreen && (
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            title="Exit fullscreen"
+            aria-label="Exit fullscreen"
+            className="absolute top-2 right-2 z-20 flex h-7 w-7 items-center justify-center rounded-md border border-gray-300/50 dark:border-gray-700/50 bg-white/80 dark:bg-gray-900/75 text-gray-600 dark:text-gray-300 transition-colors hover:text-gray-900 dark:hover:text-white"
+          >
+            <Minimize2 size={13} />
+          </button>
+        )}
 
         {/* Upper-left overlay: atom/residue counts */}
         {structInfo && (
@@ -603,6 +693,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             { key: "stick",   label: "Stick"   },
             { key: "ribbon",  label: "Cartoon" },
             { key: "surface", label: "Surface" },
+            { key: "solvent", label: "Solvent" },
           ].map(({ key, label }) => {
             const on = reps[key as keyof typeof reps];
             return (
@@ -649,8 +740,8 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
               <span className="text-[10px] font-semibold">{playbackSpeed}x</span>
             </button>
             {speedMenuOpen && (
-              <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden z-30">
-                {([1, 2, 4, 10, 100] as const).map((s) => (
+              <div className="amd-mention-list-enter absolute bottom-full right-0 z-30 mb-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                {([1, 10, 100, 1000] as const).map((s) => (
                   <button
                     key={s}
                     onClick={() => handleSpeedChange(s)}
@@ -708,16 +799,8 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
               <Settings size={11} />
             </button>
 
-            {settingsOpen && (
-              <div className="absolute right-0 bottom-full mb-2 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                {/* Header */}
-                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                  <span className="font-semibold text-gray-700 dark:text-gray-200">Export Settings</span>
-                  <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
-                    <X size={12} />
-                  </button>
-                </div>
-
+            <PopupPresence show={settingsOpen} duration={400}>
+              <div data-popup-title="Export settings" className="amd-popover-enter absolute right-0 bottom-full mb-2 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                 <div className="p-3 space-y-4">
                   {/* ── Screenshot ── */}
                   <div>
@@ -841,8 +924,9 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                     </div>
                   </div>
                 </div>
+                <PopupTailClose onClick={() => setSettingsOpen(false)} label="Close export settings" />
               </div>
-            )}
+            </PopupPresence>
           </div>
         </div>
       </div>

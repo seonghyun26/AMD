@@ -1,18 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 8 48 48">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#3b82f6"/>
-      <stop offset="1" stop-color="#4f46e5"/>
+    <linearGradient id="highlight" x1="8" y1="10" x2="56" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22d3ee"/>
+      <stop offset="0.55" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#a78bfa"/>
     </linearGradient>
+    <clipPath id="liquid">
+      <path d="M28 15v11L18.5 43.5A4 4 0 0 0 22.1 49h19.8a4 4 0 0 0 3.6-5.5L36 26V15Z"/>
+    </clipPath>
   </defs>
-  <!-- Rounded square background -->
-  <rect width="32" height="32" rx="7" fill="url(#g)"/>
-  <!-- Conical flask body -->
-  <path d="M13 5 H19 V13 L26 25 H6 L13 13 Z"
-        fill="white" fill-opacity="0.92" stroke="white" stroke-width="0.4" stroke-linejoin="round"/>
-  <!-- Neck rim -->
-  <line x1="11" y1="9" x2="21" y2="9" stroke="#4f46e5" stroke-width="1.5" stroke-linecap="round"/>
-  <!-- Bubbles -->
-  <circle cx="13" cy="20" r="1.8" fill="#3b82f6" fill-opacity="0.45"/>
-  <circle cx="18.5" cy="18.5" r="1.1" fill="#4f46e5" fill-opacity="0.35"/>
+
+  <circle cx="13" cy="25" r="1.8" fill="#22d3ee"/>
+  <circle cx="51" cy="19" r="1.8" fill="#a78bfa"/>
+  <path d="M25.5 15h13M28 15v11L18.5 43.5A4 4 0 0 0 22.1 49h19.8a4 4 0 0 0 3.6-5.5L36 26V15" fill="#eef2ff" stroke="url(#highlight)" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+  <g clip-path="url(#liquid)">
+    <path d="M17 37c5-3 8 2 13-.5 5-2.6 8 2.2 13-.4 3.2-1.7 5-.8 7 .5V52H17Z" fill="url(#highlight)" opacity="0.22"/>
+    <path d="M17 37c5-3 8 2 13-.5 5-2.6 8 2.2 13-.4 3.2-1.7 5-.8 7 .5" fill="none" stroke="url(#highlight)" stroke-width="1.5"/>
+  </g>
+  <circle cx="27.5" cy="40.5" r="1.65" fill="#312e81"/>
+  <circle cx="36.5" cy="40.5" r="1.65" fill="#312e81"/>
+  <path d="M29 45h6" stroke="#312e81" stroke-width="1.7" stroke-linecap="round"/>
+  <circle cx="32" cy="30" r="1.65" fill="#22d3ee" opacity="0.8"/>
+  <circle cx="37" cy="34" r="1.1" fill="#a78bfa" opacity="0.85"/>
 </svg>

@@ -6,7 +6,6 @@ integrator: md
 dt: 0.002               # ps (2 fs timestep)
 temperature: 300        # K
 pressure: 1.0           # bar
-nsteps: 50000000        # overridden by method.nsteps at runtime
 
 # Thermostat
 tcoupl: V-rescale
@@ -32,9 +31,10 @@ box_clearance: 1.5      # nm — minimum distance between molecule and box edge
 
 # Pre-production equilibration (EM → NVT → [NPT]); not MDP keys — read by the
 # run pipeline. Set equilibrate:false to start production directly. NVT/NPT
-# durations are in ps; EM is a max step count (stops at emtol).
+# durations are in ps; EM runs until emtol is reached, matching the official
+# GROMACS introductory tutorial.
 equilibrate: true
-equil_em_steps: 50000
+equil_em_steps: -1
 equil_nvt_ps: 100
 equil_npt_ps: 100
 
@@ -61,9 +61,9 @@ gen_vel: "yes"
 gen_seed: -1              # -1 = use random seed
 
 # Output frequencies (steps)
-nstxout: 5000
-nstvout: 5000
+nstxout: 0
+nstvout: 0
 nstfout: 0
-nstlog: 1000
-nstxout_compressed: 10
-nstenergy: 1000         # keep aligned with wandb.log_interval_steps
+nstlog: 10000
+nstxout_compressed: 1000
+nstenergy: 1000

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
 
+from md_agent.config.hydra_utils import normalize_runtime_config
 from md_agent.utils.parsers import parse_gromacs_log_progress
 
 
@@ -126,6 +127,7 @@ def create_session(
         *(extra_overrides or []),
     ]
     cfg = _load_hydra_cfg(overrides, work_dir)
+    normalize_runtime_config(cfg)
 
     sid = str(uuid.uuid4())
     session = Session(session_id=sid, work_dir=work_dir, nickname=nickname, username=username)
@@ -460,6 +462,16 @@ def restore_session(
             pass
     else:
         cfg = _load_hydra_cfg([], work_dir)
+
+    # Rewrite legacy session metadata as it is restored so read-only assistant
+    # reviews see the same authoritative configuration as the run pipeline.
+    if normalize_runtime_config(cfg):
+        try:
+            from omegaconf import OmegaConf
+
+            OmegaConf.save(cfg, cfg_path)
+        except Exception:
+            pass
 
     session = Session(
         session_id=session_id, work_dir=work_dir, nickname=nickname, username=username

@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { getEnergy } from "@/lib/api";
 import { RefreshCw } from "lucide-react";
 import dynamic from "next/dynamic";
+import { UI_COLORS } from "@/lib/colors";
+import { useTheme } from "@/lib/theme";
+import { PLOT_CONFIG, plotLayout } from "@/lib/plotTheme";
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 interface Props {
@@ -13,6 +16,8 @@ interface Props {
 const DEFAULT_TERMS = ["Potential Energy", "Temperature"];
 
 export default function EnergyPlot({ sessionId }: Props) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [data, setData] = useState<Record<string, number[]> | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -45,7 +50,12 @@ export default function EnergyPlot({ sessionId }: Props) {
     x: steps,
     y: data[term],
     name: term,
-    line: { width: 1.5 },
+    line: {
+      width: 1.8,
+      color: term === "Temperature"
+        ? UI_COLORS.plot.energy.temperature
+        : UI_COLORS.plot.energy.potential,
+    },
   }));
 
   return (
@@ -59,17 +69,15 @@ export default function EnergyPlot({ sessionId }: Props) {
       <Plot
         data={traces}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        layout={{
-          xaxis: { title: "Step" as any, zeroline: false },
-          yaxis: { title: "kJ/mol" as any, zeroline: false },
+        layout={plotLayout(isDark, {
+          xaxis: { title: "Step" as any },
+          yaxis: { title: "Value" as any },
           showlegend: true,
-          legend: { font: { size: 10 } },
+          legend: { font: { size: 10 }, orientation: "h", y: 1.08 },
           margin: { t: 10, l: 60, r: 10, b: 40 },
-          paper_bgcolor: "transparent",
-          plot_bgcolor: "transparent",
           height: 220,
-        }}
-        config={{ responsive: true, displayModeBar: false }}
+        })}
+        config={PLOT_CONFIG}
         style={{ width: "100%" }}
       />
     </div>

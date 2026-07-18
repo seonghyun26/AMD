@@ -30,6 +30,9 @@ MDP_KEY_MAP: dict[str, str] = {
     "nstlist": "nstlist",
     "rlist": "rlist",
     "rcoulomb": "rcoulomb",
+    "vdwtype": "vdwtype",
+    "vdw_modifier": "vdw-modifier",
+    "rvdw_switch": "rvdw-switch",
     "rvdw": "rvdw",
     "coulombtype": "coulombtype",
     "pme_order": "pme-order",
@@ -48,6 +51,76 @@ MDP_KEY_MAP: dict[str, str] = {
     "gen_seed": "gen-seed",
     "continuation": "continuation",
 }
+
+
+_PLAIN_MD_METHODS = {"plain", "plain_md", "md"}
+
+
+def normalize_runtime_config(cfg: DictConfig) -> bool:
+    """Migrate deprecated placeholders and apply force-field-specific defaults.
+
+    Returns whether *cfg* was changed. The migration is intentionally narrow:
+    it removes only the old duplicated run length and the stock ``d1`` CV from
+    plain MD, and fills the CHARMM36m profile only when it has not yet been set.
+    """
+    changed = False
+
+    # ``method.nsteps`` is the sole production run-length setting. Older
+    # session files may still carry the now-retired GROMACS duplicate.
+    if OmegaConf.select(cfg, "method.nsteps") is not None:
+        gromacs = OmegaConf.select(cfg, "gromacs")
+        if gromacs is not None and "nsteps" in gromacs:
+            was_struct = OmegaConf.is_struct(gromacs)
+            OmegaConf.set_struct(gromacs, False)
+            try:
+                del gromacs["nsteps"]
+                changed = True
+            finally:
+                OmegaConf.set_struct(gromacs, was_struct)
+
+    # Plain MD neither generates nor runs PLUMED. Clear only the generic stock
+    # placeholder; user-defined CVs remain intact if a method is changed later.
+    method_name = str(OmegaConf.select(cfg, "method._target_name") or "").lower()
+    cvs = OmegaConf.select(cfg, "plumed.collective_variables.cvs")
+    try:
+        cv_list = OmegaConf.to_container(cvs, resolve=True) if cvs is not None else []
+    except Exception:
+        cv_list = []
+    if (
+        method_name in _PLAIN_MD_METHODS
+        and isinstance(cv_list, list)
+        and len(cv_list) == 1
+        and isinstance(cv_list[0], dict)
+        and cv_list[0].get("name") == "d1"
+        and cv_list[0].get("type") == "DISTANCE"
+        and cv_list[0].get("atoms") == [1, 2]
+    ):
+        OmegaConf.update(cfg, "plumed.collective_variables.cvs", [], merge=True, force_add=True)
+        changed = True
+
+    # CHARMM36m uses a 1.0→1.2 nm force-switched Lennard-Jones cutoff.
+    # Only fill this profile for legacy generic settings; explicit profiles are
+    # left untouched.
+    forcefield = str(OmegaConf.select(cfg, "system.forcefield") or "").lower()
+    gromacs = OmegaConf.select(cfg, "gromacs")
+    if (
+        forcefield.startswith("charmm36")
+        and gromacs is not None
+        and not OmegaConf.select(cfg, "gromacs.vdw_modifier")
+    ):
+        charmm_profile = {
+            "rlist": 1.2,
+            "rcoulomb": 1.2,
+            "vdwtype": "Cut-off",
+            "vdw_modifier": "Force-switch",
+            "rvdw_switch": 1.0,
+            "rvdw": 1.2,
+        }
+        for key, value in charmm_profile.items():
+            OmegaConf.update(cfg, f"gromacs.{key}", value, merge=True, force_add=True)
+        changed = True
+
+    return changed
 
 
 def generate_mdp_from_config(

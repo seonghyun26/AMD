@@ -55,7 +55,7 @@ async function json<T>(res: Response): Promise<T> {
 
 export async function createSession(
   params: { workDir: string; nickname: string; username: string; preset: string; system?: string; state?: string; gromacs?: string; projectId?: string }
-): Promise<{ session_id: string; work_dir: string; nickname: string; seeded_files: string[] }> {
+): Promise<{ session_id: string; work_dir: string; nickname: string; seeded_files: string[]; created_at: string }> {
   const res = await authFetch(`${BASE}/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -81,6 +81,7 @@ export interface ProjectSimulation {
   nickname: string;
   run_status?: "standby" | "running" | "finished" | "failed" | "paused";
   selected_molecule?: string;
+  created_at?: string;
   updated_at?: string;
   result_cards?: unknown[];
 }
@@ -172,6 +173,7 @@ export async function listSessions(username: string): Promise<{
     nickname: string;
     run_status?: "standby" | "running" | "finished" | "failed";
     selected_molecule?: string;
+    created_at?: string;
     updated_at?: string;
   }[];
 }> {

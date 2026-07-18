@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  X, Play, StopCircle, ChevronDown, ChevronRight, Loader2,
+  Play, StopCircle, ChevronDown, ChevronRight, Loader2,
   Search, FileText, Download, Brain, Database, Save, Settings,
   PenTool, FolderOpen, BarChart3, Mountain, Zap, Map, Microscope,
   Dna, RefreshCw, Ruler, TriangleRight, Wrench,
@@ -10,6 +10,7 @@ import {
 import { streamAgent, type AgentType } from "@/lib/agentStream";
 import { fetchPdb, getFileContent } from "@/lib/api";
 import type { SSEEvent, ToolCallBlock, ThinkingBlock, TextBlock, ErrorBlock } from "@/lib/types";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -82,7 +83,7 @@ function ToolCallRenderer({
   const icon = TOOL_ICONS[block.tool_name] ?? <Wrench size={12} />;
   const statusIcon =
     block.status === "pending" ? <Loader2 size={11} className="animate-spin text-blue-500 dark:text-blue-400" /> :
-    block.status === "done"    ? <span className="text-emerald-500 dark:text-emerald-400 text-[10px]">✓</span> :
+    block.status === "done"    ? <span className="amd-check-icon text-[10px]">✓</span> :
                                   <span className="text-red-500 dark:text-red-400 text-[10px]">✗</span>;
 
   return (
@@ -268,7 +269,8 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className={`bg-white dark:bg-gray-900 border ${accentBorder} rounded-2xl flex flex-col shadow-2xl`}
+        data-popup-title={config.title}
+        className={`amd-popup-enter bg-white dark:bg-gray-900 border ${accentBorder} rounded-2xl flex flex-col shadow-2xl`}
         style={{ width: "min(860px, 92vw)", height: "80vh" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -278,15 +280,8 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
             <AgentIcon type={agentType} />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{config.title}</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{config.description}</p>
+            <p className="text-xs text-gray-500">{config.description}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            <X size={15} />
-          </button>
         </div>
 
         {/* Input row */}
@@ -313,7 +308,7 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
           ) : (
             <button
               onClick={handleRun}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors text-sm flex-shrink-0 font-medium"
+              className="amd-primary-button flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm flex-shrink-0 font-medium"
             >
               <Play size={14} fill="currentColor" />
               Run
@@ -348,6 +343,7 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
           ))}
           <div ref={bottomRef} />
         </div>
+        <PopupTailClose onClick={onClose} label={`Close ${config.title}`} />
       </div>
     </div>
   );

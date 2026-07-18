@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FlaskConical, Settings, Monitor, LogOut, FolderOpen, Menu, MessageSquare, ArrowLeft } from "lucide-react";
 import { getUsername, logout } from "@/lib/auth";
 import { SettingsModal, ServerStatusModal } from "@/components/sidebar/SessionSidebar";
 import UserAvatar from "@/components/common/UserAvatar";
+import PopupPresence from "@/components/ui/PopupPresence";
 import { useProjectStore } from "@/store/projectStore";
 import type { Project } from "@/lib/types";
 
@@ -24,12 +25,40 @@ export default function TopBar({
   const username = getUsername() || "user";
   const renameProject = useProjectStore((s) => s.renameProject);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuClosing, setMenuClosing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [serverOpen, setServerOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const skipSave = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuOpenRef = useRef(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openMenu = useCallback(() => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+    menuOpenRef.current = true;
+    setMenuClosing(false);
+    setMenuOpen(true);
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    if (!menuOpenRef.current) return;
+    menuOpenRef.current = false;
+    setMenuOpen(false);
+    setMenuClosing(true);
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => {
+      setMenuClosing(false);
+      closeTimerRef.current = null;
+    }, 620);
+  }, []);
+
+  const toggleMenu = () => {
+    if (menuOpenRef.current) closeMenu();
+    else openMenu();
+  };
 
   const saveName = () => {
     if (skipSave.current) { skipSave.current = false; setEditingName(false); return; }
@@ -42,11 +71,40 @@ export default function TopBar({
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setMenuOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) closeMenu();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
     };
     document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", h);
+      document.removeEventListener("keydown", onKey);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, [closeMenu]);
+
+  const profileActions = [
+    {
+      label: "Server status",
+      icon: <Monitor size={15} />,
+      tone: "text-cyan-600 dark:text-cyan-300",
+      onClick: () => { closeMenu(); setServerOpen(true); },
+    },
+    {
+      label: "Settings",
+      icon: <Settings size={15} />,
+      tone: "text-indigo-600 dark:text-indigo-300",
+      onClick: () => { closeMenu(); setSettingsOpen(true); },
+    },
+    {
+      label: "Sign out",
+      icon: <LogOut size={15} />,
+      tone: "text-rose-500 dark:text-rose-300",
+      onClick: () => { closeMenu(); logout(); router.push("/login"); },
+    },
+  ];
 
   return (
     <header className="w-full flex items-center justify-between gap-3 px-3 md:px-4 h-14 flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 z-30">
@@ -71,7 +129,7 @@ export default function TopBar({
           </button>
         )}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow">
+          <div className="amd-brand-mark w-7 h-7 rounded-lg flex items-center justify-center shadow">
             <FlaskConical size={14} className="text-white" />
           </div>
           <span className="text-sm font-bold text-gray-900 dark:text-white">AMD</span>
@@ -115,37 +173,64 @@ export default function TopBar({
         >
           <MessageSquare size={18} />
         </button>
-        <div ref={ref} className="relative">
+        <div
+          ref={ref}
+          className={`profile-system-menu relative flex h-9 w-9 items-center justify-center ${
+            menuOpen ? "profile-system-menu-open" : menuClosing ? "profile-system-menu-closing" : ""
+          }`}
+        >
+          {profileActions.map((action, index) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={action.onClick}
+              aria-label={action.label}
+              title={action.label}
+              tabIndex={menuOpen ? 0 : -1}
+              className={`profile-system-action group absolute right-0 top-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-gray-300/80 bg-white/90 backdrop-blur-md hover:border-gray-400 dark:border-gray-600/80 dark:bg-slate-900/90 dark:hover:border-gray-500 ${action.tone} ${
+                menuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+              }`}
+              style={{
+                transform: menuOpen
+                  ? `translate3d(-${52 + 42 * index}px, -50%, 0) scale(1) rotate(0deg)`
+                  : "translate3d(2px, -50%, 0) scale(.38) rotate(22deg)",
+                transitionDelay: menuOpen
+                  ? `${index * 32}ms`
+                  : `${(profileActions.length - index - 1) * 38}ms`,
+              }}
+            >
+              <span className="profile-system-action-glyph flex h-full w-full items-center justify-center rounded-full">
+                {action.icon}
+              </span>
+              <span className="pointer-events-none absolute top-full mt-2 whitespace-nowrap rounded-md border border-cyan-200/60 bg-white/95 px-2 py-1 text-[10px] font-medium text-slate-600 opacity-0 shadow-md backdrop-blur transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 dark:border-cyan-400/20 dark:bg-slate-900/95 dark:text-cyan-100">
+                {action.label}
+              </span>
+            </button>
+          ))}
           <button
-            onClick={() => setMenuOpen((v) => !v)}
-            className="rounded-full shadow hover:opacity-90 transition-opacity"
+            onClick={toggleMenu}
+            aria-expanded={menuOpen}
+            aria-label={menuOpen ? "Close profile actions" : "Open profile actions"}
+            className={`profile-system-avatar relative z-20 rounded-full shadow-md ${
+              menuOpen
+                ? "profile-system-avatar-open"
+                : menuClosing
+                  ? "profile-system-avatar-closing"
+                  : ""
+            }`}
             title={username}
           >
-            <UserAvatar size={32} fallback="initial" className="rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-sm font-semibold" />
+            <UserAvatar size={34} fallback="initial" className="amd-brand-mark rounded-full text-slate-900 text-sm font-semibold" />
           </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden z-50">
-              <div className="px-3.5 py-2.5 border-b border-gray-100 dark:border-gray-700">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{username}</div>
-                <div className="text-[10px] text-gray-400 dark:text-gray-500">Signed in</div>
-              </div>
-              <button onClick={() => { setMenuOpen(false); setServerOpen(true); }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/60">
-                <Monitor size={15} /> Server Status
-              </button>
-              <button onClick={() => { setMenuOpen(false); setSettingsOpen(true); }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/60">
-                <Settings size={15} /> Settings
-              </button>
-              <div className="border-t border-gray-100 dark:border-gray-700" />
-              <button onClick={() => { logout(); router.push("/login"); }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700/60">
-                <LogOut size={15} /> Sign out
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
-      {settingsOpen && <SettingsModal username={username} onClose={() => setSettingsOpen(false)} />}
-      {serverOpen && <ServerStatusModal onClose={() => setServerOpen(false)} />}
+      <PopupPresence show={settingsOpen}>
+        <SettingsModal username={username} onClose={() => setSettingsOpen(false)} />
+      </PopupPresence>
+      <PopupPresence show={serverOpen}>
+        <ServerStatusModal onClose={() => setServerOpen(false)} />
+      </PopupPresence>
     </header>
   );
 }

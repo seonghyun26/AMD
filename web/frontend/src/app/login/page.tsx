@@ -28,21 +28,35 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950 p-4 transition-colors">
+    <div className="relative isolate flex h-screen items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-950 p-4 transition-colors">
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-20 bg-cover bg-center dark:hidden"
+        style={{ backgroundImage: "url('/images/login-molecular-dynamics-light.webp')" }}
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-20 hidden bg-cover bg-center dark:block"
+        style={{ backgroundImage: "url('/images/login-molecular-dynamics.webp')" }}
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-10 bg-transparent dark:bg-gray-950/20"
+      />
+
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 mb-4 shadow-lg">
+          <div className="amd-brand-mark inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4 shadow-lg">
             <FlaskConical size={28} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">AMD</h1>
-          <p className="mt-0.5 text-sm text-gray-500 tracking-wide">Automating MD</p>
-          <p className="mt-2 text-xs text-gray-400 dark:text-gray-600">Claude Opus 4.6 · GROMACS · PLUMED</p>
+          <p className="mt-0.5 text-sm text-gray-500 tracking-wide">Automated MD</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-2xl"
+          className="amd-login-enter space-y-4 bg-white/90 dark:bg-gray-900/90 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 p-6 shadow-2xl backdrop-blur-xl"
         >
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Username</label>
@@ -83,7 +97,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors text-sm"
+            className="amd-primary-button w-full py-2.5 disabled:opacity-50 font-semibold rounded-lg text-sm"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
@@ -94,7 +108,7 @@ export default function LoginPage() {
       <div className="absolute bottom-5 left-5">
         <button
           onClick={toggle}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
+          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/85 dark:bg-gray-800/85 border border-gray-200 dark:border-gray-700 shadow-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors backdrop-blur-md"
         >
           {theme === "dark" ? <Moon size={14} /> : <Sun size={14} />}
           <span className="text-xs font-medium">{theme === "dark" ? "Dark" : "Light"}</span>

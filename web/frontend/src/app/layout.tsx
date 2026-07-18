@@ -10,9 +10,12 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AMD — Automating MD",
+  title: "AMD — Automated MD",
   description: "Claude-powered molecular dynamics simulation assistant",
-  icons: { icon: "/icon.svg" },
+  icons: {
+    icon: [{ url: "/icon.svg?v=20260718-science-assistant-large", type: "image/svg+xml" }],
+    shortcut: "/icon.svg?v=20260718-science-assistant-large",
+  },
 };
 
 export const viewport: Viewport = {

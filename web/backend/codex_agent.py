@@ -22,7 +22,24 @@ _SYSTEM_PROMPT = (
     "PLUMED inputs and outputs such as md.mdp, md.log, COLVAR, .edr, .xtc, "
     "plumed.dat, and config.yaml. Inspect and explain the simulation. This session "
     "is strictly read-only: do not modify files, start or stop processes, access the "
-    "network, or inspect paths outside the current simulation directory."
+    "network, or inspect paths outside the current simulation directory. "
+    "Work silently: do not narrate searches, tool calls, or intermediate reasoning. "
+    "Default to a compact answer. For diagnostics and configuration reviews, give "
+    "only the highest-priority findings as a numbered list of at most five items; "
+    "each item must have "
+    "a short problem label, one brief explanation, and one brief suggested fix. Do "
+    "not dump a full file inventory, parameter-by-parameter review, commands, or a "
+    "configuration patch unless the user explicitly asks for more detail. When they "
+    "do, expand only the requested items. In AMD, Start regenerates topology and "
+    "processed coordinates, builds solvent/ions when configured, then generates and "
+    "runs EM, NVT, NPT, and the Main simulation. Missing generated preparation or "
+    "initialization files in standby are therefore not readiness faults. "
+    "method.nsteps is the only Main simulation length; ignore any legacy "
+    "gromacs.nsteps value. Plain MD does not use PLUMED, so do not flag an "
+    "inactive d1 DISTANCE(1,2) placeholder or stale plumed.dat. For CHARMM36m, "
+    "use the force-switch profile: rlist/rcoulomb/rvdw 1.2 nm, rvdw-switch 1.0 "
+    "nm, and vdw-modifier=Force-switch. Initialization overrides "
+    "gen_vel/continuation for each stage."
 )
 
 _DISABLED_FEATURES = (
@@ -197,6 +214,11 @@ async def stream_codex(work_dir: str, message: str) -> AsyncIterator[dict[str, A
     process: asyncio.subprocess.Process | None = None
     stderr_task: asyncio.Task[str] | None = None
     terminal_event_sent = False
+    # Codex can emit progress narration as separate agent_message items between
+    # command executions. Keep only the final agent message for the chat; tool
+    # events still stream live and the full CLI activity remains observable in
+    # the process output/logs.
+    pending_agent_text = ""
     try:
         wd = _work_dir(work_dir)
         process = await asyncio.create_subprocess_exec(
@@ -227,14 +249,21 @@ async def stream_codex(work_dir: str, message: str) -> AsyncIterator[dict[str, A
             translated = _translate_event(payload)
             if translated is None or terminal_event_sent:
                 continue
+            if translated["type"] == "text_delta":
+                pending_agent_text = str(translated.get("text") or "")
+                continue
             if translated["type"] in {"agent_done", "error"}:
                 terminal_event_sent = True
+            if translated["type"] == "agent_done" and pending_agent_text:
+                yield {"type": "text_delta", "text": pending_agent_text}
             yield translated
 
         returncode = await process.wait()
         stderr = await stderr_task
         if not terminal_event_sent:
             if returncode == 0:
+                if pending_agent_text:
+                    yield {"type": "text_delta", "text": pending_agent_text}
                 yield {"type": "agent_done", "final_text": ""}
             else:
                 detail = stderr or f"Codex exited with status {returncode}"

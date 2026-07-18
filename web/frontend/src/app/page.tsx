@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ChevronLeft, ChevronRight, Loader2, FlaskConical, Trash2 } from "lucide-react";
@@ -11,6 +11,7 @@ import SessionSidebar from "@/components/sidebar/SessionSidebar";
 import MDWorkspace from "@/components/workspace/MDWorkspace";
 import ProjectHome from "@/components/projects/ProjectHome";
 import TopBar from "@/components/layout/TopBar";
+import AssistantAvatar from "@/components/common/AssistantAvatar";
 const ChatWindow = dynamic(() => import("@/components/chat/ChatWindow"), { ssr: false });
 const ChatInput = dynamic(() => import("@/components/chat/ChatInput"), { ssr: false });
 
@@ -30,11 +31,17 @@ export default function App() {
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [showNewSession, setShowNewSession] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState("progress");
   const isMobile = useIsMobile();
+  const handleAssistantTabChange = useCallback((tab: string) => setWorkspaceTab(tab), []);
+  const handleSessionLoadComplete = useCallback((id: string) => {
+    setLoadingSessionId((current) => (current === id ? null : current));
+  }, []);
 
   // Collapsible simulation list (desktop) — fold to a thin rail on the left.
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
@@ -68,7 +75,7 @@ export default function App() {
     document.addEventListener("mouseup", onUp);
   };
 
-  const { fetchSimulations, loadAssistant, clearAssistant, messages, isStreaming } = useSessionStore();
+  const { fetchSimulations, loadAssistant, clearAssistant, clearSession, messages, isStreaming } = useSessionStore();
   const pendingPrompt = useSessionStore((s) => s.pendingPrompt);
   const [confirmClear, setConfirmClear] = useState(false);
   const { projects, activeProjectId, setActiveProject } = useProjectStore();
@@ -103,7 +110,7 @@ export default function App() {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
         <div className="flex flex-col items-center gap-4">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg">
+          <div className="amd-brand-mark inline-flex items-center justify-center w-14 h-14 rounded-2xl shadow-lg">
             <FlaskConical size={28} className="text-white" />
           </div>
           <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500">
@@ -116,15 +123,20 @@ export default function App() {
   }
 
   const handleSessionCreated = (id: string) => {
+    setLoadingSessionId(id);
     setSessionId(id);
     setShowNewSession(false);
     if (activeProjectId) fetchSimulations(activeProjectId);
   };
   const handleNewSession = () => {
+    setLoadingSessionId(null);
+    clearSession();
     setShowNewSession(true);
     setSessionId(null);
   };
   const openProject = (id: string) => {
+    setLoadingSessionId(null);
+    clearSession();
     setActiveProject(id);
     setSessionId(null);
     setShowNewSession(false);
@@ -142,10 +154,10 @@ export default function App() {
         <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setMobileChatOpen(false)} />
       )}
       <aside
-        style={!isMobile && rightPanelOpen ? { width: chatWidth } : undefined}
-        className={`flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 overflow-x-hidden fixed inset-y-0 z-40 w-full max-w-sm md:max-w-none transition-[right] duration-200 ${
+        style={!isMobile ? { width: rightPanelOpen ? chatWidth : 40 } : undefined}
+        className={`flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 overflow-x-hidden fixed inset-y-0 z-40 w-full max-w-sm md:max-w-none transition-[right,width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
           mobileChatOpen ? "right-0" : "-right-full"
-        } md:relative md:right-auto md:z-auto md:transition-none ${rightPanelOpen ? "" : "md:w-10"}`}
+        } md:relative md:right-auto md:z-auto`}
       >
         {rightPanelOpen && (
           <div
@@ -157,16 +169,19 @@ export default function App() {
         {chatExpanded ? (
           <>
             <div className="px-4 py-3.5 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 flex items-center justify-between">
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">AI Assistant</h2>
-                {activeProject && (
-                  <p
-                    className="text-[10px] font-mono text-gray-400 dark:text-gray-600 mt-0.5 truncate"
-                    title="Attach in a terminal to watch the assistant work live"
-                  >
-                    tmux attach -t amd-{activeProject.project_id.replace(/^proj_/, "").replace(/[^A-Za-z0-9_-]/g, "") || "project"}
-                  </p>
-                )}
+              <div className="flex min-w-0 items-center gap-3">
+                <AssistantAvatar size={42} />
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">AI Assistant</h2>
+                  {activeProject && (
+                    <p
+                      className="text-[10px] font-mono text-gray-400 dark:text-gray-600 mt-0.5 truncate"
+                      title="Attach in a terminal to watch the assistant work live"
+                    >
+                      tmux attach -t amd-{activeProject.project_id.replace(/^proj_/, "").replace(/[^A-Za-z0-9_-]/g, "") || "project"}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button
@@ -196,7 +211,11 @@ export default function App() {
             </div>
             <div className="flex-1 overflow-hidden flex flex-col min-h-0">
               <ChatWindow />
-              <ChatInput projectId={activeProjectId} />
+              <ChatInput
+                projectId={activeProjectId}
+                contextSessionId={activeSessionId}
+                workspaceTab={workspaceTab}
+              />
             </div>
           </>
         ) : (
@@ -239,7 +258,7 @@ export default function App() {
               <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
             )}
             <div
-              className={`fixed inset-y-0 z-40 md:static md:z-auto transition-[left] duration-200 ${
+              className={`fixed inset-y-0 z-40 md:static md:z-auto transition-[left] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                 mobileSidebarOpen ? "left-0" : "-left-64"
               } md:left-auto`}
             >
@@ -248,19 +267,26 @@ export default function App() {
                 onToggleCollapse={() => setLeftPanelOpen((v) => !v)}
                 onNewSession={() => { handleNewSession(); setMobileSidebarOpen(false); }}
                 onSelectSession={(id) => {
+                  setLoadingSessionId(id);
                   setSessionId(id);
                   setShowNewSession(false);
                   setMobileSidebarOpen(false);
                 }}
-                onSessionDeleted={(id) => { if (sessionId === id) setSessionId(null); }}
+                onSessionDeleted={(id) => {
+                  setLoadingSessionId((current) => (current === id ? null : current));
+                  if (sessionId === id) setSessionId(null);
+                }}
               />
             </div>
 
             <MDWorkspace
               sessionId={activeSessionId}
               showNewForm={showNewSession}
+              selectionLoading={loadingSessionId !== null}
               onSessionCreated={handleSessionCreated}
               onNewSession={handleNewSession}
+              onSessionLoadComplete={handleSessionLoadComplete}
+              onAssistantTabChange={handleAssistantTabChange}
             />
 
             {assistant}

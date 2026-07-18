@@ -214,10 +214,11 @@ def _remove_matching(work_dir: Path, *patterns: str) -> None:
 # applied on top of the session's gromacs config so cutoffs/electrostatics stay
 # consistent across stages.
 _EQUIL_NSTEPS = 50000  # 100 ps at dt=0.002 ps
+_EM_DEFAULT_NSTEPS = -1  # no step limit; stop when Fmax reaches emtol
 
 _EM_OVERRIDES: dict[str, Any] = {
     "integrator": "steep",
-    "nsteps": _EQUIL_NSTEPS,
+    "nsteps": _EM_DEFAULT_NSTEPS,
     "emtol": 1000.0,
     "emstep": 0.01,
     "tcoupl": "no",
@@ -315,7 +316,8 @@ def _equilibrate_and_run(
         _eq = OmegaConf.select(cfg, "gromacs.equilibrate")
         equilibrate = True if _eq is None else bool(_eq)
         dt = float(OmegaConf.select(cfg, "gromacs.dt") or 0.002)
-        em_steps = int(OmegaConf.select(cfg, "gromacs.equil_em_steps") or _EQUIL_NSTEPS)
+        configured_em_steps = OmegaConf.select(cfg, "gromacs.equil_em_steps")
+        em_steps = _EM_DEFAULT_NSTEPS if configured_em_steps is None else int(configured_em_steps)
         nvt_steps = max(1, int(float(OmegaConf.select(cfg, "gromacs.equil_nvt_ps") or 100.0) / dt))
         npt_steps = max(1, int(float(OmegaConf.select(cfg, "gromacs.equil_npt_ps") or 100.0) / dt))
 

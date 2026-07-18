@@ -115,11 +115,13 @@ class CreateSessionRequest(BaseModel):
     extra_overrides: list[str] = []
 
 
-@router.post("/sessions")
-async def create_session_endpoint(req: CreateSessionRequest, request: Request):
-    """Create a new agent session. Returns session_id + list of seeded files."""
-    # Bind the session to the authenticated user, not a client-supplied name.
-    username = getattr(request.state, "username", "") or req.username
+def create_session_from_request(req: CreateSessionRequest, username: str) -> dict[str, Any]:
+    """Create and persist a session from a validated request.
+
+    This is shared by the HTTP endpoint and trusted server-side workflows such
+    as the assistant's simulation-creation middleware. Callers must supply the
+    authenticated username; request-body usernames are never trusted here.
+    """
     Path(req.work_dir).mkdir(parents=True, exist_ok=True)
 
     # Resolve config from preset; individual fields override if provided
@@ -157,7 +159,7 @@ async def create_session_endpoint(req: CreateSessionRequest, request: Request):
     # hydra_system must be a valid conf/system/*.yaml name
     _HYDRA_SYSTEM_MAP: dict[str, str] = {
         "ala_dipeptide": "ala_dipeptide",
-        "chignolin": "protein",
+        "chignolin": "chignolin",
         "trp_cage": "protein",
         "bba": "protein",
         "villin": "protein",
@@ -212,9 +214,10 @@ async def create_session_endpoint(req: CreateSessionRequest, request: Request):
         pass
 
     # Write session.json for persistence across server restarts
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     json_path = Path(req.work_dir).parent / "session.json"
+    now = datetime.now(timezone.utc).isoformat()
     meta = {
         "session_id": session.session_id,
         "nickname": session.nickname,
@@ -222,7 +225,8 @@ async def create_session_endpoint(req: CreateSessionRequest, request: Request):
         "username": username,
         "status": "active",
         "run_status": "standby",
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": now,
+        "updated_at": now,
     }
     json_path.write_text(json.dumps(meta, indent=2))
 
@@ -242,7 +246,16 @@ async def create_session_endpoint(req: CreateSessionRequest, request: Request):
         "work_dir": session.work_dir,
         "nickname": session.nickname,
         "seeded_files": seeded,
+        "created_at": now,
     }
+
+
+@router.post("/sessions")
+async def create_session_endpoint(req: CreateSessionRequest, request: Request):
+    """Create a new agent session. Returns session_id + list of seeded files."""
+    # Bind the session to the authenticated user, not a client-supplied name.
+    username = getattr(request.state, "username", "") or req.username
+    return create_session_from_request(req, username)
 
 
 @router.get("/sessions")
@@ -275,6 +288,7 @@ async def list_sessions_endpoint(request: Request):
                 "work_dir": data["work_dir"],
                 "nickname": data.get("nickname", ""),
                 "selected_molecule": data.get("selected_molecule", ""),
+                "created_at": data.get("created_at") or data.get("updated_at", ""),
                 "updated_at": data.get("updated_at", ""),
                 "run_status": run_status,
                 "started_at": data.get("started_at"),
