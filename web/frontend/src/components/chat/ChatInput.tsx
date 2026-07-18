@@ -246,7 +246,7 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
         {isStreaming ? (
           <button
             onClick={handleStop}
-            className="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border-0 bg-transparent text-red-500 transition-[filter,opacity] hover:brightness-110 dark:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60"
+            className="absolute right-2.5 top-1/2 -mt-0.5 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border-0 bg-transparent text-red-500 transition-[filter,opacity] hover:brightness-110 dark:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60"
             title="Stop"
             aria-label="Stop response"
           >
@@ -256,7 +256,7 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
           <button
             onClick={handleSend}
             disabled={!value.trim()}
-            className="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border-0 bg-transparent transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+            className="absolute right-2.5 top-1/2 -mt-0.5 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border-0 bg-transparent transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
             title="Send (Enter)"
             aria-label="Send message"
           >
