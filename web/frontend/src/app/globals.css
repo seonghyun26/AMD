@@ -386,7 +386,7 @@ html .amd-popover-enter {
 }
 
 .amd-primary-button {
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   background:
     linear-gradient(var(--amd-control-surface), var(--amd-control-surface)) padding-box,
     var(--amd-brand-gradient) border-box;
@@ -419,8 +419,10 @@ html .amd-popover-enter {
 }
 
 .amd-primary-button:hover:not(:disabled) {
-  background: var(--amd-highlight-border-gradient) border-box;
-  color: #0f172a;
+  background:
+    linear-gradient(var(--amd-control-surface), var(--amd-control-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box;
+  color: var(--amd-control-foreground);
   box-shadow: 0 8px 20px var(--amd-highlight-focus-glow);
   transform: translateY(-1px);
 }
@@ -428,7 +430,7 @@ html .amd-popover-enter {
 .amd-primary-button:active:not(:disabled) {
   background:
     linear-gradient(var(--amd-control-surface), var(--amd-control-surface)) padding-box,
-    var(--amd-brand-gradient) border-box;
+    var(--amd-highlight-border-gradient) border-box;
   transform: translateY(0);
 }
 
