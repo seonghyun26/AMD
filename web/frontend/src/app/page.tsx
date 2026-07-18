@@ -31,6 +31,7 @@ export default function App() {
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [showNewSession, setShowNewSession] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -38,6 +39,9 @@ export default function App() {
   const [workspaceTab, setWorkspaceTab] = useState("progress");
   const isMobile = useIsMobile();
   const handleAssistantTabChange = useCallback((tab: string) => setWorkspaceTab(tab), []);
+  const handleSessionLoadComplete = useCallback((id: string) => {
+    setLoadingSessionId((current) => (current === id ? null : current));
+  }, []);
 
   // Collapsible simulation list (desktop) — fold to a thin rail on the left.
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
@@ -119,16 +123,19 @@ export default function App() {
   }
 
   const handleSessionCreated = (id: string) => {
+    setLoadingSessionId(id);
     setSessionId(id);
     setShowNewSession(false);
     if (activeProjectId) fetchSimulations(activeProjectId);
   };
   const handleNewSession = () => {
+    setLoadingSessionId(null);
     clearSession();
     setShowNewSession(true);
     setSessionId(null);
   };
   const openProject = (id: string) => {
+    setLoadingSessionId(null);
     clearSession();
     setActiveProject(id);
     setSessionId(null);
@@ -260,19 +267,25 @@ export default function App() {
                 onToggleCollapse={() => setLeftPanelOpen((v) => !v)}
                 onNewSession={() => { handleNewSession(); setMobileSidebarOpen(false); }}
                 onSelectSession={(id) => {
+                  setLoadingSessionId(id);
                   setSessionId(id);
                   setShowNewSession(false);
                   setMobileSidebarOpen(false);
                 }}
-                onSessionDeleted={(id) => { if (sessionId === id) setSessionId(null); }}
+                onSessionDeleted={(id) => {
+                  setLoadingSessionId((current) => (current === id ? null : current));
+                  if (sessionId === id) setSessionId(null);
+                }}
               />
             </div>
 
             <MDWorkspace
               sessionId={activeSessionId}
               showNewForm={showNewSession}
+              selectionLoading={loadingSessionId !== null}
               onSessionCreated={handleSessionCreated}
               onNewSession={handleNewSession}
+              onSessionLoadComplete={handleSessionLoadComplete}
               onAssistantTabChange={handleAssistantTabChange}
             />
 

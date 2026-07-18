@@ -4181,11 +4181,24 @@ function NewSessionForm({
 
 // ── Main MDWorkspace ───────────────────────────────────────────────────
 
+function SimulationLoading() {
+  return (
+    <div className="flex h-full flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 size={24} className="animate-spin text-gray-400" />
+        <span className="text-sm text-gray-500">Loading simulation…</span>
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   sessionId: string | null;
   showNewForm: boolean;
+  selectionLoading?: boolean;
   onSessionCreated: (id: string, workDir: string, nickname: string) => void;
   onNewSession: () => void;
+  onSessionLoadComplete?: (id: string) => void;
   onAssistantTabChange?: (tab: string) => void;
 }
 
@@ -4194,8 +4207,10 @@ type SimState = "standby" | "running";
 export default function MDWorkspace({
   sessionId,
   showNewForm,
+  selectionLoading = false,
   onSessionCreated,
   onNewSession,
+  onSessionLoadComplete,
   onAssistantTabChange,
 }: Props) {
   const [cfg, setCfg] = useState<Record<string, unknown>>({});
@@ -4334,6 +4349,7 @@ export default function MDWorkspace({
         setCfg(r.config);
         cfgRef.current = r.config;
         setSessionLoading(false);
+        onSessionLoadComplete?.(sessionId);
 
         // Derive work_dir and molecule file from the config (authoritative)
         const run = (r.config.run ?? {}) as Record<string, unknown>;
@@ -4360,6 +4376,7 @@ export default function MDWorkspace({
           setSelectedMolecule(null);
           setMoleculeLoading(false);
           setSessionLoading(false);
+          onSessionLoadComplete?.(sessionId);
         }
       });
     return () => { cancelled = true; };
@@ -4604,6 +4621,7 @@ export default function MDWorkspace({
   };
 
   if (!sessionId) {
+    if (selectionLoading) return <SimulationLoading />;
     if (showNewForm) {
       return (
         <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 h-full">
@@ -4685,19 +4703,12 @@ export default function MDWorkspace({
     <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 h-full min-w-0">
       <PillTabs active={activeTab} onChange={setActiveTab} saveState={gromacsSaveState} />
 
-      <div className={`flex-1 overflow-y-auto [scrollbar-gutter:stable] ${sessionLoading ? "flex flex-col" : ""}`}>
-        {sessionLoading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 size={24} className="animate-spin text-gray-400" />
-              <span className="text-sm text-gray-500">Loading simulation…</span>
-            </div>
-          </div>
-        ) : renderTab()}
+      <div className={`flex-1 overflow-y-auto [scrollbar-gutter:stable] ${sessionLoading || selectionLoading ? "flex flex-col" : ""}`}>
+        {sessionLoading || selectionLoading ? <SimulationLoading /> : renderTab()}
       </div>
 
       {/* Simulation action button */}
-      <div className="relative flex h-[72px] w-full flex-shrink-0 items-center border-t border-gray-200 bg-gray-50/50 px-4 dark:border-gray-800 dark:bg-gray-900/50">
+      <div className={`relative flex h-[72px] w-full flex-shrink-0 items-center border-t border-gray-200 bg-gray-50/50 px-4 transition-opacity dark:border-gray-800 dark:bg-gray-900/50 ${sessionLoading || selectionLoading ? "pointer-events-none opacity-0" : ""}`}>
         {actionState === "standby" && (
           <button
             onClick={() => setShowRunConfirm((open) => !open)}
