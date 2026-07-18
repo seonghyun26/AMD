@@ -142,10 +142,10 @@ export default function App() {
         <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setMobileChatOpen(false)} />
       )}
       <aside
-        style={!isMobile && rightPanelOpen ? { width: chatWidth } : undefined}
-        className={`flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 overflow-x-hidden fixed inset-y-0 z-40 w-full max-w-sm md:max-w-none transition-[right] duration-200 ${
+        style={!isMobile ? { width: rightPanelOpen ? chatWidth : 40 } : undefined}
+        className={`flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 overflow-x-hidden fixed inset-y-0 z-40 w-full max-w-sm md:max-w-none transition-[right,width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
           mobileChatOpen ? "right-0" : "-right-full"
-        } md:relative md:right-auto md:z-auto md:transition-none ${rightPanelOpen ? "" : "md:w-10"}`}
+        } md:relative md:right-auto md:z-auto`}
       >
         {rightPanelOpen && (
           <div
@@ -239,7 +239,7 @@ export default function App() {
               <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
             )}
             <div
-              className={`fixed inset-y-0 z-40 md:static md:z-auto transition-[left] duration-200 ${
+              className={`fixed inset-y-0 z-40 md:static md:z-auto transition-[left] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                 mobileSidebarOpen ? "left-0" : "-left-64"
               } md:left-auto`}
             >

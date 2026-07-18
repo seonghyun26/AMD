@@ -5,6 +5,7 @@ import { X, Loader2, AlertCircle, Crosshair, Camera, Settings } from "lucide-rea
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { useTheme } from "@/lib/theme";
 import { viewerBackground } from "@/lib/colors";
+import PopupPresence from "@/components/ui/PopupPresence";
 
 function parseStructureInfo(
   content: string,
@@ -366,10 +367,9 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
                 <Settings size={11} />
               </button>
 
-              {settingsOpen && (
+              <PopupPresence show={settingsOpen} duration={400}>
                 <div data-popup-title="Export settings" className="amd-popover-enter absolute right-0 bottom-full mb-2 z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                    <span className="font-semibold text-gray-700 dark:text-gray-200">Export Settings</span>
+                  <div className="flex items-center justify-end px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
                       <X size={12} />
                     </button>
@@ -400,7 +400,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
                     ))}
                   </div>
                 </div>
-              )}
+              </PopupPresence>
             </div>
           </div>
         </div>
@@ -420,7 +420,6 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-sm font-mono text-gray-800 dark:text-gray-200">{fileName}</span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">3D Viewer</span>
             {/* Toggle buttons in popup header */}
             <div className="flex gap-1 ml-2">
               {REP_LABELS.map(({ key, label }) => {

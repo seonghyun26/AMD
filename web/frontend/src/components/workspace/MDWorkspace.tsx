@@ -50,6 +50,7 @@ const CVSetupModal = dynamic(() => import("@/components/viz/CVSetupModal"), { ss
 const InlineCVPicker = dynamic(() => import("@/components/viz/InlineCVPicker"), { ssr: false });
 const CustomCVResultCard = dynamic(() => import("@/components/viz/CustomCVResultCard"), { ssr: false });
 import FileUpload from "@/components/files/FileUpload";
+import PopupPresence from "@/components/ui/PopupPresence";
 import { useTheme } from "@/lib/theme";
 import { UI_COLORS, colorWithAlpha } from "@/lib/colors";
 import { PLOT_COLORS, PLOT_CONFIG, plotAxis, plotLayout } from "@/lib/plotTheme";
@@ -211,7 +212,6 @@ function DeleteConfirmPopup({
         className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl p-5 w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Move to archive?</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           <span className="font-mono text-gray-700 dark:text-gray-300">{name}</span> will be moved to the simulation&apos;s
           archive folder. Use the archive button in the Files tab to restore it.
@@ -587,7 +587,7 @@ function ResultCard({
       </div>
 
       {/* Expanded modal */}
-      {expanded && (
+      <PopupPresence show={expanded}>
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setExpanded(false)}
@@ -598,12 +598,8 @@ function ResultCard({
             style={{ width: "min(1080px, 95vw)", height: "420px" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-                <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>{label}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
+            <div className="relative flex-1 min-h-0">
+              <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-lg border border-gray-200/70 bg-white/75 p-1 shadow-sm backdrop-blur-md dark:border-gray-700/70 dark:bg-gray-900/75">
                 <button onClick={handleDownload} title="Download" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   <Download size={12} />
                 </button>
@@ -614,16 +610,16 @@ function ResultCard({
                   <X size={14} />
                 </button>
               </div>
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact={false} refreshKey={refreshKey} maxPoints={50000} />
+              <div className="absolute inset-0 overflow-hidden">
+                <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact={false} refreshKey={refreshKey} maxPoints={50000} />
+              </div>
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
 
       {/* Delete confirmation */}
-      {confirmDelete && (
+      <PopupPresence show={confirmDelete}>
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setConfirmDelete(false)}
@@ -633,7 +629,6 @@ function ResultCard({
             className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">{label}</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
               <button
@@ -651,7 +646,7 @@ function ResultCard({
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
     </>
   );
 }
@@ -710,11 +705,7 @@ function RamachandranExpandedModal({
         style={{ width: "min(600px, 95vw)", height: "min(600px, 90vh)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-            <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>Ramachandran</span>
-          </div>
+        <div className="flex items-center justify-end px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-1.5">
             <button
               onClick={onRefresh}
@@ -744,10 +735,9 @@ function RamachandranExpandedModal({
               >
                 <Settings size={13} />
               </button>
-              {settingsOpen && (
+              <PopupPresence show={settingsOpen} duration={400}>
                 <div data-popup-title="Plot settings" className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                    <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
+                  <div className="flex items-center justify-end px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
                       <X size={12} />
                     </button>
@@ -791,7 +781,7 @@ function RamachandranExpandedModal({
                     </div>
                   </div>
                 </div>
-              )}
+              </PopupPresence>
             </div>
             <button
               onClick={onClose}
@@ -955,10 +945,9 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                 <Settings size={13} />
               </button>
 
-              {settingsOpen && (
+              <PopupPresence show={settingsOpen} duration={400}>
                 <div data-popup-title="Plot settings" className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                    <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
+                  <div className="flex items-center justify-end px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
                       <X size={12} />
                     </button>
@@ -1022,7 +1011,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                     </div>
                   </div>
                 </div>
-              )}
+              </PopupPresence>
             </div>
             <button onClick={() => setConfirmDelete(true)} title="Remove" className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition-colors">
               <Trash2 size={13} />
@@ -1053,7 +1042,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
       </div>
 
       {/* Expanded modal */}
-      {expanded && (
+      <PopupPresence show={expanded}>
         <RamachandranExpandedModal
           accentColor={accentColor}
           imgSrc={imgSrc}
@@ -1066,12 +1055,11 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
           onDownload={handleDownload}
           onUpdateSetting={updateSetting}
         />
-      )}
+      </PopupPresence>
 
-      {confirmDelete && (
+      <PopupPresence show={confirmDelete}>
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
           <div data-popup-title="Remove plot" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">Ramachandran</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
@@ -1079,7 +1067,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
     </>
   );
 }
@@ -1180,14 +1168,10 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
         </div>
       </div>
 
-      {expanded && (
+      <PopupPresence show={expanded}>
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setExpanded(false)}>
           <div data-popup-title="MLCV" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ width: "min(1080px, 95vw)", height: "420px" }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-                <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>MLCV</span>
-              </div>
+            <div className="flex items-center justify-end px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center gap-1.5">
                 <button onClick={handleRefresh} title="Refresh" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
@@ -1200,12 +1184,11 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
             <div className="flex-1 min-h-0 overflow-hidden">{renderPlot(false)}</div>
           </div>
         </div>
-      )}
+      </PopupPresence>
 
-      {confirmDelete && (
+      <PopupPresence show={confirmDelete}>
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
           <div data-popup-title="Remove plot" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">MLCV</span> plot will be removed.</p>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
@@ -1213,7 +1196,7 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
     </>
   );
 }
@@ -1281,8 +1264,6 @@ function AddPlotModal({
         className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-80"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-4">Add Analysis</h3>
-
         {/* Energy group */}
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider leading-none">Energy</p>
@@ -1527,7 +1508,6 @@ function SimRunConfirmModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Start Simulation</h3>
             <p className="text-xs text-gray-500 mt-0.5">Total: {simLabel} · {nsteps.toLocaleString()} steps</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors">
@@ -1783,16 +1763,18 @@ function FilesTab({ sessionId }: { sessionId: string }) {
         )}
       </Section>
 
-      {previewPath && (
-        <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />
-      )}
-      {deleteTarget && (
+      <PopupPresence show={Boolean(previewPath)}>
+        {previewPath && <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />}
+      </PopupPresence>
+      <PopupPresence show={Boolean(deleteTarget)}>
+        {deleteTarget && (
         <DeleteConfirmPopup
           name={deleteTarget.split("/").pop() ?? deleteTarget}
           onConfirm={() => handleDelete(deleteTarget)}
           onCancel={() => setDeleteTarget(null)}
         />
-      )}
+        )}
+      </PopupPresence>
     </div>
   );
 }
@@ -2203,7 +2185,7 @@ function ProgressTab({
         </div>
       </Section>
 
-      {addPlotOpen && (
+      <PopupPresence show={addPlotOpen}>
         <AddPlotModal
           onSelect={(types) => {
             setResultCards((prev) => [
@@ -2218,9 +2200,9 @@ function ProgressTab({
           sessionId={sessionId}
           mlcvUsed={mlcvUsed}
         />
-      )}
+      </PopupPresence>
 
-      {cvSetupOpen && (
+      <PopupPresence show={cvSetupOpen}>
         <CVSetupModal
           sessionId={sessionId}
           onConfirm={(cvDefs) => {
@@ -2233,11 +2215,11 @@ function ProgressTab({
           }}
           onClose={() => setCvSetupOpen(false)}
         />
-      )}
+      </PopupPresence>
 
-      {agentOpen && (
+      <PopupPresence show={agentOpen}>
         <AgentModal sessionId={sessionId} agentType="analysis" onClose={() => setAgentOpen(false)} />
-      )}
+      </PopupPresence>
     </div>
   );
 }
@@ -2573,7 +2555,7 @@ function MoleculeTab({
         </Section>
       )}
 
-      {agentOpen && (
+      <PopupPresence show={agentOpen}>
         <AgentModal
           sessionId={sessionId}
           agentType="paper"
@@ -2583,10 +2565,10 @@ function MoleculeTab({
             setFileRefresh((n) => n + 1);
           }}
         />
-      )}
-      {previewPath && (
-        <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />
-      )}
+      </PopupPresence>
+      <PopupPresence show={Boolean(previewPath)}>
+        {previewPath && <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />}
+      </PopupPresence>
     </div>
   );
 }
@@ -2948,9 +2930,9 @@ function GromacsTab({
       {/* Advanced — outside fieldset so toggle works when locked */}
       <AdvancedSection cfg={cfg} onChange={onChange} onSave={onSave} isLocked={isLocked} />
 
-      {agentOpen && (
+      <PopupPresence show={agentOpen}>
         <AgentModal sessionId={sessionId} agentType="paper" onClose={() => setAgentOpen(false)} />
-      )}
+      </PopupPresence>
     </div>
   );
 }
@@ -4056,7 +4038,7 @@ function MethodTab({
       )}
 
       {/* PLUMED preview popup modal */}
-      {plumedPopupOpen && (
+      <PopupPresence show={plumedPopupOpen}>
         <div className="fixed inset-0 z-60 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setPlumedPopupOpen(false)} />
           <div data-popup-title="PLUMED input" className="amd-popup-enter relative w-[560px] max-h-[80vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
@@ -4066,7 +4048,6 @@ function MethodTab({
                 <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40">
                   <FileText size={14} className="text-amber-600 dark:text-amber-400" />
                 </div>
-                <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">PLUMED Input File</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -4136,7 +4117,7 @@ function MethodTab({
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
 
       {/* Plain MD note */}
       {!needsPlumed && (
@@ -4147,9 +4128,9 @@ function MethodTab({
         </div>
       )}
 
-      {agentOpen && (
+      <PopupPresence show={agentOpen}>
         <AgentModal sessionId={sessionId} agentType="cv" onClose={() => setAgentOpen(false)} />
-      )}
+      </PopupPresence>
     </div>
   );
 }
@@ -4881,20 +4862,19 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       </div>
 
       {/* Simulation run confirmation dialog */}
-      {showRunConfirm && (
+      <PopupPresence show={showRunConfirm}>
         <SimRunConfirmModal
           cfg={cfg}
           onEdit={() => { setShowRunConfirm(false); setActiveTab("gromacs"); }}
           onRun={() => { setShowRunConfirm(false); handleStartMD(); }}
           onClose={() => setShowRunConfirm(false)}
         />
-      )}
+      </PopupPresence>
 
       {/* Pause confirmation dialog */}
-      {pauseConfirmOpen && (
+      <PopupPresence show={pauseConfirmOpen}>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div data-popup-title="Pause simulation" className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Pause Simulation?</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
               This will pause the running mdrun process. A checkpoint is saved automatically — you can resume from where it stopped.
             </p>
@@ -4914,7 +4894,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
     </div>
   );
 }

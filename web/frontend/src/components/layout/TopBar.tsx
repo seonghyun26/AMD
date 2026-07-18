@@ -6,6 +6,7 @@ import { FlaskConical, Settings, Monitor, LogOut, FolderOpen, Menu, MessageSquar
 import { getUsername, logout } from "@/lib/auth";
 import { SettingsModal, ServerStatusModal } from "@/components/sidebar/SessionSidebar";
 import UserAvatar from "@/components/common/UserAvatar";
+import PopupPresence from "@/components/ui/PopupPresence";
 import { useProjectStore } from "@/store/projectStore";
 import type { Project } from "@/lib/types";
 
@@ -224,8 +225,12 @@ export default function TopBar({
         </div>
       </div>
 
-      {settingsOpen && <SettingsModal username={username} onClose={() => setSettingsOpen(false)} />}
-      {serverOpen && <ServerStatusModal onClose={() => setServerOpen(false)} />}
+      <PopupPresence show={settingsOpen}>
+        <SettingsModal username={username} onClose={() => setSettingsOpen(false)} />
+      </PopupPresence>
+      <PopupPresence show={serverOpen}>
+        <ServerStatusModal onClose={() => setServerOpen(false)} />
+      </PopupPresence>
     </header>
   );
 }

@@ -279,8 +279,7 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
             <AgentIcon type={agentType} />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{config.title}</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{config.description}</p>
+            <p className="text-xs text-gray-500">{config.description}</p>
           </div>
           <button
             onClick={onClose}

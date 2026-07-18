@@ -328,8 +328,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Custom CV Analysis</h2>
+        <div className="flex items-center justify-end px-5 py-3 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
             <X size={16} />
           </button>

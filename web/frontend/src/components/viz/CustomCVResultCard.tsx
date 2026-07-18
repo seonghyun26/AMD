@@ -15,6 +15,7 @@ import { computeCustomCV, type CVDefinition, type CustomCVConfig } from "@/lib/a
 import { useTheme } from "@/lib/theme";
 import { UI_COLORS, colorWithAlpha } from "@/lib/colors";
 import { PLOT_CONFIG, plotAxis, plotLayout } from "@/lib/plotTheme";
+import PopupPresence from "@/components/ui/PopupPresence";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -101,8 +102,7 @@ function SettingsDropdown({
 }) {
   return (
     <div data-popup-title="Plot settings" className="amd-popover-enter fixed z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs" style={{ transform: "translateY(-100%) translateY(-8px)" }}>
-      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 rounded-t-xl">
-        <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
+      <div className="flex items-center justify-end px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 rounded-t-xl">
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
           <X size={12} />
         </button>
@@ -418,14 +418,14 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
         >
           <Settings size={size} />
         </button>
-        {settingsOpen && (
+        <PopupPresence show={settingsOpen} duration={400}>
           <SettingsDropdown
             settings={densitySettings}
             onChange={(key, val) => setDensitySettings((prev) => ({ ...prev, [key]: val }))}
             onClose={() => setSettingsOpen(false)}
             showDensity={numCVs === 2}
           />
-        )}
+        </PopupPresence>
       </div>
     );
   };
@@ -471,28 +471,22 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       </div>
 
       {/* ── Expanded modal ──────────────────────────────────────────── */}
-      {expanded && (
+      <PopupPresence show={expanded}>
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setExpanded(false)}
         >
           <div
-            data-popup-title="Collective variable plot"
+            data-popup-title={headerLabel(config.cvs)}
             className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border"
             style={{ width: expandedWidth, height: expandedHeight, borderColor: `${accentColor}40` }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Expanded header — matches Ramachandran expanded modal */}
             <div
-              className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b flex-shrink-0"
+              className="flex items-center justify-end px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b flex-shrink-0"
               style={{ borderColor: `${accentColor}25` }}
             >
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
-                <span className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>
-                  {headerLabel(config.cvs)}
-                </span>
-              </div>
               <div className="flex items-center gap-1.5">
                 <button onClick={handleRefresh} title="Refresh"
                   className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
@@ -514,14 +508,14 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
                     >
                       <Settings size={13} />
                     </button>
-                    {settingsOpen && (
+                    <PopupPresence show={settingsOpen} duration={400}>
                       <SettingsDropdown
                         settings={densitySettings}
                         onChange={(key, val) => setDensitySettings((prev) => ({ ...prev, [key]: val }))}
                         onClose={() => setSettingsOpen(false)}
                         showDensity={numCVs === 2}
                       />
-                    )}
+                    </PopupPresence>
                   </div>
                 )}
                 <button onClick={() => setExpanded(false)}
@@ -535,13 +529,12 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
 
       {/* ── Delete confirmation ──────────────────────────────────────── */}
-      {confirmDelete && (
+      <PopupPresence show={confirmDelete}>
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
           <div data-popup-title="Remove plot" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 mb-4">
               The <span className="text-gray-700 dark:text-gray-300">{headerLabel(config.cvs)}</span> plot will be removed.
             </p>
@@ -557,7 +550,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
             </div>
           </div>
         </div>
-      )}
+      </PopupPresence>
     </>
   );
 }

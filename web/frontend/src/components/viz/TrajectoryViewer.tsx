@@ -7,6 +7,7 @@ import { getToken } from "@/lib/auth";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { useTheme } from "@/lib/theme";
 import { viewerBackground } from "@/lib/colors";
+import PopupPresence from "@/components/ui/PopupPresence";
 
 type ExportBg = "white" | "black" | "transparent";
 
@@ -727,7 +728,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             >
               <span className="text-[10px] font-semibold">{playbackSpeed}x</span>
             </button>
-            {speedMenuOpen && (
+            <PopupPresence show={speedMenuOpen} duration={400}>
               <div data-popup-title="Playback speed" className="amd-popover-enter absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden z-30">
                 {([1, 10, 100, 1000] as const).map((s) => (
                   <button
@@ -743,7 +744,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                   </button>
                 ))}
               </div>
-            )}
+            </PopupPresence>
           </div>
           <button
             onClick={handleResetView}
@@ -787,11 +788,10 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
               <Settings size={11} />
             </button>
 
-            {settingsOpen && (
+            <PopupPresence show={settingsOpen} duration={400}>
               <div data-popup-title="Export settings" className="amd-popover-enter absolute right-0 bottom-full mb-2 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                  <span className="font-semibold text-gray-700 dark:text-gray-200">Export Settings</span>
+                <div className="flex items-center justify-end px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                   <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
                     <X size={12} />
                   </button>
@@ -921,7 +921,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                   </div>
                 </div>
               </div>
-            )}
+            </PopupPresence>
           </div>
         </div>
       </div>

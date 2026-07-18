@@ -49,13 +49,12 @@ html.light {
   --amd-text-muted: #6b7280;
   --amd-popup-shadow: 0 24px 64px rgba(15, 23, 42, 0.22), 0 8px 20px rgba(15, 23, 42, 0.12);
   --amd-popup-chrome-bg: rgba(248, 250, 252, 0.98);
-  --amd-popup-chrome-line: rgba(79, 70, 229, 0.46);
   --amd-popup-chrome-text: #334155;
   --amd-popup-chrome-shadow: rgba(15, 23, 42, 0.08);
   --amd-motion-fast: 160ms;
   --amd-motion-base: 240ms;
   --amd-motion-emphasis: 360ms;
-  --amd-motion-popup: 700ms;
+  --amd-motion-popup: 500ms;
   --amd-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: light;
 }
@@ -99,7 +98,6 @@ html.dark {
   --amd-user-message-shadow: 0 12px 28px rgba(2, 6, 23, 0.3), inset 0 1px 0 rgba(224, 231, 255, 0.12);
   --amd-popup-shadow: 0 26px 72px rgba(0, 0, 0, 0.46), 0 8px 22px rgba(0, 0, 0, 0.28);
   --amd-popup-chrome-bg: rgba(15, 23, 42, 0.98);
-  --amd-popup-chrome-line: rgba(103, 232, 249, 0.42);
   --amd-popup-chrome-text: #cbd5e1;
   --amd-popup-chrome-shadow: rgba(0, 0, 0, 0.28);
   color-scheme: dark;
@@ -158,7 +156,7 @@ html.light * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 }
 
 .amd-popover-enter {
-  --amd-popup-open-duration: 560ms;
+  --amd-popup-open-duration: 400ms;
 }
 
 /* The simulation mention list is deliberately simpler than system popups: it
@@ -228,12 +226,12 @@ html .amd-popover-enter {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
   background:
-    linear-gradient(90deg, transparent 0%, var(--amd-popup-chrome-line) 24%, var(--amd-popup-chrome-line) 76%, transparent 100%) bottom / 100% 1px no-repeat,
+    var(--amd-highlight-border-gradient) bottom / 100% 2px no-repeat,
     var(--amd-popup-chrome-bg);
   color: var(--amd-popup-chrome-text);
-  font-size: 0.68rem;
-  font-weight: 750;
-  letter-spacing: 0.045em;
+  font-size: 0.76rem;
+  font-weight: 500;
+  letter-spacing: 0.035em;
   line-height: 1;
   text-align: center;
   text-overflow: ellipsis;
@@ -249,7 +247,7 @@ html .amd-popover-enter {
   border-top-left-radius: 0;
   border-top-right-radius: 0;
   background:
-    linear-gradient(90deg, transparent 0%, var(--amd-popup-chrome-line) 24%, var(--amd-popup-chrome-line) 76%, transparent 100%) top / 100% 1px no-repeat,
+    var(--amd-highlight-border-gradient) top / 100% 2px no-repeat,
     var(--amd-popup-chrome-bg);
   animation: amd-popup-tail-slide var(--amd-popup-open-duration) var(--amd-ease-out) both;
 }
@@ -263,6 +261,29 @@ html .amd-popover-enter {
 .amd-popup-enter[data-popup-title] > :last-child,
 .amd-popover-enter[data-popup-title] > :last-child {
   margin-bottom: 34px;
+}
+
+/* PopupPresence retains the shell while this exact reverse motion completes. */
+.amd-popup-presence-closing {
+  pointer-events: none;
+}
+
+.amd-popup-presence-closing .amd-popup-enter,
+.amd-popup-presence-closing .amd-popover-enter {
+  animation-name: amd-popup-conceal;
+  animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
+}
+
+.amd-popup-presence-closing .amd-popup-enter[data-popup-title]::before,
+.amd-popup-presence-closing .amd-popover-enter[data-popup-title]::before {
+  animation-name: amd-popup-head-return;
+  animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
+}
+
+.amd-popup-presence-closing .amd-popup-enter[data-popup-title]::after,
+.amd-popup-presence-closing .amd-popover-enter[data-popup-title]::after {
+  animation-name: amd-popup-tail-return;
+  animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
 }
 
 /* Modal layers that contain the shared shell use one consistent backdrop. */
@@ -406,6 +427,23 @@ html .amd-popover-enter {
   }
 }
 
+@keyframes amd-popup-conceal {
+  0% { clip-path: inset(0 0 0 0 round 0.85rem); }
+  68%, 100% {
+    clip-path: inset(calc(50% - 34px) 0 calc(50% - 34px) 0 round 0.85rem);
+  }
+}
+
+@keyframes amd-popup-head-return {
+  0% { top: 0; }
+  68%, 100% { top: calc(50% - 34px); }
+}
+
+@keyframes amd-popup-tail-return {
+  0% { bottom: 0; }
+  68%, 100% { bottom: calc(50% - 34px); }
+}
+
 @keyframes amd-mention-list-expand-up {
   0% {
     clip-path: inset(calc(100% - 2px) 0 0 0 round 0.75rem);
@@ -498,11 +536,11 @@ html .amd-popover-enter {
 }
 
 .profile-system-avatar-closing::before {
-  animation: amd-profile-arc-before-close 520ms cubic-bezier(0.7, 0, 0.84, 0) 0ms both;
+  animation: amd-profile-arc-before-close 260ms cubic-bezier(0.7, 0, 0.84, 0) 0ms both;
 }
 
 .profile-system-avatar-closing::after {
-  animation: amd-profile-arc-after-close 520ms cubic-bezier(0.7, 0, 0.84, 0) 28ms both;
+  animation: amd-profile-arc-after-close 260ms cubic-bezier(0.7, 0, 0.84, 0) 14ms both;
 }
 
 @keyframes amd-profile-arc-before {
@@ -560,6 +598,8 @@ html .amd-popover-enter {
   .amd-popover-enter,
   .amd-popover-enter::before,
   .amd-popover-enter::after,
+  .amd-popup-presence-closing .amd-popup-enter,
+  .amd-popup-presence-closing .amd-popover-enter,
   .amd-mention-list-enter,
   .amd-login-enter,
   .amd-overlay-enter,
