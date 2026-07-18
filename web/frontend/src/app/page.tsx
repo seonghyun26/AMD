@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ChevronLeft, ChevronRight, Loader2, FlaskConical, Trash2 } from "lucide-react";
@@ -35,7 +35,9 @@ export default function App() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState("progress");
   const isMobile = useIsMobile();
+  const handleAssistantTabChange = useCallback((tab: string) => setWorkspaceTab(tab), []);
 
   // Collapsible simulation list (desktop) — fold to a thin rail on the left.
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
@@ -202,7 +204,11 @@ export default function App() {
             </div>
             <div className="flex-1 overflow-hidden flex flex-col min-h-0">
               <ChatWindow />
-              <ChatInput projectId={activeProjectId} contextSessionId={activeSessionId} />
+              <ChatInput
+                projectId={activeProjectId}
+                contextSessionId={activeSessionId}
+                workspaceTab={workspaceTab}
+              />
             </div>
           </>
         ) : (
@@ -267,6 +273,7 @@ export default function App() {
               showNewForm={showNewSession}
               onSessionCreated={handleSessionCreated}
               onNewSession={handleNewSession}
+              onAssistantTabChange={handleAssistantTabChange}
             />
 
             {assistant}

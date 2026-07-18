@@ -24,7 +24,6 @@ import {
   Binary,
   Layers,
   MessageSquare,
-  Bot,
   Download,
   Trash2,
   ChevronDown,
@@ -40,7 +39,6 @@ import {
 import type { AgentType } from "@/lib/agentStream";
 import { getUsername } from "@/lib/auth";
 import dynamic from "next/dynamic";
-const AgentModal = dynamic(() => import("@/components/agents/AgentModal"), { ssr: false });
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 const TrajectoryViewer = dynamic(() => import("@/components/viz/TrajectoryViewer"), { ssr: false });
 const MoleculeViewer = dynamic(() => import("@/components/viz/MoleculeViewer"), { ssr: false });
@@ -1778,7 +1776,6 @@ function ProgressTab({
   systemName: string;
   mlcvUsed: boolean;
 }) {
-  const [agentOpen, setAgentOpen] = useState(false);
   const [allFiles, setAllFiles] = useState<string[]>([]);
   const [filesLoadedFor, setFilesLoadedFor] = useState("");
   const [filesLoading, setFilesLoading] = useState(false);
@@ -2093,20 +2090,6 @@ function ProgressTab({
         action={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
-                useSessionStore.getState().requestAssistant(
-                  `Analyze the results of the "${nick}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`,
-                  "Analyze results",
-                  { name: "analyze_simulation", session_id: sessionId }
-                );
-              }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
-            >
-              <Bot size={11} />
-              Analyze
-            </button>
-            <button
               onClick={() => setAddPlotOpen(true)}
               className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-indigo-400 hover:bg-indigo-900/30 transition-colors font-medium"
             >
@@ -2183,9 +2166,6 @@ function ProgressTab({
         />
       </PopupPresence>
 
-      <PopupPresence show={agentOpen}>
-        <AgentModal sessionId={sessionId} agentType="analysis" onClose={() => setAgentOpen(false)} />
-      </PopupPresence>
     </div>
   );
 }
@@ -2215,7 +2195,6 @@ function MoleculeTab({
   const [viewLoading, setViewLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const [agentOpen, setAgentOpen] = useState(false);
   const [expandedRoots, setExpandedRoots] = useState<Record<string, boolean>>({});
   const [molLibrary, setMolLibrary] = useState<{ id: string; label: string; states: { name: string; file: string }[] }[]>([]);
   const [molLibLoading, setMolLibLoading] = useState<string | null>(null);
@@ -2370,20 +2349,6 @@ function MoleculeTab({
         action={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
-                useSessionStore.getState().requestAssistant(
-                  `Help me pick a molecular system for the "${nick}" simulation. List the structure/topology input files already present, identify what system is set up, and suggest suitable PDB structures (with IDs) if something is missing.`,
-                  "Find a molecular system",
-                  { name: "inspect_molecular_system", session_id: sessionId }
-                );
-              }}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-100/40 dark:hover:bg-blue-900/30 transition-colors font-medium"
-            >
-              <Bot size={12} />
-              Search
-            </button>
-            <button
               onClick={refreshFiles}
               className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
               title="Refresh"
@@ -2521,17 +2486,6 @@ function MoleculeTab({
         </Section>
       )}
 
-      <PopupPresence show={agentOpen}>
-        <AgentModal
-          sessionId={sessionId}
-          agentType="paper"
-          onClose={() => setAgentOpen(false)}
-          onPdbLoaded={(mol) => {
-            onSelectMolecule(mol);
-            setFileRefresh((n) => n + 1);
-          }}
-        />
-      </PopupPresence>
       <PopupPresence show={Boolean(previewPath)}>
         {previewPath && <FilePreviewModal sessionId={sessionId} path={previewPath} onClose={() => setPreviewPath(null)} />}
       </PopupPresence>
@@ -2654,31 +2608,14 @@ function GromacsTab({
     1,
     Math.round(Number(gromacs.equil_npt_ps ?? 100) / timestepPs),
   );
-  const [agentOpen, setAgentOpen] = useState(false);
 
   return (
     <div className="p-4 space-y-4">
-      {/* Sticky header with agent button */}
+      {/* Sticky tab header */}
       <div className="sticky top-0 z-20 -mx-4 px-4 py-1.5 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur border-b border-gray-200/80 dark:border-gray-800/80">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">GROMACS Parameters</h3>
           <div className="flex items-center gap-2">
-            {!isLocked && (
-              <button
-                onClick={() => {
-                  const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
-                  useSessionStore.getState().requestAssistant(
-                    `Review the GROMACS parameters configured for the "${nick}" simulation (see its config.yaml / .mdp) and suggest sensible values or flag anything unusual for this system — thermostat, timestep, cutoffs, electrostatics, constraints and run length.`,
-                    "Review initial configuration",
-                    { name: "review_initial_configuration", session_id: sessionId }
-                  );
-                }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
-              >
-                <Bot size={11} />
-                Review Setup
-              </button>
-            )}
             {isLocked && (
               <span className="inline-flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
                 <Lock size={12} />
@@ -2896,9 +2833,6 @@ function GromacsTab({
       {/* Advanced — outside fieldset so toggle works when locked */}
       <AdvancedSection cfg={cfg} onChange={onChange} onSave={onSave} isLocked={isLocked} />
 
-      <PopupPresence show={agentOpen}>
-        <AgentModal sessionId={sessionId} agentType="paper" onClose={() => setAgentOpen(false)} />
-      </PopupPresence>
     </div>
   );
 }
@@ -3267,7 +3201,6 @@ function MethodTab({
   const hills = (method.hills ?? {}) as Record<string, unknown>;
   const plumedCfg = (cfg.plumed ?? {}) as Record<string, unknown>;
   const cvsCfg = (plumedCfg.collective_variables ?? {}) as Record<string, unknown>;
-  const [agentOpen, setAgentOpen] = useState(false);
   const [cvMode, setCvMode] = useState<"manual" | "mlcv">("manual");
   const [mlCheckpoints, setMlCheckpoints] = useState<string[]>([]);
   const [mlSelectedCkpt, setMlSelectedCkpt] = useState<string>(
@@ -3480,22 +3413,6 @@ function MethodTab({
             <span className="text-gray-500 dark:text-gray-400 font-normal">{currentMethod.long}</span> — {currentMethod.label}
           </h3>
           <div className="flex items-center gap-2">
-            {needsPlumed && !isLocked && (
-              <button
-                onClick={() => {
-                  const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
-                  useSessionStore.getState().requestAssistant(
-                    `Find relevant publications for collective variables (CVs) for the "${nick}" system, then recommend CVs for its enhanced-sampling method with PLUMED-style definitions and evidence-based rationale.`,
-                    "Research CV publications",
-                    { name: "research_cv_publications", session_id: sessionId }
-                  );
-                }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
-              >
-                <Bot size={11} />
-                Research CVs
-              </button>
-            )}
             {needsPlumed && (
               <button
                 onClick={() => { handlePreviewPlumed(); setPlumedPopupOpen(true); }}
@@ -4089,9 +4006,6 @@ function MethodTab({
         </div>
       )}
 
-      <PopupPresence show={agentOpen}>
-        <AgentModal sessionId={sessionId} agentType="cv" onClose={() => setAgentOpen(false)} />
-      </PopupPresence>
     </div>
   );
 }
@@ -4262,11 +4176,18 @@ interface Props {
   showNewForm: boolean;
   onSessionCreated: (id: string, workDir: string, nickname: string) => void;
   onNewSession: () => void;
+  onAssistantTabChange?: (tab: string) => void;
 }
 
 type SimState = "standby" | "running";
 
-export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, onNewSession }: Props) {
+export default function MDWorkspace({
+  sessionId,
+  showNewForm,
+  onSessionCreated,
+  onNewSession,
+  onAssistantTabChange,
+}: Props) {
   const [cfg, setCfg] = useState<Record<string, unknown>>({});
   const cfgRef = useRef<Record<string, unknown>>({});
   const [sessionLoading, setSessionLoading] = useState(!!sessionId);
@@ -4288,6 +4209,10 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
   // Stable ref — lets the restore effect read latest sessions without re-running
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
+
+  useEffect(() => {
+    onAssistantTabChange?.(activeTab);
+  }, [activeTab, onAssistantTabChange]);
 
   // Reset simulation state when switching sessions, preserving terminal states from the store
   useEffect(() => {

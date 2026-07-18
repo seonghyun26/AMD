@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { StopCircle, FlaskConical } from "lucide-react";
+import { Bot, StopCircle, FlaskConical } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { streamAssistant } from "@/lib/sse";
 import type { AssistantActionInvocation } from "@/lib/types";
@@ -14,7 +14,63 @@ interface Props {
   /** When set to a non-empty string, auto-sends that message once. */
   autoSend?: string;
   onAutoSendComplete?: () => void;
+  /** The selected workspace tab determines the assistant shortcuts shown above the composer. */
+  workspaceTab?: string;
 }
+
+type ContextAction = {
+  label: string;
+  title: string;
+  prompt: (nickname: string) => string;
+  action?: AssistantActionInvocation["name"];
+};
+
+const TAB_CONTEXT_ACTIONS: Record<string, ContextAction[]> = {
+  progress: [
+    {
+      label: "Analyze results",
+      title: "Analyze results",
+      action: "analyze_simulation",
+      prompt: (nickname) =>
+        `Analyze the results of the "${nickname}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`,
+    },
+  ],
+  molecule: [
+    {
+      label: "Inspect system",
+      title: "Find a molecular system",
+      action: "inspect_molecular_system",
+      prompt: (nickname) =>
+        `Help me inspect the molecular system for the "${nickname}" simulation. List the structure/topology input files already present, identify what system is set up, and suggest suitable PDB structures (with IDs) if something is missing.`,
+    },
+  ],
+  gromacs: [
+    {
+      label: "Review setup",
+      title: "Review initial configuration",
+      action: "review_initial_configuration",
+      prompt: (nickname) =>
+        `Review the GROMACS parameters configured for the "${nickname}" simulation (see its config.yaml / .mdp) and suggest sensible values or flag anything unusual for this system — thermostat, timestep, cutoffs, electrostatics, constraints and run length.`,
+    },
+  ],
+  method: [
+    {
+      label: "Research CVs",
+      title: "Research CV publications",
+      action: "research_cv_publications",
+      prompt: (nickname) =>
+        `Find relevant publications for collective variables (CVs) for the "${nickname}" system, then recommend CVs for its enhanced-sampling method with PLUMED-style definitions and evidence-based rationale.`,
+    },
+  ],
+  files: [
+    {
+      label: "Inspect files",
+      title: "Inspect simulation files",
+      prompt: (nickname) =>
+        `Inspect the local files for the "${nickname}" simulation. Summarize which inputs and outputs are present, what each important file is for, and flag only missing files that matter for the current simulation state.`,
+    },
+  ],
+};
 
 /** Detect a trailing `@query` token immediately before the caret (used for the
  *  simulation-name mention popup). Returns the query text and the `@` offset. */
@@ -62,7 +118,13 @@ function GradientSendIcon({ size = 19 }: { size?: number }) {
   );
 }
 
-export default function ChatInput({ projectId, contextSessionId, autoSend, onAutoSendComplete }: Props) {
+export default function ChatInput({
+  projectId,
+  contextSessionId,
+  autoSend,
+  onAutoSendComplete,
+  workspaceTab = "progress",
+}: Props) {
   const [value, setValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -85,6 +147,7 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
     fetchSessions,
     fetchSimulations,
     persistAssistant,
+    requestAssistant,
   } = useSessionStore();
 
   // @-mention state — only active inside a project (simulations belong to one).
@@ -99,6 +162,7 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
       .filter((s) => (s.nickname || "").toLowerCase().includes(q))
       .slice(0, 8);
   }, [mentionOpen, projectId, mentionQuery, sessions]);
+  const contextActions = contextSessionId ? TAB_CONTEXT_ACTIONS[workspaceTab] ?? [] : [];
 
   useEffect(() => {
     if (hi > matches.length - 1) setHi(0);
@@ -146,6 +210,15 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
 
   const handleSend = () => doSend(value);
   const handleStop = () => abortRef.current?.abort();
+  const handleContextAction = (action: ContextAction) => {
+    if (!contextSessionId || isStreaming) return;
+    const nickname = sessions.find((session) => session.session_id === contextSessionId)?.nickname || "selected";
+    requestAssistant(
+      action.prompt(nickname),
+      action.title,
+      action.action ? { name: action.action, session_id: contextSessionId } : undefined,
+    );
+  };
 
   const refreshMention = (text: string, caret: number) => {
     if (!projectId) { setMentionOpen(false); return; }
@@ -209,6 +282,25 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-800 p-3 bg-white/50 dark:bg-gray-900/50 flex-shrink-0">
+      {contextActions.length > 0 && (
+        <div className="mb-3 flex items-center gap-2 overflow-x-auto border-b border-gray-200/80 dark:border-gray-800/80 pb-3">
+          <span className="flex-shrink-0 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-600">
+            AI requests
+          </span>
+          {contextActions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => handleContextAction(action)}
+              disabled={isStreaming}
+              className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200/70 bg-gradient-to-r from-cyan-50 via-blue-50 to-indigo-50 px-2.5 py-1.5 text-[11px] font-medium text-indigo-700 transition-colors hover:from-cyan-100 hover:via-blue-100 hover:to-indigo-100 disabled:cursor-not-allowed disabled:opacity-45 dark:border-indigo-500/30 dark:from-cyan-950/50 dark:via-blue-950/50 dark:to-indigo-950/50 dark:text-indigo-200 dark:hover:from-cyan-950/70 dark:hover:via-blue-950/70 dark:hover:to-indigo-950/70"
+            >
+              <Bot size={12} />
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="relative">
         {/* @-mention dropdown — simulations in this project */}
         {mentionOpen && matches.length > 0 && (
