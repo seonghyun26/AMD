@@ -41,38 +41,120 @@ class ConfigUpdateRequest(BaseModel):
     updates: dict  # flat or nested dict of overrides
 
 
+def _remove_legacy_gromacs_nsteps(cfg) -> None:
+    """Keep method.nsteps as the single source of truth for production length."""
+    if OmegaConf.select(cfg, "method.nsteps") is None:
+        return
+    gromacs = OmegaConf.select(cfg, "gromacs")
+    if gromacs is not None and "nsteps" in gromacs:
+        was_struct = OmegaConf.is_struct(gromacs)
+        OmegaConf.set_struct(gromacs, False)
+        try:
+            del gromacs["nsteps"]
+        finally:
+            OmegaConf.set_struct(gromacs, was_struct)
+
+
+def _replace_config_contents(target, source) -> None:
+    """Replace a DictConfig in place so agent tool closures retain the object."""
+    was_struct = OmegaConf.is_struct(target)
+    OmegaConf.set_struct(target, False)
+    try:
+        target.clear()
+        target.merge_with(source)
+    finally:
+        OmegaConf.set_struct(target, was_struct)
+
+
+def _persist_session_files(session_id: str, session, cfg=None) -> dict:
+    """Persist config.yaml, md.mdp, and session metadata for a session."""
+    cfg = cfg if cfg is not None else session.agent.cfg
+    _remove_legacy_gromacs_nsteps(cfg)
+
+    work_dir = Path(session.work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    session_root = work_dir.parent
+    session_root.mkdir(parents=True, exist_ok=True)
+
+    config_path = session_root / "config.yaml"
+    mdp_path = work_dir / "md.mdp"
+    config_tmp = session_root / ".config.yaml.tmp"
+    mdp_tmp = work_dir / ".md.mdp.tmp"
+    meta_path = session_root / "session.json"
+    meta_tmp = session_root / ".session.json.tmp"
+
+    try:
+        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    except Exception:
+        meta = {}
+    meta.update(
+        {
+            "session_id": session_id,
+            "nickname": session.nickname,
+            "work_dir": session.work_dir,
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+    )
+    meta.setdefault("status", "active")
+
+    # Prepare every file before publishing the new config as a unit.
+    try:
+        OmegaConf.save(cfg, config_tmp)
+        from md_agent.config.hydra_utils import generate_mdp_from_config
+
+        generate_mdp_from_config(cfg, str(mdp_tmp))
+        meta_tmp.write_text(json.dumps(meta, indent=2))
+        config_tmp.replace(config_path)
+        mdp_tmp.replace(mdp_path)
+        meta_tmp.replace(meta_path)
+    except Exception as exc:
+        config_tmp.unlink(missing_ok=True)
+        mdp_tmp.unlink(missing_ok=True)
+        meta_tmp.unlink(missing_ok=True)
+        raise HTTPException(500, f"Config/MDP generation failed: {exc}")
+
+    legacy_cfg = work_dir / "config.yaml"
+    if legacy_cfg.exists():
+        legacy_cfg.unlink()
+
+    return {"generated": ["../config.yaml", "md.mdp"], "work_dir": str(work_dir)}
+
+
 @router.post("/sessions/{session_id}/config")
 async def update_session_config(session_id: str, req: ConfigUpdateRequest):
     session = get_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
 
-    cfg = session.agent.cfg
+    async with session.lock:
+        cfg = session.agent.cfg
 
-    # Validate the PROPOSED result before committing so a bad manual edit
-    # (dt too large, negative temperature, unknown thermostat/barostat) is
-    # rejected with a clear message instead of silently producing an invalid MDP.
-    proposed = OmegaConf.create(OmegaConf.to_container(cfg, resolve=False))
-    for key, value in req.updates.items():
-        OmegaConf.update(proposed, key, value, merge=True, force_add=True)
-    try:
-        gdict = OmegaConf.to_container(OmegaConf.select(proposed, "gromacs") or {}, resolve=True)
-    except Exception:
-        gdict = None  # couldn't resolve → skip validation rather than false-reject
-    if isinstance(gdict, dict):
-        from md_agent.config.schemas import validate_gromacs_dict
-
-        problems = validate_gromacs_dict(gdict)
-        if problems:
-            raise HTTPException(400, "Invalid GROMACS settings — " + "; ".join(problems))
-
-    for key, value in req.updates.items():
+        # Validate and persist a detached copy first. The live config changes
+        # only after config.yaml and md.mdp have both been generated successfully.
+        proposed = OmegaConf.create(OmegaConf.to_container(cfg, resolve=False))
+        for key, value in req.updates.items():
+            OmegaConf.update(proposed, key, value, merge=True, force_add=True)
+        _remove_legacy_gromacs_nsteps(proposed)
         try:
-            OmegaConf.update(cfg, key, value, merge=True)
+            gdict = OmegaConf.to_container(
+                OmegaConf.select(proposed, "gromacs") or {}, resolve=True
+            )
         except Exception:
-            # Key not in schema — force-add it (new fields like store_states, gpu_id, etc.)
-            OmegaConf.update(cfg, key, value, merge=True, force_add=True)
-    return {"updated": True, "config": OmegaConf.to_container(cfg, resolve=True)}
+            gdict = None  # couldn't resolve → skip validation rather than false-reject
+        if isinstance(gdict, dict):
+            from md_agent.config.schemas import validate_gromacs_dict
+
+            problems = validate_gromacs_dict(gdict)
+            if problems:
+                raise HTTPException(400, "Invalid GROMACS settings — " + "; ".join(problems))
+
+        persisted = _persist_session_files(session_id, session, proposed)
+        _replace_config_contents(cfg, proposed)
+        return {
+            "updated": True,
+            "config": OmegaConf.to_container(cfg, resolve=True),
+            **persisted,
+        }
 
 
 @router.get("/sessions/{session_id}/config")
@@ -92,57 +174,8 @@ async def generate_session_files(session_id: str):
     if not session:
         raise HTTPException(404, "Session not found")
 
-    work_dir = Path(session.work_dir)
-    work_dir.mkdir(parents=True, exist_ok=True)
-    cfg = session.agent.cfg
-
-    generated: list[str] = []
-
-    # ── config.yaml — human-readable session config (session root) ───────
-    try:
-        session_root = work_dir.parent
-        session_root.mkdir(parents=True, exist_ok=True)
-        OmegaConf.save(cfg, session_root / "config.yaml")
-        generated.append("../config.yaml")
-        # Remove legacy config location inside data/ so it is not listed in web files.
-        legacy_cfg = work_dir / "config.yaml"
-        if legacy_cfg.exists():
-            legacy_cfg.unlink()
-    except Exception as exc:
-        raise HTTPException(500, f"Config YAML write failed: {exc}")
-
-    # ── md.mdp — GROMACS parameter file (converted from config) ──────────
-    try:
-        from md_agent.config.hydra_utils import generate_mdp_from_config
-
-        mdp_path = str(work_dir / "md.mdp")
-        generate_mdp_from_config(cfg, mdp_path)
-        generated.append("md.mdp")
-    except Exception as exc:
-        raise HTTPException(500, f"MDP generation failed: {exc}")
-
-    # ── session.json metadata (lives in session root, parent of data/) ───────
-    session_root.mkdir(parents=True, exist_ok=True)
-    meta_path = session_root / "session.json"
-    try:
-        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-    except Exception:
-        meta = {}
-    meta.update(
-        {
-            "session_id": session_id,
-            "nickname": session.nickname,
-            "work_dir": session.work_dir,
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-    )
-    meta.setdefault("status", "active")
-    try:
-        meta_path.write_text(json.dumps(meta, indent=2))
-    except Exception as exc:
-        raise HTTPException(500, f"Failed to write session.json: {exc}")
-
-    return {"generated": generated, "work_dir": str(work_dir)}
+    async with session.lock:
+        return _persist_session_files(session_id, session)
 
 
 def _resolve_cvs(cfg) -> list[dict]:

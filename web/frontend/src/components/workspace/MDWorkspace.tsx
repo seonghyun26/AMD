@@ -67,7 +67,6 @@ import {
 import {
   getSessionConfig,
   updateSessionConfig,
-  generateSessionFiles,
   listFiles,
   downloadUrl,
   downloadZipUrl,
@@ -4513,8 +4512,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
 
   const handleSave = useCallback(async () => {
     if (!sessionId) return;
-    await updateSessionConfig(sessionId, cfgRef.current).catch(() => {});
-    await generateSessionFiles(sessionId).catch(() => {});
+    await updateSessionConfig(sessionId, cfgRef.current);
   }, [sessionId]);
 
   const handleGromacsSave = useCallback(async () => {
@@ -4525,7 +4523,13 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       gromacsSavedTimerRef.current = null;
     }
     setGromacsSaveState("saving");
-    await handleSave();
+    try {
+      await handleSave();
+    } catch (err) {
+      console.error("Failed to save GROMACS settings:", err);
+      if (seq === gromacsSaveSeqRef.current) setGromacsSaveState("idle");
+      return;
+    }
     if (seq !== gromacsSaveSeqRef.current) return;
     setGromacsSaveState("saved");
     gromacsSavedTimerRef.current = setTimeout(() => {
@@ -4624,8 +4628,9 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     };
     setCfg(updatedCfg);
     cfgRef.current = updatedCfg;
-    await updateSessionConfig(sessionId, updatedCfg).catch(() => {});
-    await generateSessionFiles(sessionId).catch(() => {});
+    await updateSessionConfig(sessionId, updatedCfg).catch((err) => {
+      console.error("Failed to save molecule selection:", err);
+    });
   };
 
   const handleSessionCreated = async (

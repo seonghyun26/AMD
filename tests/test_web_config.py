@@ -1,9 +1,20 @@
 """Tests for web backend config router — PLUMED generation and config endpoints."""
 
+import asyncio
+import json
+from types import SimpleNamespace
+
 import pytest
 from omegaconf import OmegaConf
 
-from web.backend.routers.config import _build_plumed_content, _resolve_cvs
+from web.backend.routers import config as config_router
+from web.backend.routers.config import (
+    ConfigUpdateRequest,
+    _build_plumed_content,
+    _persist_session_files,
+    _remove_legacy_gromacs_nsteps,
+    _resolve_cvs,
+)
 
 
 @pytest.fixture
@@ -58,6 +69,78 @@ class TestResolveCvs:
         cvs = _resolve_cvs(cfg)
         assert len(cvs) == 2
         assert cvs[1]["type"] == "TORSION"
+
+
+class TestConfigPersistence:
+    def test_config_update_regenerates_mdp(self, tmp_path, monkeypatch):
+        cfg = OmegaConf.create(
+            {
+                "gromacs": {
+                    "integrator": "md",
+                    "dt": 0.002,
+                    "nsteps": 999999,
+                    "tcoupl": "no",
+                    "pcoupl": "no",
+                },
+                "method": {"_target_name": "plain_md", "nsteps": 500000},
+            }
+        )
+        OmegaConf.set_struct(cfg, True)
+        work_dir = tmp_path / "simulation" / "data"
+        session = SimpleNamespace(
+            work_dir=str(work_dir),
+            nickname="Chignolin-1ns",
+            agent=SimpleNamespace(cfg=cfg),
+            lock=asyncio.Lock(),
+        )
+        monkeypatch.setattr(config_router, "get_session", lambda _session_id: session)
+
+        result = asyncio.run(
+            config_router.update_session_config(
+                "session-1", ConfigUpdateRequest(updates={"gromacs.dt": 0.001})
+            )
+        )
+
+        assert result["updated"] is True
+        assert OmegaConf.select(cfg, "gromacs.dt") == 0.001
+        assert OmegaConf.select(cfg, "gromacs.nsteps") is None
+        assert "dt                             = 0.001" in (work_dir / "md.mdp").read_text()
+
+    def test_method_nsteps_is_the_only_persisted_run_length(self, tmp_path):
+        cfg = OmegaConf.create(
+            {
+                "gromacs": {
+                    "integrator": "md",
+                    "dt": 0.002,
+                    "nsteps": 999999,
+                    "tcoupl": "no",
+                },
+                "method": {"_target_name": "plain_md", "nsteps": 500000},
+            }
+        )
+        work_dir = tmp_path / "simulation" / "data"
+        session = SimpleNamespace(
+            work_dir=str(work_dir),
+            nickname="Chignolin-1ns",
+            agent=SimpleNamespace(cfg=cfg),
+        )
+
+        result = _persist_session_files("session-1", session)
+
+        saved = OmegaConf.load(tmp_path / "simulation" / "config.yaml")
+        assert OmegaConf.select(saved, "gromacs.nsteps") is None
+        assert OmegaConf.select(saved, "method.nsteps") == 500000
+        assert "nsteps                         = 500000" in (work_dir / "md.mdp").read_text()
+        assert result["generated"] == ["../config.yaml", "md.mdp"]
+        assert (
+            json.loads((tmp_path / "simulation" / "session.json").read_text())["session_id"]
+            == "session-1"
+        )
+
+    def test_legacy_nsteps_is_kept_without_method_length(self):
+        cfg = OmegaConf.create({"gromacs": {"nsteps": 123}})
+        _remove_legacy_gromacs_nsteps(cfg)
+        assert cfg.gromacs.nsteps == 123
 
 
 class TestBuildPlumedContent:
