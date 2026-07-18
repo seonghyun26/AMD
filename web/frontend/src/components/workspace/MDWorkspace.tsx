@@ -4302,6 +4302,21 @@ export default function MDWorkspace({
     if (stored.run_status === "finished" || stored.run_status === "failed" || stored.run_status === "paused") {
       setSimRunStatus((prev) => (prev === "standby" ? stored.run_status! : prev));
     }
+
+    // A completed assistant analysis updates result_cards server-side. Mirror it
+    // into the open workspace as soon as the chat refreshes the session list.
+    const storedTypes = (stored.result_cards ?? [])
+      .map((entry: unknown) => (typeof entry === "string" ? entry : (entry as { type?: string })?.type))
+      .filter((type): type is string => Boolean(type && VALID_RESULT_CARD_TYPES.has(type)));
+    if (storedTypes.length) {
+      setResultCards((current) => {
+        const currentTypes = new Set(current.map((card) => card.type));
+        const additions = storedTypes
+          .filter((type) => !currentTypes.has(type as ResultCardType))
+          .map((type) => ({ id: uuid(), type: type as ResultCardType }));
+        return additions.length ? [...current, ...additions] : current;
+      });
+    }
   }, [sessionId, sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const gromacsSaveSeqRef = useRef(0);

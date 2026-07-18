@@ -83,6 +83,78 @@ def test_start_action_reports_preflight_blockers_without_launching(monkeypatch):
     assert events[-1] == {"type": "agent_done", "final_text": ""}
 
 
+def test_run_analysis_extracts_energy_and_adds_all_standard_cards(monkeypatch):
+    monkeypatch.setattr(
+        assistant,
+        "_read_simulation_state",
+        lambda _action: {"run_status": "finished"},
+    )
+    monkeypatch.setattr(
+        assistant,
+        "get_or_restore_session",
+        lambda _sid: SimpleNamespace(
+            work_dir="/tmp/simulation", agent=SimpleNamespace(_gmx=object())
+        ),
+    )
+    monkeypatch.setattr(
+        assistant.db, "get_session_indexed", lambda _sid: {"result_cards": ["custom_cv"]}
+    )
+    saved = {}
+
+    def fake_update(session_id, updates):
+        saved.update(session_id=session_id, updates=updates)
+        return True
+
+    monkeypatch.setattr("web.backend.session_store.update_session_json", fake_update)
+
+    def fake_energy(work_dir, gmx):
+        assert work_dir == "/tmp/simulation"
+        assert gmx is not None
+        return {"time_ps": [0.0], "Potential": [-10.0]}
+
+    monkeypatch.setattr("web.backend.analysis_utils.run_gmx_energy", fake_energy)
+
+    async def immediate_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(assistant.asyncio, "to_thread", immediate_to_thread)
+    action = {"name": "analyze_simulation", "session_id": "session-1", "nickname": "test"}
+
+    async def collect():
+        return [event async for event in assistant._stream_simulation_action(action, "alice", None)]
+
+    events = asyncio.run(collect())
+
+    assert events[0]["tool_name"] == "run_analysis"
+    assert events[1]["result"]["status"] == "completed"
+    assert saved["updates"]["result_cards"] == [
+        "custom_cv",
+        "energy_potential",
+        "energy_kinetic",
+        "energy_total",
+        "energy_temperature",
+        "energy_pressure",
+    ]
+    assert "five energy analyses" in events[2]["text"]
+
+
+def test_run_analysis_blocks_before_the_simulation_finishes(monkeypatch):
+    monkeypatch.setattr(
+        assistant,
+        "_read_simulation_state",
+        lambda _action: {"run_status": "running"},
+    )
+    action = {"name": "analyze_simulation", "session_id": "session-1", "nickname": "test"}
+
+    async def collect():
+        return [event async for event in assistant._stream_simulation_action(action, "alice", None)]
+
+    events = asyncio.run(collect())
+
+    assert events[1]["result"]["status"] == "blocked"
+    assert "after the Main simulation finishes" in events[2]["text"]
+
+
 def test_recognizes_state_questions_without_treating_mutation_requests_as_reads():
     assert is_simulation_state_query("Now chignolin folded is selected, right?")
     assert is_simulation_state_query("What is the status now?")

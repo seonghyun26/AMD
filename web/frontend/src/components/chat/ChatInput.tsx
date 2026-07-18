@@ -38,7 +38,7 @@ const RUN_ANALYSIS_ACTION: ContextAction = {
   title: "Run analysis",
   action: "analyze_simulation",
   prompt: (nickname) =>
-    `Run analysis for the completed "${nickname}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`,
+    `Run the five standard energy analyses for the completed "${nickname}" simulation: potential, kinetic, total energy, temperature, and pressure.`,
 };
 
 const TAB_CONTEXT_ACTIONS: Record<string, ContextAction[]> = {
@@ -208,7 +208,10 @@ export default function ChatInput({
       )) {
         if (projectIdRef.current !== sendScope) return; // switched away — don't touch the new scope
         appendSSEEvent(event);
-        if (event.type === "tool_result" && event.tool_name === "create_simulation") {
+        if (
+          event.type === "tool_result" &&
+          (event.tool_name === "create_simulation" || event.tool_name === "run_analysis")
+        ) {
           if (sendScope) await fetchSimulations(sendScope);
           else await fetchSessions();
         }

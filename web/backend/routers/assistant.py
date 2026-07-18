@@ -40,6 +40,13 @@ router = APIRouter()
 _OUTPUTS = Path("outputs")
 _MSG_FILE = "assistant_messages.json"
 _MINIMUM_START_FREE_BYTES = 2 * 1024**3
+_ENERGY_RESULT_CARDS = [
+    "energy_potential",
+    "energy_kinetic",
+    "energy_total",
+    "energy_temperature",
+    "energy_pressure",
+]
 
 
 def _sse(event: dict) -> str:
@@ -408,6 +415,98 @@ async def _stream_start_simulation(action: dict[str, Any]):
     yield {"type": "agent_done", "final_text": ""}
 
 
+async def _stream_run_analysis(action: dict[str, Any]):
+    """Extract standard energy data and open its five result cards.
+
+    ``gmx energy`` extracts all selected terms in one invocation.  The five
+    cards then reuse the cached data rather than each launching their own job.
+    """
+    action_id = "assistant-action-run_analysis"
+    yield {
+        "type": "tool_start",
+        "tool_use_id": action_id,
+        "tool_name": "run_analysis",
+        "tool_input": {
+            "session_id": action["session_id"],
+            "simulation": action["nickname"],
+            "analyses": _ENERGY_RESULT_CARDS,
+        },
+    }
+
+    state = _read_simulation_state(action)
+    if state["run_status"] != "finished":
+        result = {"status": "blocked", "reason": "simulation_not_finished", **state}
+        yield {
+            "type": "tool_result",
+            "tool_use_id": action_id,
+            "tool_name": "run_analysis",
+            "result": result,
+        }
+        yield {
+            "type": "text_delta",
+            "text": "Analysis is available after the Main simulation finishes; no analyses were run.",
+        }
+        yield {"type": "agent_done", "final_text": ""}
+        return
+
+    try:
+        from web.backend.analysis_utils import run_gmx_energy
+        from web.backend.session_store import update_session_json
+
+        session = get_or_restore_session(action["session_id"])
+        if not session:
+            raise RuntimeError("Simulation no longer exists.")
+        energy_data = await asyncio.to_thread(
+            run_gmx_energy,
+            session.work_dir,
+            session.agent._gmx,
+        )
+        if not energy_data:
+            raise RuntimeError("No energy data could be extracted from the completed run.")
+
+        existing_cards = list(
+            (db.get_session_indexed(action["session_id"]) or {}).get("result_cards") or []
+        )
+        existing_types = {
+            entry if isinstance(entry, str) else entry.get("type")
+            for entry in existing_cards
+            if isinstance(entry, (str, dict))
+        }
+        result_cards = existing_cards + [
+            card for card in _ENERGY_RESULT_CARDS if card not in existing_types
+        ]
+        if not update_session_json(action["session_id"], {"result_cards": result_cards}):
+            raise RuntimeError(
+                "Energy data was extracted, but the result cards could not be saved."
+            )
+    except Exception as exc:  # noqa: BLE001 - report the actionable extraction failure
+        yield {
+            "type": "tool_result",
+            "tool_use_id": action_id,
+            "tool_name": "run_analysis",
+            "result": {"status": "error", "error": str(exc)},
+        }
+        yield {"type": "text_delta", "text": f"Analysis could not be run: {exc}"}
+        yield {"type": "agent_done", "final_text": ""}
+        return
+
+    yield {
+        "type": "tool_result",
+        "tool_use_id": action_id,
+        "tool_name": "run_analysis",
+        "result": {
+            "status": "completed",
+            "analyses": _ENERGY_RESULT_CARDS,
+            "result_cards": result_cards,
+        },
+    }
+    yield {
+        "type": "text_delta",
+        "text": "Completed the five energy analyses: potential, kinetic, total energy, temperature, and pressure. Their result cards are now open.",
+    }
+    yield {"type": "agent_done", "final_text": ""}
+
+
 async def _stream_simulation_state(action: dict[str, Any]):
     """Stream a deterministic, read-only simulation-state inspection."""
     action_id = "assistant-action-inspect_simulation_state"
@@ -461,6 +560,10 @@ async def _stream_simulation_action(action: dict[str, Any], username: str, tmux_
         return
     if action["name"] == "start_simulation":
         async for event in _stream_start_simulation(action):
+            yield event
+        return
+    if action["name"] == "analyze_simulation":
+        async for event in _stream_run_analysis(action):
             yield event
         return
 
