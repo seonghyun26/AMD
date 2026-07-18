@@ -739,8 +739,8 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             >
               <span className="text-[10px] font-semibold">{playbackSpeed}x</span>
             </button>
-            <PopupPresence show={speedMenuOpen} duration={400}>
-              <div data-popup-title="Playback speed" className="amd-popover-enter absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden z-30">
+            {speedMenuOpen && (
+              <div className="amd-mention-list-enter absolute bottom-full right-0 z-30 mb-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
                 {([1, 10, 100, 1000] as const).map((s) => (
                   <button
                     key={s}
@@ -754,9 +754,8 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
                     {s}x
                   </button>
                 ))}
-                <PopupTailClose onClick={() => setSpeedMenuOpen(false)} label="Close playback speed menu" />
               </div>
-            </PopupPresence>
+            )}
           </div>
           <button
             onClick={handleResetView}
