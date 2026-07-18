@@ -150,7 +150,7 @@ function SessionItem({
       return;
     }
     const rect = e.currentTarget.getBoundingClientRect();
-    const popupWidth = 288;
+    const popupWidth = Math.min(384, window.innerWidth - 24);
     const popupHeight = 310;
     const rightSide = rect.right + 8;
     const left = rightSide + popupWidth <= window.innerWidth - 12
@@ -187,6 +187,7 @@ function SessionItem({
           onClick={cancelConfirm}
         >
           <div
+            data-popup-title="Delete simulation"
             className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
             onClick={(e) => e.stopPropagation()}
           >
@@ -195,7 +196,6 @@ function SessionItem({
                 <Trash2 size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Delete simulation?</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
                   <span className="text-gray-700 dark:text-gray-300 font-medium">{nick}</span>
                 </p>
@@ -226,7 +226,8 @@ function SessionItem({
           ref={infoPopupRef}
           role="dialog"
           aria-label={`${nick} simulation information`}
-          className="amd-popover-enter fixed z-[80] w-72 rounded-xl border border-cyan-200/70 bg-white/95 p-3.5 text-left shadow-2xl backdrop-blur-md dark:border-cyan-500/20 dark:bg-gray-900/95"
+          data-popup-title="Simulation information"
+          className="amd-popover-enter fixed z-[80] w-96 max-w-[calc(100vw-24px)] rounded-xl border border-cyan-200/70 bg-white/95 p-3.5 text-left shadow-2xl backdrop-blur-md dark:border-cyan-500/20 dark:bg-gray-900/95"
           style={{ top: infoPosition.top, left: infoPosition.left }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -586,14 +587,14 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="amd-popup-enter relative w-[520px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div data-popup-title="Settings" className="amd-popup-enter relative w-[520px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800">
               <Settings size={15} className="text-gray-500 dark:text-gray-400" />
             </div>
-            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Settings</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Account &amp; preferences</span>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
             <X size={15} />
@@ -855,12 +856,12 @@ export function ServerStatusModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="amd-popup-enter relative w-[520px] max-h-[85vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div data-popup-title="Server status" className="amd-popup-enter relative w-[520px] max-h-[85vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Monitor size={16} className="text-emerald-500" />
-            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Server Status</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Live resources</span>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -1010,7 +1011,7 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
 
       {/* Popover menu */}
       {open && (
-        <div className="amd-popover-enter absolute bottom-full left-3 right-3 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden z-50">
+        <div data-popup-title="Profile" className="amd-popover-enter absolute bottom-full left-3 right-3 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden z-50">
           <button
             onClick={() => { setOpen(false); setServerStatusOpen(true); }}
             className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors"
@@ -1068,6 +1069,7 @@ function ProjectItem({
           onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
         >
           <div
+            data-popup-title="Delete project"
             className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1076,7 +1078,6 @@ function ProjectItem({
                 <Trash2 size={16} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Delete project?</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
                   <span className="text-gray-700 dark:text-gray-300 font-medium">{p.name}</span>
                 </p>

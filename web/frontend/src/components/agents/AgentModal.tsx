@@ -268,6 +268,7 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
+        data-popup-title={config.title}
         className={`amd-popup-enter bg-white dark:bg-gray-900 border ${accentBorder} rounded-2xl flex flex-col shadow-2xl`}
         style={{ width: "min(860px, 92vw)", height: "80vh" }}
         onClick={(e) => e.stopPropagation()}

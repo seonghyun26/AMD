@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, StopCircle, FlaskConical } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { StopCircle, FlaskConical } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { streamAssistant } from "@/lib/sse";
 import type { AssistantActionInvocation } from "@/lib/types";
@@ -24,6 +24,42 @@ function mentionAt(text: string, caret: number): { query: string; start: number 
   const m = upto.match(/(?:^|\s)@([\w.()/-]*)$/);
   if (!m) return null;
   return { query: m[1], start: caret - m[1].length - 1 };
+}
+
+function GradientSendIcon({ size = 19 }: { size?: number }) {
+  const gradientId = useId().replace(/:/g, "");
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="2" y1="22" x2="22" y2="2" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="var(--amd-arc-cyan)" />
+          <stop offset="0.42" stopColor="var(--amd-brand-primary)" />
+          <stop offset="0.72" stopColor="var(--amd-arc-indigo)" />
+          <stop offset="1" stopColor="var(--amd-arc-violet)" />
+        </linearGradient>
+      </defs>
+      <path
+        d="m22 2-7 20-4-9-9-4Z"
+        stroke={`url(#${gradientId})`}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M22 2 11 13"
+        stroke={`url(#${gradientId})`}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export default function ChatInput({ projectId, contextSessionId, autoSend, onAutoSendComplete }: Props) {
@@ -176,7 +212,7 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
       <div className="relative">
         {/* @-mention dropdown — simulations in this project */}
         {mentionOpen && matches.length > 0 && (
-          <div className="amd-popover-enter absolute bottom-full left-0 mb-2 w-72 max-w-full max-h-60 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl z-50 py-1">
+          <div className="amd-mention-list-enter absolute bottom-full left-0 mb-2 w-72 max-w-full max-h-60 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl z-50 py-1">
             <p className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Simulations</p>
             {matches.map((s, i) => (
               <button
@@ -220,11 +256,11 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
           <button
             onClick={handleSend}
             disabled={!value.trim()}
-            className="amd-selection-highlight absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 transition-[filter,transform,opacity] hover:brightness-95 active:translate-y-px disabled:opacity-35 disabled:cursor-not-allowed dark:hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+            className="absolute bottom-2.5 right-2.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-transparent transition-[filter,transform,opacity] hover:brightness-110 active:translate-y-px disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
             title="Send (Enter)"
             aria-label="Send message"
           >
-            <Send size={18} />
+            <GradientSendIcon />
           </button>
         )}
       </div>

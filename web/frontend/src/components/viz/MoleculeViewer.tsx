@@ -367,7 +367,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
               </button>
 
               {settingsOpen && (
-                <div className="amd-popover-enter absolute right-0 bottom-full mb-2 z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                <div data-popup-title="Export settings" className="amd-popover-enter absolute right-0 bottom-full mb-2 z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                     <span className="font-semibold text-gray-700 dark:text-gray-200">Export Settings</span>
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
@@ -412,6 +412,7 @@ export default function MoleculeViewer({ fileContent, fileName, onClose, inline 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div
+        data-popup-title="Molecule viewer"
         className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700"
         style={{ width: "75vw", height: "75vh" }}
       >

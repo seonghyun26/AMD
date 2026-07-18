@@ -48,10 +48,14 @@ html.light {
   --amd-text: #111827;
   --amd-text-muted: #6b7280;
   --amd-popup-shadow: 0 24px 64px rgba(15, 23, 42, 0.22), 0 8px 20px rgba(15, 23, 42, 0.12);
+  --amd-popup-chrome-bg: rgba(248, 250, 252, 0.98);
+  --amd-popup-chrome-line: rgba(79, 70, 229, 0.46);
+  --amd-popup-chrome-text: #334155;
+  --amd-popup-chrome-shadow: rgba(15, 23, 42, 0.08);
   --amd-motion-fast: 160ms;
   --amd-motion-base: 240ms;
   --amd-motion-emphasis: 360ms;
-  --amd-motion-popup: 440ms;
+  --amd-motion-popup: 700ms;
   --amd-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: light;
 }
@@ -94,6 +98,10 @@ html.dark {
   --amd-user-message-mention-ring: rgba(165, 180, 252, 0.24);
   --amd-user-message-shadow: 0 12px 28px rgba(2, 6, 23, 0.3), inset 0 1px 0 rgba(224, 231, 255, 0.12);
   --amd-popup-shadow: 0 26px 72px rgba(0, 0, 0, 0.46), 0 8px 22px rgba(0, 0, 0, 0.28);
+  --amd-popup-chrome-bg: rgba(15, 23, 42, 0.98);
+  --amd-popup-chrome-line: rgba(103, 232, 249, 0.42);
+  --amd-popup-chrome-text: #cbd5e1;
+  --amd-popup-chrome-shadow: rgba(0, 0, 0, 0.28);
   color-scheme: dark;
 }
 
@@ -139,17 +147,26 @@ html.light * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
   font-weight: 500;
 }
 
-/* Popup motion: draw a horizontal line from the center, then reveal height. */
+/* Popup motion: keep content at its natural size while a centered reveal opens
+   and the attached header/tail caps slide toward their final edges. */
 .amd-popup-enter,
 .amd-popover-enter,
 .amd-login-enter {
-  transform-origin: center;
-  will-change: scale, opacity;
-  animation: amd-popup-expand var(--amd-motion-popup) var(--amd-ease-out) both;
+  --amd-popup-open-duration: var(--amd-motion-popup);
+  will-change: clip-path;
+  animation: amd-popup-reveal var(--amd-popup-open-duration) var(--amd-ease-out) both;
 }
 
 .amd-popover-enter {
-  animation-duration: 320ms;
+  --amd-popup-open-duration: 560ms;
+}
+
+/* The simulation mention list is deliberately simpler than system popups: it
+   reveals straight upward from the composer without the head/tail rail effect. */
+.amd-mention-list-enter {
+  transform-origin: bottom center;
+  will-change: clip-path;
+  animation: amd-mention-list-expand-up 220ms var(--amd-ease-out) both;
 }
 
 /* Shared popup shell. Sizes and content remain component-specific. */
@@ -167,6 +184,85 @@ html .amd-popup-enter {
 
 html .amd-popover-enter {
   border-radius: 0.75rem;
+}
+
+/* Shared system popups carry full-width title and tail caps. During
+   amd-popup-reveal the caps begin together, then move apart while the popup
+   content opens in the space between them. Positioned popovers already
+   establish their own containing block; ordinary modal shells need one here. */
+.amd-popup-enter:not(.fixed):not(.absolute),
+.amd-popover-enter:not(.fixed):not(.absolute) {
+  position: relative;
+}
+
+.amd-popup-enter,
+.amd-popover-enter {
+  isolation: isolate;
+}
+
+.amd-popup-enter[data-popup-title]::before,
+.amd-popup-enter[data-popup-title]::after,
+.amd-popover-enter[data-popup-title]::before,
+.amd-popover-enter[data-popup-title]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background-color: var(--amd-popup-chrome-bg);
+  box-shadow: 0 4px 14px var(--amd-popup-chrome-shadow);
+  pointer-events: none;
+}
+
+.amd-popup-enter[data-popup-title]::before,
+.amd-popover-enter[data-popup-title]::before {
+  content: attr(data-popup-title);
+  top: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2.5rem;
+  overflow: hidden;
+  border-radius: inherit;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background:
+    linear-gradient(90deg, transparent 0%, var(--amd-popup-chrome-line) 24%, var(--amd-popup-chrome-line) 76%, transparent 100%) bottom / 100% 1px no-repeat,
+    var(--amd-popup-chrome-bg);
+  color: var(--amd-popup-chrome-text);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: amd-popup-head-slide var(--amd-popup-open-duration) var(--amd-ease-out) both;
+}
+
+.amd-popup-enter[data-popup-title]::after,
+.amd-popover-enter[data-popup-title]::after {
+  bottom: 0;
+  height: 34px;
+  border-radius: inherit;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  background:
+    linear-gradient(90deg, transparent 0%, var(--amd-popup-chrome-line) 24%, var(--amd-popup-chrome-line) 76%, transparent 100%) top / 100% 1px no-repeat,
+    var(--amd-popup-chrome-bg);
+  animation: amd-popup-tail-slide var(--amd-popup-open-duration) var(--amd-ease-out) both;
+}
+
+/* Reserve the cap space without replacing component-specific padding. */
+.amd-popup-enter[data-popup-title] > :first-child,
+.amd-popover-enter[data-popup-title] > :first-child {
+  margin-top: 34px;
+}
+
+.amd-popup-enter[data-popup-title] > :last-child,
+.amd-popover-enter[data-popup-title] > :last-child {
+  margin-bottom: 34px;
 }
 
 /* Modal layers that contain the shared shell use one consistent backdrop. */
@@ -260,11 +356,7 @@ html .amd-popover-enter {
 
 .amd-user-message-mention {
   display: inline;
-  padding: 0.08rem 0.28rem;
-  border-radius: 0.35rem;
-  background: var(--amd-user-message-mention-bg);
   color: var(--amd-user-message-mention-text);
-  box-shadow: inset 0 0 0 1px var(--amd-user-message-mention-ring);
   font-weight: 650;
 }
 
@@ -286,22 +378,40 @@ html .amd-popover-enter {
   background: transparent;
 }
 
-@keyframes amd-popup-expand {
-  0% {
-    scale: 0.16 0.025;
-    opacity: 0;
+@keyframes amd-popup-reveal {
+  0%, 32% {
+    clip-path: inset(calc(50% - 34px) 0 calc(50% - 34px) 0 round 0.85rem);
   }
-  24% {
-    scale: 1 0.025;
-    opacity: 1;
+  99.8% {
+    clip-path: inset(0 0 0 0 round 0.85rem);
   }
-  44% {
-    scale: 1 0.025;
-    opacity: 1;
+  100% { clip-path: none; }
+}
+
+@keyframes amd-popup-head-slide {
+  0%, 32% {
+    top: calc(50% - 34px);
   }
   100% {
-    scale: 1 1;
-    opacity: 1;
+    top: 0;
+  }
+}
+
+@keyframes amd-popup-tail-slide {
+  0%, 32% {
+    bottom: calc(50% - 34px);
+  }
+  100% {
+    bottom: 0;
+  }
+}
+
+@keyframes amd-mention-list-expand-up {
+  0% {
+    clip-path: inset(calc(100% - 2px) 0 0 0 round 0.75rem);
+  }
+  100% {
+    clip-path: inset(0 0 0 0 round 0.75rem);
   }
 }
 
@@ -322,7 +432,7 @@ html .amd-popover-enter {
 
 /* Closing is the inverse of the springy reveal: icons remain visible while
    accelerating back under the avatar instead of blinking out in place. */
-.profile-system-menu:not(.profile-system-menu-open) .profile-system-action {
+.profile-system-menu-closing .profile-system-action {
   transition-duration: 270ms, 250ms, 120ms;
   transition-timing-function:
     cubic-bezier(0.7, 0, 0.84, 0),
@@ -356,19 +466,12 @@ html .amd-popover-enter {
   border: 1px solid transparent;
   opacity: 0;
   transform: scale(0.72) rotate(-125deg);
-  transition-property: opacity, transform;
-  transition-duration: 160ms, 520ms;
-  transition-timing-function:
-    cubic-bezier(0.4, 0, 1, 1),
-    cubic-bezier(0.7, 0, 0.84, 0);
-  /* On close, rotate counterclockwise first and fade near the end. */
-  transition-delay: 330ms, 0ms;
+  will-change: transform, opacity;
 }
 
 .profile-system-avatar::after {
   inset: -7px;
   transform: scale(0.72) rotate(-70deg);
-  transition-delay: 358ms, 28ms;
 }
 
 .profile-system-avatar-open {
@@ -376,31 +479,88 @@ html .amd-popover-enter {
   box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.16), 0 8px 26px rgba(129, 140, 248, 0.24);
 }
 
-.profile-system-avatar-open::before {
+.profile-system-avatar-open::before,
+.profile-system-avatar-closing::before {
   border-color: var(--amd-arc-cyan) transparent var(--amd-arc-indigo) transparent;
-  opacity: 1;
-  transform: scale(1) rotate(55deg);
-  transition-duration: 180ms, 520ms;
-  transition-timing-function:
-    cubic-bezier(0.16, 1, 0.3, 1),
-    cubic-bezier(0.16, 1, 0.3, 1);
-  transition-delay: 0ms, 0ms;
+}
+
+.profile-system-avatar-open::after,
+.profile-system-avatar-closing::after {
+  border-color: transparent var(--amd-arc-sky) transparent var(--amd-arc-violet);
+}
+
+.profile-system-avatar-open::before {
+  animation: amd-profile-arc-before 520ms cubic-bezier(0.16, 1, 0.3, 1) 0ms 1 normal both;
 }
 
 .profile-system-avatar-open::after {
-  border-color: transparent var(--amd-arc-sky) transparent var(--amd-arc-violet);
-  opacity: 1;
-  transform: scale(1) rotate(155deg);
-  transition-duration: 180ms, 520ms;
-  transition-timing-function:
-    cubic-bezier(0.16, 1, 0.3, 1),
-    cubic-bezier(0.16, 1, 0.3, 1);
-  transition-delay: 28ms, 28ms;
+  animation: amd-profile-arc-after 520ms cubic-bezier(0.16, 1, 0.3, 1) 28ms 1 normal both;
+}
+
+.profile-system-avatar-closing::before {
+  animation: amd-profile-arc-before-close 520ms cubic-bezier(0.7, 0, 0.84, 0) 0ms both;
+}
+
+.profile-system-avatar-closing::after {
+  animation: amd-profile-arc-after-close 520ms cubic-bezier(0.7, 0, 0.84, 0) 28ms both;
+}
+
+@keyframes amd-profile-arc-before {
+  0% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-125deg);
+  }
+  28% { opacity: 1; }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(145deg);
+  }
+}
+
+@keyframes amd-profile-arc-after {
+  0% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-70deg);
+  }
+  28% { opacity: 1; }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(200deg);
+  }
+}
+
+@keyframes amd-profile-arc-before-close {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(145deg);
+  }
+  72% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-125deg);
+  }
+}
+
+@keyframes amd-profile-arc-after-close {
+  0% {
+    opacity: 1;
+    transform: scale(1) rotate(200deg);
+  }
+  72% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-70deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .amd-popup-enter,
+  .amd-popup-enter::before,
+  .amd-popup-enter::after,
   .amd-popover-enter,
+  .amd-popover-enter::before,
+  .amd-popover-enter::after,
+  .amd-mention-list-enter,
   .amd-login-enter,
   .amd-overlay-enter,
   .profile-system-action,

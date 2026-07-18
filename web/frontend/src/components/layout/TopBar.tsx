@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FlaskConical, Settings, Monitor, LogOut, FolderOpen, Menu, MessageSquare, ArrowLeft } from "lucide-react";
 import { getUsername, logout } from "@/lib/auth";
@@ -24,12 +24,40 @@ export default function TopBar({
   const username = getUsername() || "user";
   const renameProject = useProjectStore((s) => s.renameProject);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuClosing, setMenuClosing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [serverOpen, setServerOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const skipSave = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuOpenRef = useRef(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openMenu = useCallback(() => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+    menuOpenRef.current = true;
+    setMenuClosing(false);
+    setMenuOpen(true);
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    if (!menuOpenRef.current) return;
+    menuOpenRef.current = false;
+    setMenuOpen(false);
+    setMenuClosing(true);
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => {
+      setMenuClosing(false);
+      closeTimerRef.current = null;
+    }, 620);
+  }, []);
+
+  const toggleMenu = () => {
+    if (menuOpenRef.current) closeMenu();
+    else openMenu();
+  };
 
   const saveName = () => {
     if (skipSave.current) { skipSave.current = false; setEditingName(false); return; }
@@ -42,37 +70,38 @@ export default function TopBar({
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setMenuOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) closeMenu();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "Escape") closeMenu();
     };
     document.addEventListener("mousedown", h);
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", h);
       document.removeEventListener("keydown", onKey);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     };
-  }, []);
+  }, [closeMenu]);
 
   const profileActions = [
     {
       label: "Server status",
       icon: <Monitor size={15} />,
       tone: "text-cyan-600 dark:text-cyan-300",
-      onClick: () => { setMenuOpen(false); setServerOpen(true); },
+      onClick: () => { closeMenu(); setServerOpen(true); },
     },
     {
       label: "Settings",
       icon: <Settings size={15} />,
       tone: "text-indigo-600 dark:text-indigo-300",
-      onClick: () => { setMenuOpen(false); setSettingsOpen(true); },
+      onClick: () => { closeMenu(); setSettingsOpen(true); },
     },
     {
       label: "Sign out",
       icon: <LogOut size={15} />,
       tone: "text-rose-500 dark:text-rose-300",
-      onClick: () => { setMenuOpen(false); logout(); router.push("/login"); },
+      onClick: () => { closeMenu(); logout(); router.push("/login"); },
     },
   ];
 
@@ -145,7 +174,9 @@ export default function TopBar({
         </button>
         <div
           ref={ref}
-          className={`profile-system-menu relative flex h-9 w-9 items-center justify-center ${menuOpen ? "profile-system-menu-open" : ""}`}
+          className={`profile-system-menu relative flex h-9 w-9 items-center justify-center ${
+            menuOpen ? "profile-system-menu-open" : menuClosing ? "profile-system-menu-closing" : ""
+          }`}
         >
           {profileActions.map((action, index) => (
             <button
@@ -176,10 +207,16 @@ export default function TopBar({
             </button>
           ))}
           <button
-            onClick={() => setMenuOpen((v) => !v)}
+            onClick={toggleMenu}
             aria-expanded={menuOpen}
             aria-label={menuOpen ? "Close profile actions" : "Open profile actions"}
-            className={`profile-system-avatar relative z-20 rounded-full shadow-md ${menuOpen ? "profile-system-avatar-open" : ""}`}
+            className={`profile-system-avatar relative z-20 rounded-full shadow-md ${
+              menuOpen
+                ? "profile-system-avatar-open"
+                : menuClosing
+                  ? "profile-system-avatar-closing"
+                  : ""
+            }`}
             title={username}
           >
             <UserAvatar size={34} fallback="initial" className="amd-brand-mark rounded-full text-slate-900 text-sm font-semibold" />

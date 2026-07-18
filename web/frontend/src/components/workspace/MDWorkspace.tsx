@@ -137,6 +137,7 @@ function FilePreviewModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
+        data-popup-title="File preview"
         className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
         style={{ width: "min(900px, 92vw)", height: "80vh" }}
         onClick={(e) => e.stopPropagation()}
@@ -206,6 +207,7 @@ function DeleteConfirmPopup({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
       <div
+        data-popup-title="Move to archive"
         className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl p-5 w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
@@ -591,6 +593,7 @@ function ResultCard({
           onClick={() => setExpanded(false)}
         >
           <div
+            data-popup-title={label}
             className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
             style={{ width: "min(1080px, 95vw)", height: "420px" }}
             onClick={(e) => e.stopPropagation()}
@@ -626,6 +629,7 @@ function ResultCard({
           onClick={() => setConfirmDelete(false)}
         >
           <div
+            data-popup-title="Remove plot"
             className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72"
             onClick={(e) => e.stopPropagation()}
           >
@@ -701,6 +705,7 @@ function RamachandranExpandedModal({
       onClick={onClose}
     >
       <div
+        data-popup-title="Ramachandran"
         className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
         style={{ width: "min(600px, 95vw)", height: "min(600px, 90vh)" }}
         onClick={(e) => e.stopPropagation()}
@@ -740,7 +745,7 @@ function RamachandranExpandedModal({
                 <Settings size={13} />
               </button>
               {settingsOpen && (
-                <div className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                <div data-popup-title="Plot settings" className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                     <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
@@ -951,7 +956,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
               </button>
 
               {settingsOpen && (
-                <div className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                <div data-popup-title="Plot settings" className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                     <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
@@ -1065,7 +1070,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
-          <div className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
+          <div data-popup-title="Remove plot" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">Ramachandran</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
@@ -1177,7 +1182,7 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
 
       {expanded && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setExpanded(false)}>
-          <div className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ width: "min(1080px, 95vw)", height: "420px" }} onClick={(e) => e.stopPropagation()}>
+          <div data-popup-title="MLCV" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ width: "min(1080px, 95vw)", height: "420px" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
@@ -1199,7 +1204,7 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
-          <div className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
+          <div data-popup-title="Remove plot" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">MLCV</span> plot will be removed.</p>
             <div className="flex gap-2 justify-end">
@@ -1272,6 +1277,7 @@ function AddPlotModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
+        data-popup-title="Add analysis"
         className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-80"
         onClick={(e) => e.stopPropagation()}
       >
@@ -1514,6 +1520,7 @@ function SimRunConfirmModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
       <div
+        data-popup-title="Start simulation"
         className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -4052,7 +4059,7 @@ function MethodTab({
       {plumedPopupOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setPlumedPopupOpen(false)} />
-          <div className="amd-popup-enter relative w-[560px] max-h-[80vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+          <div data-popup-title="PLUMED input" className="amd-popup-enter relative w-[560px] max-h-[80vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
               <div className="flex items-center gap-2.5">
@@ -4886,7 +4893,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       {/* Pause confirmation dialog */}
       {pauseConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
+          <div data-popup-title="Pause simulation" className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Pause Simulation?</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
               This will pause the running mdrun process. A checkpoint is saved automatically — you can resume from where it stopped.
