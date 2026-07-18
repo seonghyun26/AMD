@@ -158,6 +158,9 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const speedMenuRef                    = useRef<HTMLDivElement>(null);
+  const playingRef                      = useRef(false);
+
+  useEffect(() => { playingRef.current = playing; }, [playing]);
 
   const rootRef                         = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -304,6 +307,11 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
           if (traj?.signals?.frameChanged) {
             traj.signals.frameChanged.add((i: number) => {
               trimFrameCache(traj, i, comp.structure?.atomCount ?? 0);
+              if (playingRef.current && Number.isFinite(traj.numframes) && i >= traj.numframes - 1) {
+                playerRef.current?.pause?.();
+                playingRef.current = false;
+                setPlaying(false);
+              }
               if (isSeeking.current) return;
               // Throttle React state updates to screen refresh rate
               if (frameUpdateRaf.current != null) return;
@@ -318,7 +326,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             if (cancelled) return;
             setTotalFrames(Number(n));
             applyRepresentations(comp, repsRef.current);
-            playerRef.current = new window.NGL.TrajectoryPlayer(traj, { step: 1, timeout: 80, mode: "loop" });
+            playerRef.current = new window.NGL.TrajectoryPlayer(traj, { step: 1, timeout: 80, mode: "once" });
             setLoadingStage(null);
             setReady(true);
           };
@@ -330,7 +338,7 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
             traj.signals.countChanged.add(initPlayer);
           } else {
             applyRepresentations(comp, repsRef.current);
-            playerRef.current = new window.NGL.TrajectoryPlayer(traj, { step: 1, timeout: 80, mode: "loop" });
+            playerRef.current = new window.NGL.TrajectoryPlayer(traj, { step: 1, timeout: 80, mode: "once" });
             setLoadingStage(null);
             setReady(true);
           }
@@ -419,12 +427,14 @@ export default function TrajectoryViewer({ sessionId, topologyPath, trajectoryPa
     if (!playerRef.current) return;
     applySpeed(playerRef.current, speed ?? playbackSpeed);
     playerRef.current.play();
+    playingRef.current = true;
     setPlaying(true);
   };
 
   const handlePause = () => {
     if (!playerRef.current) return;
     playerRef.current.pause();
+    playingRef.current = false;
     setPlaying(false);
   };
 
