@@ -84,8 +84,8 @@ ASSISTANT_ACTIONS: tuple[dict[str, str], ...] = (
     },
     {
         "name": "analyze_simulation",
-        "title": "Analyze results",
-        "description": "Inspect one simulation's local outputs and report stability, sampling, and convergence.",
+        "title": "Run analysis",
+        "description": "Inspect one completed simulation's local outputs and report stability, sampling, and convergence.",
         "safety": "Read-only; never starts, stops, or changes a simulation.",
         "scope": "simulation",
     },
@@ -135,7 +135,7 @@ ASSISTANT_ACTIONS: tuple[dict[str, str], ...] = (
 
 _ACTION_PROMPTS: dict[str, str] = {
     "analyze_simulation": """\
-Run the registered **Analyze results** action for exactly this simulation.
+Run the registered **Run analysis** action for exactly this simulation.
 
 Simulation: {nickname}
 System: {system}

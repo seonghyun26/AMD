@@ -51,6 +51,7 @@ def test_action_registry_only_lists_executable_assistant_actions():
     }
     assert actions["create_simulation"]["scope"] == "project_or_general"
     assert actions["start_simulation"]["scope"] == "simulation"
+    assert actions["analyze_simulation"]["title"] == "Run analysis"
     assert actions["research_cv_publications"]["scope"] == "simulation"
     assert all(action["safety"] for action in actions.values())
 
