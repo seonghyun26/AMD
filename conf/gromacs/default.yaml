@@ -61,9 +61,9 @@ gen_vel: "yes"
 gen_seed: -1              # -1 = use random seed
 
 # Output frequencies (steps)
-nstxout: 500000
-nstvout: 500000
+nstxout: 0
+nstvout: 0
 nstfout: 0
-nstlog: 100000
+nstlog: 10000
 nstxout_compressed: 1000
-nstenergy: 100000
+nstenergy: 1000
