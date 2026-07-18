@@ -103,7 +103,7 @@ export default function App() {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
         <div className="flex flex-col items-center gap-4">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg">
+          <div className="amd-brand-mark inline-flex items-center justify-center w-14 h-14 rounded-2xl shadow-lg">
             <FlaskConical size={28} className="text-white" />
           </div>
           <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500">
@@ -196,7 +196,7 @@ export default function App() {
             </div>
             <div className="flex-1 overflow-hidden flex flex-col min-h-0">
               <ChatWindow />
-              <ChatInput projectId={activeProjectId} />
+              <ChatInput projectId={activeProjectId} contextSessionId={activeSessionId} />
             </div>
           </>
         ) : (

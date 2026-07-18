@@ -60,7 +60,7 @@ export default function FileUpload({ sessionId, onUploaded, accept, label }: Pro
         <p className="text-gray-500">Uploading…</p>
       ) : status === "done" ? (
         <p className="text-green-600 flex items-center justify-center gap-1">
-          <CheckCircle2 size={12} /> {message}
+          <CheckCircle2 size={12} className="amd-check-icon" /> {message}
         </p>
       ) : status === "error" ? (
         <p className="text-red-500 flex items-center justify-center gap-1">

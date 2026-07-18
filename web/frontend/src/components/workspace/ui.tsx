@@ -196,7 +196,7 @@ export function PillTabs({
         )}
         {saveState === "saved" && (
           <span className="inline-flex items-center gap-1.5 text-xs text-emerald-500 dark:text-emerald-400 pr-2">
-            <CheckCircle2 size={12} />
+            <CheckCircle2 size={12} className="amd-check-icon" />
             Saved
           </span>
         )}

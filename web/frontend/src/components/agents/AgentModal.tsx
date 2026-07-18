@@ -82,7 +82,7 @@ function ToolCallRenderer({
   const icon = TOOL_ICONS[block.tool_name] ?? <Wrench size={12} />;
   const statusIcon =
     block.status === "pending" ? <Loader2 size={11} className="animate-spin text-blue-500 dark:text-blue-400" /> :
-    block.status === "done"    ? <span className="text-emerald-500 dark:text-emerald-400 text-[10px]">✓</span> :
+    block.status === "done"    ? <span className="amd-check-icon text-[10px]">✓</span> :
                                   <span className="text-red-500 dark:text-red-400 text-[10px]">✗</span>;
 
   return (
@@ -268,7 +268,7 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className={`bg-white dark:bg-gray-900 border ${accentBorder} rounded-2xl flex flex-col shadow-2xl`}
+        className={`amd-popup-enter bg-white dark:bg-gray-900 border ${accentBorder} rounded-2xl flex flex-col shadow-2xl`}
         style={{ width: "min(860px, 92vw)", height: "80vh" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -313,7 +313,7 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
           ) : (
             <button
               onClick={handleRun}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors text-sm flex-shrink-0 font-medium"
+              className="amd-primary-button flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm flex-shrink-0 font-medium"
             >
               <Play size={14} fill="currentColor" />
               Run

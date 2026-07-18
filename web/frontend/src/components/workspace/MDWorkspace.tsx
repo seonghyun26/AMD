@@ -51,6 +51,8 @@ const InlineCVPicker = dynamic(() => import("@/components/viz/InlineCVPicker"), 
 const CustomCVResultCard = dynamic(() => import("@/components/viz/CustomCVResultCard"), { ssr: false });
 import FileUpload from "@/components/files/FileUpload";
 import { useTheme } from "@/lib/theme";
+import { UI_COLORS, colorWithAlpha } from "@/lib/colors";
+import { PLOT_COLORS, PLOT_CONFIG, plotAxis, plotLayout } from "@/lib/plotTheme";
 import { uuid } from "@/lib/utils";
 import { Section, Field, FieldGrid, SelectField, PillTabs } from "./ui";
 import {
@@ -135,7 +137,7 @@ function FilePreviewModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+        className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
         style={{ width: "min(900px, 92vw)", height: "80vh" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -204,7 +206,7 @@ function DeleteConfirmPopup({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
       <div
-        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl p-5 w-full max-w-sm"
+        className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl p-5 w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Move to archive?</h3>
@@ -238,11 +240,11 @@ interface ResultCardDef { id: string; type: ResultCardType; meta?: CustomCVConfi
 
 type EnergyCardType = Exclude<ResultCardType, "ramachandran" | "custom_cv" | "mlcv">;
 const ENERGY_TERM_CONFIG: Record<EnergyCardType, { label: string; xvgPrefix: string; unit: string; color: string; fillColor: string }> = {
-  energy_potential:    { label: "Potential Energy", xvgPrefix: "potential",   unit: "kJ/mol", color: "#f59e0b", fillColor: "rgba(245,158,11,0.10)"  },
-  energy_kinetic:      { label: "Kinetic Energy",   xvgPrefix: "kinetic",     unit: "kJ/mol", color: "#38bdf8", fillColor: "rgba(56,189,248,0.10)"  },
-  energy_total:        { label: "Total Energy",     xvgPrefix: "total",       unit: "kJ/mol", color: "#a78bfa", fillColor: "rgba(167,139,250,0.10)" },
-  energy_temperature:  { label: "Temperature",      xvgPrefix: "temperature", unit: "K",      color: "#f87171", fillColor: "rgba(248,113,113,0.10)" },
-  energy_pressure:     { label: "Pressure",         xvgPrefix: "pressure",    unit: "bar",    color: "#34d399", fillColor: "rgba(52,211,153,0.10)"  },
+  energy_potential:    { label: "Potential Energy", xvgPrefix: "potential",   unit: "kJ/mol", color: UI_COLORS.plot.energy.potential,   fillColor: colorWithAlpha(UI_COLORS.plot.energy.potential, 0.10) },
+  energy_kinetic:      { label: "Kinetic Energy",   xvgPrefix: "kinetic",     unit: "kJ/mol", color: UI_COLORS.plot.energy.kinetic,     fillColor: colorWithAlpha(UI_COLORS.plot.energy.kinetic, 0.10) },
+  energy_total:        { label: "Total Energy",     xvgPrefix: "total",       unit: "kJ/mol", color: UI_COLORS.plot.energy.total,       fillColor: colorWithAlpha(UI_COLORS.plot.energy.total, 0.10) },
+  energy_temperature:  { label: "Temperature",      xvgPrefix: "temperature", unit: "K",      color: UI_COLORS.plot.energy.temperature, fillColor: colorWithAlpha(UI_COLORS.plot.energy.temperature, 0.10) },
+  energy_pressure:     { label: "Pressure",         xvgPrefix: "pressure",    unit: "bar",    color: UI_COLORS.plot.energy.pressure,    fillColor: colorWithAlpha(UI_COLORS.plot.energy.pressure, 0.10) },
 };
 
 const ENERGY_CARD_TYPES: EnergyCardType[] = [
@@ -412,16 +414,7 @@ function EnergyCardContent({
   for (const v of yVals) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; sumVal += v; }
   const meanVal = yVals.length > 0 ? sumVal / yVals.length : 0;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const axisBase: any = {
-    zeroline: false,
-    color: isDark ? "#374151" : "#9ca3af",
-    tickfont: { size: compact ? 10 : 11, color: isDark ? "#6b7280" : "#6b7280" },
-    titlefont: { size: 12, color: cfg.color },
-    gridcolor: isDark ? "#1f2937" : "#e5e7eb",
-    gridwidth: 1,
-    showgrid: true,
-  };
+  const axisBase = plotAxis(isDark, { compact, accent: cfg.color });
 
   return (
     <Plot
@@ -435,19 +428,16 @@ function EnergyCardContent({
         fillcolor: cfg.fillColor,
         line: { color: cfg.color, width: compact ? 2 : 2.5, shape: "spline", smoothing: 0.3 },
       }]}
-      layout={{
+      layout={plotLayout(isDark, {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         xaxis: { ...axisBase, title: compact ? undefined : ("Time (ps)" as any), nticks: compact ? 5 : 8 },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         yaxis: { ...axisBase, title: cfg.unit as any, nticks: compact ? 5 : 6 },
         showlegend: false,
-        hovermode: "x unified",
-        hoverlabel: { bgcolor: isDark ? "#111827" : "#ffffff", bordercolor: cfg.color, font: { size: 12, color: isDark ? "#e5e7eb" : "#374151" } },
+        hoverlabel: { bordercolor: cfg.color },
         margin: compact ? { t: 4, l: 50, r: 6, b: 30 } : { t: 8, l: 56, r: 20, b: 40 },
-        paper_bgcolor: "transparent",
-        plot_bgcolor: "transparent",
-      }}
-      config={{ responsive: true, displayModeBar: false }}
+      })}
+      config={PLOT_CONFIG}
       style={{ width: "100%", height: "100%" }}
     />
   );
@@ -469,7 +459,7 @@ function ResultCard({
   const [stats, setStats] = useState<{ last: number; min: number; max: number; mean: number } | null>(null);
   const termCfg = ENERGY_TERM_CONFIG[card.type as EnergyCardType];
   const label = termCfg?.label ?? card.type;
-  const accentColor = termCfg?.color ?? "#6b7280";
+  const accentColor = termCfg?.color ?? UI_COLORS.neutral[500];
   const unit = termCfg?.unit ?? "";
 
   const handleRefresh = () => {
@@ -601,7 +591,7 @@ function ResultCard({
           onClick={() => setExpanded(false)}
         >
           <div
-            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
+            className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
             style={{ width: "min(1080px, 95vw)", height: "420px" }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -636,7 +626,7 @@ function ResultCard({
           onClick={() => setConfirmDelete(false)}
         >
           <div
-            className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72"
+            className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72"
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
@@ -711,7 +701,7 @@ function RamachandranExpandedModal({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
+        className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700"
         style={{ width: "min(600px, 95vw)", height: "min(600px, 90vh)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -750,7 +740,7 @@ function RamachandranExpandedModal({
                 <Settings size={13} />
               </button>
               {settingsOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                <div className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                     <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
@@ -855,7 +845,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
   const [plotSettings, setPlotSettings] = useState<Required<RamachandranPlotSettings>>({ ...RAMACHANDRAN_DEFAULTS });
-  const accentColor = "#06b6d4";
+  const accentColor = UI_COLORS.brand.science;
 
   // Revoke blob URL on unmount to prevent memory leak
   useEffect(() => {
@@ -961,7 +951,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
               </button>
 
               {settingsOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
+                <div className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
                     <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
                     <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
@@ -1075,7 +1065,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
+          <div className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">Ramachandran</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
@@ -1090,13 +1080,15 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
 }
 
 function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: () => void }) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [data, setData] = useState<Record<string, number[]> | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "empty" | "error">("loading");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [spinning, setSpinning] = useState(false);
-  const accentColor = "#8b5cf6";
+  const accentColor = UI_COLORS.brand.accent;
 
   useEffect(() => {
     setStatus("loading");
@@ -1124,7 +1116,7 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
     return mlKeys.length > 0 ? mlKeys : keys;
   }, [data]);
 
-  const MLCV_COLORS = ["#8b5cf6", "#ec4899", "#06b6d4", "#f59e0b"];
+  const MLCV_COLORS = PLOT_COLORS;
 
   const renderPlot = (compact: boolean) => {
     if (!data || mlcvColumns.length === 0) return null;
@@ -1139,16 +1131,14 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
           name: col,
           line: { color: MLCV_COLORS[i % MLCV_COLORS.length], width: compact ? 1.2 : 1.5 },
         }))}
-        layout={{
+        layout={plotLayout(isDark, {
           margin: compact ? { t: 8, r: 8, b: 30, l: 40 } : { t: 16, r: 16, b: 40, l: 55 },
-          paper_bgcolor: "rgba(0,0,0,0)",
-          plot_bgcolor: "rgba(0,0,0,0)",
-          xaxis: { title: compact ? undefined : { text: "Time (ps)" }, gridcolor: "rgba(128,128,128,0.15)", zerolinecolor: "rgba(128,128,128,0.2)", tickfont: { size: compact ? 9 : 11, color: "#9ca3af" } },
-          yaxis: { title: compact ? undefined : { text: "MLCV value" }, gridcolor: "rgba(128,128,128,0.15)", zerolinecolor: "rgba(128,128,128,0.2)", tickfont: { size: compact ? 9 : 11, color: "#9ca3af" } },
-          legend: { font: { size: 10, color: "#9ca3af" }, x: 1, xanchor: "right" as const, y: 1 },
+          xaxis: { title: compact ? undefined : { text: "Time (ps)" }, tickfont: { size: compact ? 9 : 11 } },
+          yaxis: { title: compact ? undefined : { text: "MLCV value" }, tickfont: { size: compact ? 9 : 11 } },
+          legend: { font: { size: 10 }, x: 1, xanchor: "right" as const, y: 1 },
           showlegend: mlcvColumns.length > 1,
-        }}
-        config={{ displayModeBar: false, responsive: true }}
+        })}
+        config={PLOT_CONFIG}
         style={{ width: "100%", height: "100%" }}
       />
     );
@@ -1187,7 +1177,7 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
 
       {expanded && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setExpanded(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ width: "min(1080px, 95vw)", height: "420px" }} onClick={(e) => e.stopPropagation()}>
+          <div className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ width: "min(1080px, 95vw)", height: "420px" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accentColor }} />
@@ -1209,7 +1199,7 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
+          <div className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">MLCV</span> plot will be removed.</p>
             <div className="flex gap-2 justify-end">
@@ -1282,7 +1272,7 @@ function AddPlotModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-80"
+        className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-80"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-4">Add Analysis</h3>
@@ -1322,7 +1312,7 @@ function AddPlotModal({
                 />
                 <span className="text-xs text-gray-700 dark:text-gray-300">{ENERGY_TERM_CONFIG[t].label}</span>
                 <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">{ENERGY_TERM_CONFIG[t].unit}</span>
-                {alreadyAdded && <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />}
+                {alreadyAdded && <CheckCircle2 size={11} className="amd-check-icon flex-shrink-0" />}
               </label>
             );
           })}
@@ -1347,7 +1337,7 @@ function AddPlotModal({
               <input type="checkbox" checked readOnly disabled className="accent-blue-500 w-3.5 h-3.5 flex-shrink-0" />
               <span className="text-xs text-gray-700 dark:text-gray-300">Ramachandran</span>
               <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">φ/ψ map</span>
-              <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />
+              <CheckCircle2 size={11} className="amd-check-icon flex-shrink-0" />
             </div>
           ) : (
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
@@ -1372,7 +1362,7 @@ function AddPlotModal({
               <input type="checkbox" checked readOnly disabled className="accent-violet-500 w-3.5 h-3.5 flex-shrink-0" />
               <span className="text-xs text-gray-700 dark:text-gray-300">MLCV</span>
               <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">ML collective variable</span>
-              <CheckCircle2 size={11} className="text-emerald-600 flex-shrink-0" />
+              <CheckCircle2 size={11} className="amd-check-icon flex-shrink-0" />
             </div>
           ) : (
             <div className="flex items-center gap-3 px-3 py-2 rounded-lg opacity-40">
@@ -1394,7 +1384,7 @@ function AddPlotModal({
         <button
           onClick={handleRun}
           disabled={checked.size === 0}
-          className="w-full py-2 rounded-xl text-xs font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="amd-primary-button w-full py-2 rounded-xl text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Run Analysis
         </button>
@@ -1524,7 +1514,7 @@ function SimRunConfirmModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl"
+        className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -1585,7 +1575,7 @@ function SimRunConfirmModal({
           </button>
           <button
             onClick={onRun}
-            className="px-5 py-2 text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 flex items-center gap-1.5"
+            className="amd-primary-button px-5 py-2 text-xs font-semibold rounded-lg flex items-center gap-1.5"
           >
             <Play size={12} fill="currentColor" />
             Run
@@ -1986,15 +1976,15 @@ function ProgressTab({
   };
   const equilStage = runStatus === "running" && stage && stage !== "production" ? stage : null;
 
-  // Stage-order overview: EM → NVT → [NPT] → Simulation.
+  // Stage-order overview: EM → NVT → [NPT] → Main simulation.
   const orderSteps: { key: string; label: string }[] = equilibrate
     ? [
         { key: "minimizing", label: "EM" },
         { key: "nvt", label: "NVT" },
         ...(solvated ? [{ key: "npt", label: "NPT" }] : []),
-        { key: "production", label: "Simulation" },
+        { key: "production", label: "Main simulation" },
       ]
-    : [{ key: "production", label: "Simulation" }];
+    : [{ key: "production", label: "Main simulation" }];
   const prodIdx = orderSteps.findIndex((s) => s.key === "production");
   const activeIdx =
     runStatus === "finished"
@@ -2035,17 +2025,17 @@ function ProgressTab({
                 <Fragment key={s.key}>
                   {i > 0 && <ChevronRight size={12} className="text-gray-300 dark:text-gray-700 flex-shrink-0" />}
                   <span
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${
                       failed
-                        ? "border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30"
+                        ? "border-red-500/80 bg-red-500 text-white shadow-sm shadow-red-500/20 dark:bg-red-500/90"
                         : done
-                          ? "border-emerald-300/60 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30"
+                          ? "border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700/70 dark:bg-blue-950/60 dark:text-blue-100"
                           : active
-                            ? "border-cyan-300 dark:border-cyan-700 text-cyan-600 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40"
-                            : "border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-600"
+                            ? "border-transparent bg-gradient-to-r from-cyan-500 to-indigo-500 text-white shadow-sm shadow-cyan-500/25 ring-1 ring-white/20"
+                            : "border-slate-200 bg-white/70 text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400"
                     }`}
                   >
-                    {done ? <Check size={11} /> : active && !failed ? <Loader2 size={11} className="animate-spin" /> : null}
+                    {done ? <Check size={11} className="amd-check-icon" /> : active && !failed ? <Loader2 size={11} className="animate-spin" /> : null}
                     {s.label}
                   </span>
                 </Fragment>
@@ -2054,7 +2044,7 @@ function ProgressTab({
           </div>
         )}
         {equilStage && (
-          <div className="flex items-center gap-2 rounded-lg border border-cyan-300/50 dark:border-cyan-800/50 bg-cyan-50/60 dark:bg-cyan-950/30 px-3 py-2 text-xs text-cyan-700 dark:text-cyan-300">
+          <div className="flex items-center gap-2 rounded-lg border border-indigo-200/80 bg-gradient-to-r from-cyan-50 to-indigo-50 px-3 py-2 text-xs text-indigo-900 shadow-sm dark:border-indigo-700/50 dark:from-cyan-950/60 dark:to-indigo-950/70 dark:text-indigo-100">
             <Loader2 size={13} className="animate-spin flex-shrink-0" />
             <span>
               Equilibrating before production — <span className="font-semibold">{STAGE_LABEL[equilStage] ?? equilStage}</span>. The production run starts automatically when this finishes.
@@ -2152,7 +2142,8 @@ function ProgressTab({
                 const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
                 useSessionStore.getState().requestAssistant(
                   `Analyze the results of the "${nick}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`,
-                  "Analyze results"
+                  "Analyze results",
+                  { name: "analyze_simulation", session_id: sessionId }
                 );
               }}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
@@ -2428,7 +2419,8 @@ function MoleculeTab({
                 const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
                 useSessionStore.getState().requestAssistant(
                   `Help me pick a molecular system for the "${nick}" simulation. List the structure/topology input files already present, identify what system is set up, and suggest suitable PDB structures (with IDs) if something is missing.`,
-                  "Find a molecular system"
+                  "Find a molecular system",
+                  { name: "inspect_molecular_system", session_id: sessionId }
                 );
               }}
               className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-100/40 dark:hover:bg-blue-900/30 transition-colors font-medium"
@@ -2697,6 +2689,16 @@ function GromacsTab({
   const isLocked = runStatus === "running" || runStatus === "finished";
   const equilibrate = gromacs.equilibrate !== false; // default on
   const solvated = String(system.water_model ?? "tip3p") !== "none";
+  const timestepPs = Number(gromacs.dt ?? 0.002);
+  const timestepFs = timestepPs * 1000;
+  const nvtEquilibrationSteps = Math.max(
+    1,
+    Math.round(Number(gromacs.equil_nvt_ps ?? 100) / timestepPs),
+  );
+  const nptEquilibrationSteps = Math.max(
+    1,
+    Math.round(Number(gromacs.equil_npt_ps ?? 100) / timestepPs),
+  );
   const [agentOpen, setAgentOpen] = useState(false);
 
   return (
@@ -2712,13 +2714,14 @@ function GromacsTab({
                   const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
                   useSessionStore.getState().requestAssistant(
                     `Review the GROMACS parameters configured for the "${nick}" simulation (see its config.yaml / .mdp) and suggest sensible values or flag anything unusual for this system — thermostat, timestep, cutoffs, electrostatics, constraints and run length.`,
-                    "Suggest GROMACS settings"
+                    "Review initial configuration",
+                    { name: "review_initial_configuration", session_id: sessionId }
                   );
                 }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
               >
                 <Bot size={11} />
-                Suggest Settings
+                Review Setup
               </button>
             )}
             {isLocked && (
@@ -2786,6 +2789,66 @@ function GromacsTab({
           </p>
         </Section>
 
+        {/* Initialization / equilibration */}
+        <Section
+          icon={<Layers size={13} />}
+          title="Initialization"
+          accent="indigo"
+          action={
+            <button
+              type="button"
+              onClick={() => { onChange("gromacs.equilibrate", !equilibrate); onSave(); }}
+              title={equilibrate ? "Equilibration enabled" : "Equilibration disabled"}
+              className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${equilibrate ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${equilibrate ? "left-[18px]" : "left-0.5"}`} />
+            </button>
+          }
+        >
+          {equilibrate ? (
+            <>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
+                Relax the system before production: energy minimization → NVT{solvated ? " → NPT" : ""} → Main simulation.
+                Tutorial defaults use 100 ps (50,000 steps at 2 fs) for both NVT and NPT.
+              </p>
+              <FieldGrid>
+                <Field
+                  label="EM step limit"
+                  type="number"
+                  value={String(gromacs.equil_em_steps ?? -1)}
+                  onChange={(v) => onChange("gromacs.equil_em_steps", Number(v))}
+                  onBlur={onSave}
+                  hint="-1 = no step limit; stops when Fmax < 1000 kJ mol⁻¹ nm⁻¹."
+                />
+                <Field
+                  label="NVT equilibration"
+                  type="number"
+                  value={String(gromacs.equil_nvt_ps ?? 100)}
+                  onChange={(v) => onChange("gromacs.equil_nvt_ps", Number(v))}
+                  onBlur={onSave}
+                  unit="ps"
+                  hint={`${nvtEquilibrationSteps.toLocaleString()} steps at ${timestepFs} fs.`}
+                />
+                {solvated && (
+                  <Field
+                    label="NPT equilibration"
+                    type="number"
+                    value={String(gromacs.equil_npt_ps ?? 100)}
+                    onChange={(v) => onChange("gromacs.equil_npt_ps", Number(v))}
+                    onBlur={onSave}
+                    unit="ps"
+                    hint={`${nptEquilibrationSteps.toLocaleString()} steps at ${timestepFs} fs.`}
+                  />
+                )}
+              </FieldGrid>
+            </>
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-500">
+              Equilibration off — production starts directly from the built system (velocities assigned at the reference temperature).
+            </p>
+          )}
+        </Section>
+
         {/* Simulation length */}
         {(() => {
           const nsteps = Number(method.nsteps ?? 0);
@@ -2848,63 +2911,6 @@ function GromacsTab({
             </Section>
           );
         })()}
-
-        {/* Initialization / equilibration */}
-        <Section
-          icon={<Layers size={13} />}
-          title="Initialization"
-          accent="indigo"
-          action={
-            <button
-              type="button"
-              onClick={() => { onChange("gromacs.equilibrate", !equilibrate); onSave(); }}
-              title={equilibrate ? "Equilibration enabled" : "Equilibration disabled"}
-              className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${equilibrate ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-700"}`}
-            >
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${equilibrate ? "left-[18px]" : "left-0.5"}`} />
-            </button>
-          }
-        >
-          {equilibrate ? (
-            <>
-              <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
-                Relax the system before production: energy minimization → NVT{solvated ? " → NPT" : ""} → simulation.
-              </p>
-              <FieldGrid>
-                <Field
-                  label="EM max steps"
-                  type="number"
-                  value={String(gromacs.equil_em_steps ?? 50000)}
-                  onChange={(v) => onChange("gromacs.equil_em_steps", Number(v))}
-                  onBlur={onSave}
-                  hint="Minimizer; stops early at emtol."
-                />
-                <Field
-                  label="NVT"
-                  type="number"
-                  value={String(gromacs.equil_nvt_ps ?? 100)}
-                  onChange={(v) => onChange("gromacs.equil_nvt_ps", Number(v))}
-                  onBlur={onSave}
-                  unit="ps"
-                />
-                {solvated && (
-                  <Field
-                    label="NPT"
-                    type="number"
-                    value={String(gromacs.equil_npt_ps ?? 100)}
-                    onChange={(v) => onChange("gromacs.equil_npt_ps", Number(v))}
-                    onBlur={onSave}
-                    unit="ps"
-                  />
-                )}
-              </FieldGrid>
-            </>
-          ) : (
-            <p className="text-xs text-gray-500 dark:text-gray-500">
-              Equilibration off — production starts directly from the built system (velocities assigned at the reference temperature).
-            </p>
-          )}
-        </Section>
 
         {/* Thermostat */}
         <Section icon={<Thermometer size={13} />} title="Temperature" accent="amber">
@@ -3524,14 +3530,15 @@ function MethodTab({
                 onClick={() => {
                   const nick = useSessionStore.getState().sessions.find((x) => x.session_id === sessionId)?.nickname || sessionId;
                   useSessionStore.getState().requestAssistant(
-                    `Suggest good collective variables (CVs) for the "${nick}" simulation given its molecular system and enhanced-sampling method. For each CV, give the PLUMED-style definition (1-based atom indices) and explain why it is informative.`,
-                    "Suggest CVs"
+                    `Find relevant publications for collective variables (CVs) for the "${nick}" system, then recommend CVs for its enhanced-sampling method with PLUMED-style definitions and evidence-based rationale.`,
+                    "Research CV publications",
+                    { name: "research_cv_publications", session_id: sessionId }
                   );
                 }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
               >
                 <Bot size={11} />
-                Suggest CVs
+                Research CVs
               </button>
             )}
             {needsPlumed && (
@@ -4045,7 +4052,7 @@ function MethodTab({
       {plumedPopupOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setPlumedPopupOpen(false)} />
-          <div className="relative w-[560px] max-h-[80vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+          <div className="amd-popup-enter relative w-[560px] max-h-[80vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
               <div className="flex items-center gap-2.5">
@@ -4145,7 +4152,7 @@ function MethodTab({
 function NewSessionForm({
   onCreated,
 }: {
-  onCreated: (id: string, workDir: string, nickname: string, seededFiles: string[]) => void;
+  onCreated: (id: string, workDir: string, nickname: string, seededFiles: string[], createdAt: string) => void;
 }) {
   const [nickname, setNickname] = useState(defaultNickname);
   const [preset, setPreset] = useState("md");
@@ -4163,7 +4170,7 @@ function NewSessionForm({
     const user = getUsername() || "default";
     const workDir = `outputs/${user}/${nick}/data`;
     try {
-      const { session_id, work_dir, nickname: savedNick, seeded_files } = await createSession({
+      const { session_id, work_dir, nickname: savedNick, seeded_files, created_at } = await createSession({
         workDir,
         nickname: nick,
         username: user,
@@ -4172,7 +4179,7 @@ function NewSessionForm({
         gromacs,
         projectId: activeProjectId ?? undefined,
       });
-      onCreated(session_id, work_dir, savedNick, seeded_files ?? []);
+      onCreated(session_id, work_dir, savedNick, seeded_files ?? [], created_at);
     } catch (err) {
       console.error("Session creation failed:", err);
       setError(briefError(err));
@@ -4184,7 +4191,7 @@ function NewSessionForm({
     <div className="flex h-full items-start justify-center p-6 overflow-y-auto">
       <div className="w-full max-w-4xl">
         <div className="mb-6 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 mb-3 shadow-lg">
+          <div className="amd-brand-mark inline-flex items-center justify-center w-12 h-12 rounded-xl mb-3 shadow-lg">
             <FlaskConical size={22} className="text-white" />
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New Simulation</h2>
@@ -4289,7 +4296,7 @@ function NewSessionForm({
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-all text-sm shadow-lg shadow-blue-900/30"
+            className="amd-primary-button w-full py-3 disabled:opacity-50 font-semibold rounded-xl text-sm"
           >
             {loading ? "Creating…" : "Create Simulation"}
           </button>
@@ -4676,6 +4683,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
     workDir: string,
     nickname: string,
     seededFiles: string[],
+    createdAt: string,
   ) => {
     const structExts = new Set(["pdb", "gro", "mol2", "xyz"]);
     const structFile = seededFiles.find((f) => structExts.has(f.split(".").pop()?.toLowerCase() ?? ""));
@@ -4687,6 +4695,8 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       work_dir: workDir,
       nickname,
       selected_molecule: structFile ?? "",
+      created_at: createdAt,
+      updated_at: createdAt,
       run_status: "standby",
     });
     setSession(id, { method: "", system: "", gromacs: "", plumed_cvs: "", workDir });
@@ -4724,7 +4734,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         </div>
         <button
           onClick={onNewSession}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors shadow-lg shadow-blue-900/30"
+          className="amd-primary-button flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium"
         >
           <Plus size={14} />
           New Simulation
@@ -4804,7 +4814,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         {actionState === "standby" && (
           <button
             onClick={() => setShowRunConfirm(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 text-sm"
+            className="amd-primary-button w-full flex items-center justify-center gap-2 py-3 font-semibold rounded-xl text-sm"
           >
             <Play size={16} fill="currentColor" />
             Start MD Simulation
@@ -4813,9 +4823,9 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
         {actionState === "finished" && (
           <button
             disabled
-            className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold rounded-xl text-sm cursor-not-allowed border border-emerald-200 dark:border-emerald-800/50"
+            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-100 dark:bg-indigo-950/60 text-blue-800 dark:text-blue-100 font-semibold rounded-xl text-sm cursor-not-allowed border border-blue-200 dark:border-blue-700/60"
           >
-            <CheckCircle2 size={16} />
+            <CheckCircle2 size={16} className="amd-check-icon" />
             Simulation Finished
           </button>
         )}
@@ -4837,7 +4847,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
               {hasCheckpoint ? (
                 <button
                   onClick={handleResume}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 text-sm"
+                  className="amd-primary-button flex-1 flex items-center justify-center gap-2 py-3 font-semibold rounded-xl text-sm"
                 >
                   <Play size={14} fill="currentColor" />
                   Resume
@@ -4845,7 +4855,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
               ) : (
                 <button
                   onClick={() => { handleTerminate(); }}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 dark:shadow-blue-900/30 text-sm"
+                  className="amd-primary-button flex-1 flex items-center justify-center gap-2 py-3 font-semibold rounded-xl text-sm"
                 >
                   <RotateCcw size={14} />
                   Restart
@@ -4876,7 +4886,7 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       {/* Pause confirmation dialog */}
       {pauseConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
+          <div className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm w-full mx-4">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Pause Simulation?</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
               This will pause the running mdrun process. A checkpoint is saved automatically — you can resume from where it stopped.
