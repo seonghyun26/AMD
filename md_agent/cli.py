@@ -383,7 +383,7 @@ def _interactive_setup(work_dir: str | None) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="amd",
-        description="Automating MD — AI-powered molecular dynamics simulation setup and execution",
+        description="Automated MD — AI-powered molecular dynamics simulation setup and execution",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"

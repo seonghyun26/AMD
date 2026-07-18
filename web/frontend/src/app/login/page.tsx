@@ -51,7 +51,7 @@ export default function LoginPage() {
             <FlaskConical size={28} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">AMD</h1>
-          <p className="mt-0.5 text-sm text-gray-500 tracking-wide">Automating MD</p>
+          <p className="mt-0.5 text-sm text-gray-500 tracking-wide">Automated MD</p>
           <p className="mt-2 text-xs text-gray-400 dark:text-gray-600">Claude Opus 4.6 · GROMACS · PLUMED</p>
         </div>
 
