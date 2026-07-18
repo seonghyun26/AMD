@@ -2101,7 +2101,7 @@ function ProgressTab({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setAddPlotOpen(true)}
-              className="amd-highlight-on-hover flex items-center gap-1 rounded-md border-2 border-transparent px-2 py-1 text-xs font-medium text-indigo-400 transition-all"
+              className="amd-highlight-on-hover amd-result-add flex items-center gap-1 rounded-md border-2 border-transparent px-2 py-1 text-xs font-medium text-indigo-400 transition-all"
             >
               <Plus size={12} />
               Add
@@ -2114,7 +2114,7 @@ function ProgressTab({
           {resultCards.length === 0 ? (
             <button
               onClick={() => setAddPlotOpen(true)}
-              className="amd-highlight-on-hover flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-100/30 text-gray-400 transition-all hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-600 dark:hover:text-gray-400"
+              className="amd-highlight-on-hover amd-result-add flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-100/30 text-gray-400 transition-all hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-600 dark:hover:text-gray-400"
               style={{ height: "300px" }}
             >
               <Plus size={16} />
@@ -2133,7 +2133,7 @@ function ProgressTab({
               {/* Add button */}
               <button
                 onClick={() => setAddPlotOpen(true)}
-                className="amd-highlight-on-hover flex flex-shrink-0 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-100/30 text-gray-400 transition-all hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-600 dark:hover:text-gray-400"
+                className="amd-highlight-on-hover amd-result-add flex flex-shrink-0 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-100/30 text-gray-400 transition-all hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-600 dark:hover:text-gray-400"
                 style={{ width: "120px", height: "300px" }}
               >
                 <Plus size={18} />

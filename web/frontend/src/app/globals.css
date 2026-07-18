@@ -371,6 +371,17 @@ html .amd-popover-enter {
   box-shadow: 0 3px 10px var(--amd-highlight-focus-glow);
 }
 
+/* Results cards keep their quiet dashed outline until hovered, then use the
+   full highlight gradient even when utility background classes are present. */
+.amd-result-add:hover {
+  border: 2px solid transparent !important;
+  background:
+    linear-gradient(var(--amd-tab-surface), var(--amd-tab-surface)) padding-box,
+    var(--amd-highlight-border-gradient) border-box !important;
+  color: var(--amd-highlight-text) !important;
+  box-shadow: 0 3px 10px var(--amd-highlight-focus-glow);
+}
+
 .amd-check-icon,
 .amd-check-action {
   color: var(--amd-check-color);
