@@ -128,16 +128,26 @@ def init_db() -> None:
                 started_at       REAL,
                 finished_at      REAL,
                 status           TEXT NOT NULL DEFAULT 'active',
+                created_at       TEXT NOT NULL DEFAULT '',
                 updated_at       TEXT NOT NULL DEFAULT '',
                 json_path        TEXT NOT NULL DEFAULT '',
                 result_cards     TEXT NOT NULL DEFAULT '[]'
             )
         """)
-        # Migration: add result_cards column to existing sessions table
-        try:
+        session_columns = {row[1] for row in con.execute("PRAGMA table_info(sessions)").fetchall()}
+        # Additive migrations for existing session indexes. Inspecting the
+        # schema first avoids masking unrelated SQLite errors as "already
+        # exists" and makes each migration independently idempotent.
+        if "result_cards" not in session_columns:
             con.execute("ALTER TABLE sessions ADD COLUMN result_cards TEXT NOT NULL DEFAULT '[]'")
-        except Exception:
-            pass  # column already exists
+        if "created_at" not in session_columns:
+            con.execute("ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+        # Older rows only had updated_at, which is the best available historical
+        # fallback; once backfilled, later edits never change created_at.
+        con.execute(
+            "UPDATE sessions SET created_at = updated_at "
+            "WHERE (created_at IS NULL OR created_at = '') AND updated_at != ''"
+        )
         # Bootstrap a single admin from env vars on a fresh DB only (no hardcoded creds).
         admin_user = os.getenv("AMD_ADMIN_USER")
         admin_pass = os.getenv("AMD_ADMIN_PASSWORD")
@@ -228,6 +238,7 @@ _SESSION_COLS = (
     "started_at",
     "finished_at",
     "status",
+    "created_at",
     "updated_at",
     "json_path",
     "result_cards",
@@ -244,10 +255,10 @@ def upsert_session(data: dict) -> None:
         con.execute(
             """
             INSERT INTO sessions (session_id, work_dir, nickname, username, run_status,
-                                  selected_molecule, started_at, finished_at, status, updated_at, json_path,
+                                  selected_molecule, started_at, finished_at, status, created_at, updated_at, json_path,
                                   result_cards)
             VALUES (:session_id, :work_dir, :nickname, :username, :run_status,
-                    :selected_molecule, :started_at, :finished_at, :status, :updated_at, :json_path,
+                    :selected_molecule, :started_at, :finished_at, :status, :created_at, :updated_at, :json_path,
                     :result_cards)
             ON CONFLICT(session_id) DO UPDATE SET
                 work_dir          = excluded.work_dir,
@@ -258,6 +269,10 @@ def upsert_session(data: dict) -> None:
                 started_at        = excluded.started_at,
                 finished_at       = excluded.finished_at,
                 status            = excluded.status,
+                created_at        = CASE
+                    WHEN sessions.created_at = '' THEN excluded.created_at
+                    ELSE sessions.created_at
+                END,
                 updated_at        = excluded.updated_at,
                 json_path         = excluded.json_path,
                 result_cards      = excluded.result_cards
@@ -272,6 +287,7 @@ def upsert_session(data: dict) -> None:
                 "started_at": data.get("started_at"),
                 "finished_at": data.get("finished_at"),
                 "status": data.get("status", "active"),
+                "created_at": data.get("created_at") or data.get("updated_at", ""),
                 "updated_at": data.get("updated_at", ""),
                 "json_path": data.get("json_path", ""),
                 "result_cards": rc_json,

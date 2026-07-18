@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Bot, CircleCheck, CircleX, FolderOpen, FolderPlus, ArrowLeft, Upload } from "lucide-react";
-import { useSessionStore } from "@/store/sessionStore";
+import { FlaskConical, Plus, LogOut, Pencil, Check, X, Settings, Trash2, Eye, EyeOff, Loader2, ChevronLeft, ChevronRight, Cpu, RefreshCw, Monitor, HardDrive, Sun, Moon, Bot, CircleCheck, CircleX, FolderOpen, FolderPlus, ArrowLeft, Upload, Info } from "lucide-react";
+import { useSessionStore, type SessionSummary } from "@/store/sessionStore";
 import { useProjectStore } from "@/store/projectStore";
 import { logout, getUsername } from "@/lib/auth";
 import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, uploadAvatar, deleteAvatar, type ServerStatus, type GpuInfo } from "@/lib/api";
@@ -33,6 +33,38 @@ function statusDotClass(runStatus: string | undefined): string {
   }
 }
 
+function parseSessionDate(value?: string): Date | null {
+  if (!value) return null;
+  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatCreatedDate(value?: string): string {
+  const date = parseSessionDate(value);
+  if (!date) return "Creation date unavailable";
+  return `Created ${new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date)}`;
+}
+
+function formatFullDate(value?: string): string {
+  const date = parseSessionDate(value);
+  if (!date) return "Unavailable";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  }).format(date);
+}
+
 function SessionItem({
   s,
   isActive,
@@ -41,7 +73,7 @@ function SessionItem({
   onDeleted,
   onRunStatusRead,
 }: {
-  s: { session_id: string; work_dir: string; nickname: string; run_status?: string };
+  s: SessionSummary;
   isActive: boolean;
   onSelect: () => void;
   onSaved: (nick: string) => void;
@@ -51,10 +83,38 @@ function SessionItem({
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoPosition, setInfoPosition] = useState({ top: 0, left: 0 });
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const nick = s.nickname || s.work_dir.split("/").pop() || s.session_id.slice(0, 8);
   const [draft, setDraft] = useState(nick);
   const inputRef = useRef<HTMLInputElement>(null);
+  const infoButtonRef = useRef<HTMLButtonElement>(null);
+  const infoPopupRef = useRef<HTMLDivElement>(null);
+  const createdAt = s.created_at || s.updated_at;
+
+  useEffect(() => {
+    if (!infoOpen) return;
+    const closeOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (infoButtonRef.current?.contains(target) || infoPopupRef.current?.contains(target)) return;
+      setInfoOpen(false);
+    };
+    const closeOnLayoutChange = () => setInfoOpen(false);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setInfoOpen(false);
+    };
+    document.addEventListener("mousedown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeOnLayoutChange);
+    window.addEventListener("scroll", closeOnLayoutChange, true);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeOnLayoutChange);
+      window.removeEventListener("scroll", closeOnLayoutChange, true);
+    };
+  }, [infoOpen]);
 
   const startEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -83,6 +143,24 @@ function SessionItem({
     setConfirming(true);
   };
 
+  const toggleInfo = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (infoOpen) {
+      setInfoOpen(false);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const popupWidth = 288;
+    const popupHeight = 310;
+    const rightSide = rect.right + 8;
+    const left = rightSide + popupWidth <= window.innerWidth - 12
+      ? rightSide
+      : Math.max(12, rect.left - popupWidth - 8);
+    const top = Math.max(12, Math.min(rect.top - 16, window.innerHeight - popupHeight - 12));
+    setInfoPosition({ top, left });
+    setInfoOpen(true);
+  };
+
   const confirmDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setDeleting(true);
@@ -109,7 +187,7 @@ function SessionItem({
           onClick={cancelConfirm}
         >
           <div
-            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
+            className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3">
@@ -140,6 +218,63 @@ function SessionItem({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {infoOpen && (
+        <div
+          ref={infoPopupRef}
+          role="dialog"
+          aria-label={`${nick} simulation information`}
+          className="amd-popover-enter fixed z-[80] w-72 rounded-xl border border-cyan-200/70 bg-white/95 p-3.5 text-left shadow-2xl backdrop-blur-md dark:border-cyan-500/20 dark:bg-gray-900/95"
+          style={{ top: infoPosition.top, left: infoPosition.left }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-3 flex items-start gap-2.5 border-b border-gray-100 pb-2.5 dark:border-gray-800">
+            <div className="mt-0.5 rounded-lg bg-cyan-50 p-1.5 text-cyan-600 dark:bg-cyan-950/60 dark:text-cyan-300">
+              <Info size={14} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{nick}</p>
+              <div className="mt-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                <span className={statusDotClass(s.run_status)} />
+                {s.run_status || "standby"}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setInfoOpen(false)}
+              className="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+              aria-label="Close simulation information"
+            >
+              <X size={13} />
+            </button>
+          </div>
+
+          <dl className="space-y-2.5 text-xs">
+            <div className="grid grid-cols-[76px_1fr] gap-2">
+              <dt className="text-gray-400 dark:text-gray-500">Created</dt>
+              <dd className="text-gray-700 dark:text-gray-300">{formatFullDate(createdAt)}</dd>
+            </div>
+            <div className="grid grid-cols-[76px_1fr] gap-2">
+              <dt className="text-gray-400 dark:text-gray-500">Updated</dt>
+              <dd className="text-gray-700 dark:text-gray-300">{formatFullDate(s.updated_at)}</dd>
+            </div>
+            <div className="grid grid-cols-[76px_1fr] gap-2">
+              <dt className="text-gray-400 dark:text-gray-500">Molecule</dt>
+              <dd className="truncate text-gray-700 dark:text-gray-300" title={s.selected_molecule || undefined}>
+                {s.selected_molecule || "Not selected"}
+              </dd>
+            </div>
+            <div className="grid grid-cols-[76px_1fr] gap-2">
+              <dt className="text-gray-400 dark:text-gray-500">Session ID</dt>
+              <dd className="break-all font-mono text-[10px] text-gray-600 dark:text-gray-400">{s.session_id}</dd>
+            </div>
+            <div className="grid grid-cols-[76px_1fr] gap-2">
+              <dt className="text-gray-400 dark:text-gray-500">Directory</dt>
+              <dd className="break-all font-mono text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">{s.work_dir}</dd>
+            </div>
+          </dl>
         </div>
       )}
 
@@ -183,7 +318,7 @@ function SessionItem({
                 autoFocus
                 className="flex-1 min-w-0 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <button onClick={save} className="text-emerald-500 hover:text-emerald-400 flex-shrink-0">
+              <button onClick={save} className="amd-check-action flex-shrink-0">
                 <Check size={11} />
               </button>
               <button onClick={cancel} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-400 flex-shrink-0">
@@ -197,7 +332,7 @@ function SessionItem({
           )}
         </div>
         {!editing && (
-          <div className="pl-3 text-[10px] text-gray-400 dark:text-gray-600 font-mono truncate">{s.session_id.slice(0, 8)}…</div>
+          <div className="pl-3 text-[10px] text-gray-400 dark:text-gray-600 truncate">{formatCreatedDate(createdAt)}</div>
         )}
         {restoreError && (
           <p className="pl-3 mt-0.5 text-[10px] text-red-400 dark:text-red-500 leading-tight">{restoreError}</p>
@@ -206,13 +341,26 @@ function SessionItem({
 
       {/* Full-height action buttons — visible on hover */}
       {!editing && (
-        <div className="opacity-0 group-hover:opacity-100 flex flex-shrink-0 transition-opacity border-l border-gray-200/60 dark:border-gray-700/40">
+        <div className={`${infoOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"} flex flex-shrink-0 transition-opacity border-l border-gray-200/60 dark:border-gray-700/40`}>
           <button
             onClick={startEdit}
             className="flex items-center justify-center w-7 text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-700/30 transition-colors"
             title="Rename"
           >
             <Pencil size={10} />
+          </button>
+          <button
+            ref={infoButtonRef}
+            onClick={toggleInfo}
+            className={`flex items-center justify-center w-7 transition-colors border-l border-gray-200/60 dark:border-gray-700/40 ${
+              infoOpen
+                ? "bg-cyan-50 text-cyan-600 dark:bg-cyan-950/50 dark:text-cyan-300"
+                : "text-gray-400 dark:text-gray-600 hover:text-cyan-600 dark:hover:text-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-950/30"
+            }`}
+            title="Simulation information"
+            aria-expanded={infoOpen}
+          >
+            <Info size={10} />
           </button>
           <button
             onClick={startConfirm}
@@ -284,13 +432,13 @@ function ApiKeyRow({
         <button
           onClick={async () => { await onSave(); onVerify(); }}
           disabled={saving || !value}
-          className="px-2 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors flex-shrink-0"
+          className="amd-primary-button px-2 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 flex-shrink-0"
         >
-          {saved ? <Check size={12} /> : saving ? "…" : "Save"}
+          {saved ? <Check size={12} className="amd-check-icon" /> : saving ? "…" : "Save"}
         </button>
         {verified !== null ? (
           <span className={`flex-shrink-0 ${verified ? "text-emerald-500" : "text-red-400"}`} title={verified ? "Verified" : verifyError || "Invalid"}>
-            {verified ? <CircleCheck size={14} /> : <CircleX size={14} />}
+            {verified ? <CircleCheck size={14} className="amd-check-icon" /> : <CircleX size={14} />}
           </span>
         ) : verifying ? (
           <Loader2 size={14} className="animate-spin text-gray-400 flex-shrink-0" />
@@ -306,11 +454,11 @@ function ApiKeyRow({
 }
 
 const AGENT_BACKENDS = [
-  { id: "anthropic",   label: "Claude", color: "orange" },
-  { id: "claude_code", label: "Claude Code", color: "orange" },
-  { id: "codex",       label: "Codex", color: "emerald" },
-  { id: "openai",      label: "ChatGPT", color: "emerald" },
-  { id: "deepseek",    label: "DeepSeek", color: "blue" },
+  { id: "anthropic",   label: "Claude" },
+  { id: "claude_code", label: "Claude Code" },
+  { id: "codex",       label: "Codex" },
+  { id: "openai",      label: "ChatGPT" },
+  { id: "deepseek",    label: "DeepSeek" },
 ] as const;
 
 type AgentBackendId = typeof AGENT_BACKENDS[number]["id"];
@@ -438,7 +586,7 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-[520px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="amd-popup-enter relative w-[520px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2.5">
@@ -458,7 +606,7 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</h4>
             <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50">
-              <UserAvatar size={44} fallback="initial" className="rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-base font-semibold shadow" />
+              <UserAvatar size={44} fallback="initial" className="amd-brand-mark rounded-full text-slate-900 text-base font-semibold shadow" />
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{username}</div>
                 <div className="text-[10px] text-gray-400 dark:text-gray-500">Signed in</div>
@@ -558,18 +706,13 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
                     title={disabled ? `Add and verify your ${b.label} API key first` : `Use ${b.label} as agent backbone`}
                     className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
                       isActive && !disabled
-                        ? b.color === "orange"
-                          ? "bg-orange-100/60 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
-                          : b.color === "emerald"
-                            ? "bg-emerald-100/60 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
-                            : "bg-blue-100/60 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                        ? "amd-selection-highlight"
                         : disabled
                           ? "bg-gray-50 dark:bg-gray-800/40 text-gray-300 dark:text-gray-600 cursor-not-allowed"
                           : "bg-gray-50 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                     } ${i < AGENT_BACKENDS.length - 1 ? "border-r border-gray-200 dark:border-gray-700" : ""}`}
                   >
                     {b.label}
-                    {isActive && !disabled && <Check size={10} />}
                   </button>
                 );
               })}
@@ -712,7 +855,7 @@ export function ServerStatusModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-[520px] max-h-[85vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="amd-popup-enter relative w-[520px] max-h-[85vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -856,7 +999,7 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
       >
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0 text-white text-sm font-semibold shadow">
+        <div className="amd-brand-mark w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-slate-900 text-sm font-semibold shadow">
           {initial}
         </div>
         <span className="flex-1 text-left text-sm font-medium text-gray-700 dark:text-gray-300 truncate group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
@@ -867,7 +1010,7 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
 
       {/* Popover menu */}
       {open && (
-        <div className="absolute bottom-full left-3 right-3 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden z-50">
+        <div className="amd-popover-enter absolute bottom-full left-3 right-3 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden z-50">
           <button
             onClick={() => { setOpen(false); setServerStatusOpen(true); }}
             className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors"
@@ -925,7 +1068,7 @@ function ProjectItem({
           onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
         >
           <div
-            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
+            className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl flex flex-col gap-4 p-6 w-full max-w-sm"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3">

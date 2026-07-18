@@ -37,6 +37,7 @@ def _make_session(session_id, username="alice", nickname="run-1", project_id=Non
             "username": username,
             "run_status": "standby",
             "status": "active",
+            "created_at": "2025-12-31T23:59:00+00:00",
             "updated_at": "2026-01-01T00:00:00",
             "json_path": f"/tmp/{session_id}/session.json",
         }
@@ -105,9 +106,44 @@ class TestSimulationAssociation:
             }
         )
         assert project_store.get_project(p["project_id"])["simulation_count"] == 1
+        indexed = db.get_session_indexed("s1")
+        assert indexed is not None
+        assert indexed["created_at"] == "2025-12-31T23:59:00+00:00"
+        assert indexed["updated_at"] == "x"
 
 
 class TestMigration:
+    def test_created_at_schema_backfills_legacy_sessions(self, temp_db):
+        with db._conn() as con:
+            con.execute("DROP TABLE sessions")
+            con.execute("""
+                CREATE TABLE sessions (
+                    session_id TEXT PRIMARY KEY,
+                    work_dir TEXT NOT NULL,
+                    nickname TEXT NOT NULL DEFAULT '',
+                    username TEXT NOT NULL DEFAULT '',
+                    run_status TEXT NOT NULL DEFAULT 'standby',
+                    selected_molecule TEXT NOT NULL DEFAULT '',
+                    started_at REAL,
+                    finished_at REAL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    json_path TEXT NOT NULL DEFAULT '',
+                    result_cards TEXT NOT NULL DEFAULT '[]',
+                    project_id TEXT NOT NULL DEFAULT ''
+                )
+                """)
+            con.execute("""
+                INSERT INTO sessions (session_id, work_dir, updated_at)
+                VALUES ('legacy', '/tmp/legacy/data', '2024-05-06T07:08:09+00:00')
+                """)
+
+        db.init_db()
+
+        legacy = db.get_session_indexed("legacy")
+        assert legacy is not None
+        assert legacy["created_at"] == "2024-05-06T07:08:09+00:00"
+
     def test_orphans_go_to_one_test_project_per_user(self, temp_db):
         _make_session("s1", username="alice", nickname="My Run")
         _make_session("s2", username="alice", nickname="Other")
