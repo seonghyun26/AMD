@@ -90,6 +90,13 @@ ASSISTANT_ACTIONS: tuple[dict[str, str], ...] = (
         "scope": "simulation",
     },
     {
+        "name": "start_simulation",
+        "title": "Start simulation",
+        "description": "Validate one simulation's start prerequisites and available storage, then launch its managed MD pipeline when safe.",
+        "safety": "Starts GROMACS only after deterministic configuration, input, run-state, and disk-space checks pass.",
+        "scope": "simulation",
+    },
+    {
         "name": "inspect_molecular_system",
         "title": "Inspect molecular system",
         "description": "Identify the configured system and assess its structure and topology inputs.",
@@ -209,7 +216,7 @@ User focus: {user_request}
 }
 
 _PUBLICATION_ACTIONS = {"research_cv_publications"}
-_DETERMINISTIC_ACTIONS = {"inspect_simulation_state"}
+_DETERMINISTIC_ACTIONS = {"inspect_simulation_state", "start_simulation"}
 _RUN_PIPELINE_ACTIONS = {"check_run_readiness", "review_initial_configuration"}
 _RUN_PIPELINE_CONTEXT = """
 

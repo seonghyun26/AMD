@@ -43,14 +43,43 @@ def test_action_registry_only_lists_executable_assistant_actions():
         "create_simulation",
         "check_run_readiness",
         "analyze_simulation",
+        "start_simulation",
         "inspect_molecular_system",
         "inspect_simulation_state",
         "review_initial_configuration",
         "research_cv_publications",
     }
     assert actions["create_simulation"]["scope"] == "project_or_general"
+    assert actions["start_simulation"]["scope"] == "simulation"
     assert actions["research_cv_publications"]["scope"] == "simulation"
     assert all(action["safety"] for action in actions.values())
+
+
+def test_start_action_reports_preflight_blockers_without_launching(monkeypatch):
+    monkeypatch.setattr(
+        assistant,
+        "_start_preflight",
+        lambda _action: {
+            "ok": False,
+            "problems": [
+                "No selected raw PDB or GRO structure is available to prepare the system."
+            ],
+            "free_gb": 12.0,
+            "minimum_free_gb": 2.0,
+            "source_coordinate": None,
+        },
+    )
+    action = {"name": "start_simulation", "session_id": "session-1", "nickname": "test"}
+
+    async def collect():
+        return [event async for event in assistant._stream_simulation_action(action, "alice", None)]
+
+    events = asyncio.run(collect())
+
+    assert events[0]["tool_name"] == "start_simulation"
+    assert events[1]["result"]["status"] == "blocked"
+    assert "not started" in events[2]["text"]
+    assert events[-1] == {"type": "agent_done", "final_text": ""}
 
 
 def test_recognizes_state_questions_without_treating_mutation_requests_as_reads():

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shutil
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,7 @@ router = APIRouter()
 
 _OUTPUTS = Path("outputs")
 _MSG_FILE = "assistant_messages.json"
+_MINIMUM_START_FREE_BYTES = 2 * 1024**3
 
 
 def _sse(event: dict) -> str:
@@ -267,6 +269,145 @@ def _simulation_state_summary(state: dict[str, Any]) -> str:
     )
 
 
+def _start_preflight(action: dict[str, Any]) -> dict[str, Any]:
+    """Perform deterministic start checks before invoking the simulation launcher."""
+    from omegaconf import OmegaConf
+
+    from md_agent.config.schemas import validate_gromacs_dict
+    from web.backend.routers.simulate import _find_source_coord
+
+    session = get_or_restore_session(action["session_id"])
+    if not session:
+        return {"ok": False, "problems": ["Simulation no longer exists."], "free_gb": None}
+
+    work_dir = Path(session.work_dir)
+    cfg = session.agent.cfg
+    problems: list[str] = []
+    sim_status = getattr(session, "sim_status", {}) or {}
+    current_status = str(sim_status.get("status") or "standby")
+    if current_status == "running":
+        problems.append("Simulation is already running.")
+    elif current_status == "finished":
+        problems.append("Simulation is already finished; create or restart a new run instead.")
+
+    try:
+        gromacs = OmegaConf.to_container(OmegaConf.select(cfg, "gromacs") or {}, resolve=True)
+        if isinstance(gromacs, dict):
+            problems.extend(validate_gromacs_dict(gromacs))
+        else:
+            problems.append("GROMACS configuration is missing or invalid.")
+    except Exception as exc:
+        problems.append(f"Could not validate GROMACS configuration: {exc}")
+
+    try:
+        nsteps = int(OmegaConf.select(cfg, "method.nsteps") or 0)
+        if nsteps < 1:
+            problems.append("Main simulation length (method.nsteps) must be greater than zero.")
+    except (TypeError, ValueError):
+        problems.append("Main simulation length (method.nsteps) is invalid.")
+
+    preferred_coord = str(OmegaConf.select(cfg, "system.coordinates") or "")
+    source_coord = _find_source_coord(work_dir, preferred_coord)
+    if not source_coord:
+        problems.append("No selected raw PDB or GRO structure is available to prepare the system.")
+
+    method = str(OmegaConf.select(cfg, "method._target_name") or "plain_md").lower()
+    enhanced_methods = {
+        "metadynamics",
+        "metad",
+        "opes",
+        "umbrella",
+        "umbrella_sampling",
+        "steered",
+        "steered_md",
+    }
+    if method in enhanced_methods and not (work_dir / "plumed.dat").is_file():
+        problems.append("Enhanced sampling is selected but plumed.dat is missing.")
+
+    free_gb: float | None = None
+    try:
+        disk = shutil.disk_usage(work_dir)
+        free_gb = round(disk.free / (1024**3), 2)
+        if disk.free < _MINIMUM_START_FREE_BYTES:
+            problems.append(
+                f"Only {free_gb:.2f} GB free; at least {_MINIMUM_START_FREE_BYTES / (1024**3):.0f} GB is required."
+            )
+    except OSError as exc:
+        problems.append(f"Could not check free storage: {exc}")
+
+    return {
+        "ok": not problems,
+        "problems": problems,
+        "free_gb": free_gb,
+        "minimum_free_gb": _MINIMUM_START_FREE_BYTES / (1024**3),
+        "source_coordinate": source_coord,
+    }
+
+
+async def _stream_start_simulation(action: dict[str, Any]):
+    """Run the guarded start action and stream its deterministic outcome."""
+    action_id = "assistant-action-start_simulation"
+    yield {
+        "type": "tool_start",
+        "tool_use_id": action_id,
+        "tool_name": "start_simulation",
+        "tool_input": {"session_id": action["session_id"], "simulation": action["nickname"]},
+    }
+    preflight = _start_preflight(action)
+    if not preflight["ok"]:
+        yield {
+            "type": "tool_result",
+            "tool_use_id": action_id,
+            "tool_name": "start_simulation",
+            "result": {"status": "blocked", **preflight},
+        }
+        details = " ".join(
+            f"{index + 1}. {problem}" for index, problem in enumerate(preflight["problems"])
+        )
+        yield {"type": "text_delta", "text": f"Simulation was not started. {details}"}
+        yield {"type": "agent_done", "final_text": ""}
+        return
+
+    try:
+        from web.backend.routers.simulate import start_simulation
+
+        result = await start_simulation(action["session_id"])
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        yield {
+            "type": "tool_result",
+            "tool_use_id": action_id,
+            "tool_name": "start_simulation",
+            "result": {"status": "error", "error": detail, **preflight},
+        }
+        yield {"type": "text_delta", "text": f"Simulation could not be started: {detail}"}
+        yield {"type": "agent_done", "final_text": ""}
+        return
+    except Exception as exc:  # noqa: BLE001 - surface launcher errors to the user
+        yield {
+            "type": "tool_result",
+            "tool_use_id": action_id,
+            "tool_name": "start_simulation",
+            "result": {"status": "error", "error": str(exc), **preflight},
+        }
+        yield {"type": "text_delta", "text": f"Simulation could not be started: {exc}"}
+        yield {"type": "agent_done", "final_text": ""}
+        return
+
+    yield {
+        "type": "tool_result",
+        "tool_use_id": action_id,
+        "tool_name": "start_simulation",
+        "result": {"status": "started", **preflight, **result},
+    }
+    stage = result.get("stage", "production")
+    yield {
+        "type": "text_delta",
+        "text": f"Simulation started after configuration and storage checks passed ({preflight['free_gb']:.2f} GB free). Current stage: {stage}.",
+    }
+    yield {"type": "agent_done", "final_text": ""}
+
+
 async def _stream_simulation_state(action: dict[str, Any]):
     """Stream a deterministic, read-only simulation-state inspection."""
     action_id = "assistant-action-inspect_simulation_state"
@@ -316,6 +457,10 @@ async def _stream_simulation_action(action: dict[str, Any], username: str, tmux_
     """Execute one registered action and preserve the normal SSE lifecycle."""
     if action["name"] == "inspect_simulation_state":
         async for event in _stream_simulation_state(action):
+            yield event
+        return
+    if action["name"] == "start_simulation":
+        async for event in _stream_start_simulation(action):
             yield event
         return
 
