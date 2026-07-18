@@ -24,6 +24,19 @@ export type SSEEvent =
   | { type: "agent_done"; final_text: string }
   | { type: "error"; message: string };
 
+/** A trusted server-side assistant template bound to one simulation. */
+export interface AssistantActionInvocation {
+  name:
+    | "analyze_simulation"
+    | "check_run_readiness"
+    | "inspect_molecular_system"
+    | "inspect_simulation_state"
+    | "review_initial_configuration"
+    | "research_cv_publications";
+  session_id: string;
+  parameters?: Record<string, string>;
+}
+
 export type MessageRole = "user" | "assistant";
 
 export type TextBlock = { kind: "text"; content: string; title?: string };

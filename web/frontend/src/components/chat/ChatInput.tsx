@@ -4,10 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Send, StopCircle, FlaskConical } from "lucide-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { streamAssistant } from "@/lib/sse";
+import type { AssistantActionInvocation } from "@/lib/types";
 
 interface Props {
   /** null = general assistant (home); otherwise this project's assistant. */
   projectId: string | null;
+  /** Currently open simulation; used only as trusted context for state queries. */
+  contextSessionId?: string | null;
   /** When set to a non-empty string, auto-sends that message once. */
   autoSend?: string;
   onAutoSendComplete?: () => void;
@@ -23,7 +26,7 @@ function mentionAt(text: string, caret: number): { query: string; start: number 
   return { query: m[1], start: caret - m[1].length - 1 };
 }
 
-export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: Props) {
+export default function ChatInput({ projectId, contextSessionId, autoSend, onAutoSendComplete }: Props) {
   const [value, setValue] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -39,7 +42,14 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
   const isStreaming = useSessionStore((s) => s.isStreaming);
   const sessions = useSessionStore((s) => s.sessions);
   const pendingPrompt = useSessionStore((s) => s.pendingPrompt);
-  const { addUserMessage, appendSSEEvent, persistAssistant, consumePendingPrompt } = useSessionStore();
+  const {
+    addUserMessage,
+    appendSSEEvent,
+    consumePendingPrompt,
+    fetchSessions,
+    fetchSimulations,
+    persistAssistant,
+  } = useSessionStore();
 
   // @-mention state — only active inside a project (simulations belong to one).
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -58,17 +68,33 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
     if (hi > matches.length - 1) setHi(0);
   }, [matches.length, hi]);
 
-  const doSend = async (text: string, title?: string) => {
+  const doSend = async (text: string, title?: string, action?: AssistantActionInvocation) => {
     if (!text.trim() || isStreaming) return;
     const sendScope = projectId; // scope this send belongs to
     setValue("");
     setMentionOpen(false);
     addUserMessage(text, title);
     abortRef.current = new AbortController();
+    const normalizedText = text.toLowerCase();
+    const mentionedSession = [...sessions]
+      .filter((session) => session.nickname && normalizedText.includes(`@${session.nickname.toLowerCase()}`))
+      .sort((a, b) => b.nickname.length - a.nickname.length)[0];
+    const resolvedContextSessionId =
+      action?.session_id || mentionedSession?.session_id || contextSessionId || undefined;
     try {
-      for await (const event of streamAssistant(sendScope, text, abortRef.current.signal)) {
+      for await (const event of streamAssistant(
+        sendScope,
+        text,
+        abortRef.current.signal,
+        action,
+        resolvedContextSessionId,
+      )) {
         if (projectIdRef.current !== sendScope) return; // switched away — don't touch the new scope
         appendSSEEvent(event);
+        if (event.type === "tool_result" && event.tool_name === "create_simulation") {
+          if (sendScope) await fetchSimulations(sendScope);
+          else await fetchSessions();
+        }
       }
     } catch (err) {
       if (projectIdRef.current !== sendScope) return;
@@ -141,16 +167,16 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
   useEffect(() => {
     if (!pendingPrompt) return;
     consumePendingPrompt();
-    if (!isStreaming) doSend(pendingPrompt.text, pendingPrompt.title);
+    if (!isStreaming) doSend(pendingPrompt.text, pendingPrompt.title, pendingPrompt.action);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingPrompt]);
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-800 p-3 bg-white/50 dark:bg-gray-900/50 flex-shrink-0">
-      <div className="relative flex gap-2 items-end">
+      <div className="relative">
         {/* @-mention dropdown — simulations in this project */}
         {mentionOpen && matches.length > 0 && (
-          <div className="absolute bottom-full left-0 mb-2 w-72 max-w-full max-h-60 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl z-50 py-1">
+          <div className="amd-popover-enter absolute bottom-full left-0 mb-2 w-72 max-w-full max-h-60 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl z-50 py-1">
             <p className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Simulations</p>
             {matches.map((s, i) => (
               <button
@@ -179,24 +205,26 @@ export default function ChatInput({ projectId, autoSend, onAutoSendComplete }: P
           onClick={(e) => refreshMention(value, (e.target as HTMLTextAreaElement).selectionStart ?? value.length)}
           placeholder={projectId ? "Ask about this project's simulations…  (@ to mention one)" : "Ask the assistant…"}
           rows={3}
-          className="flex-1 resize-none border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
+          className="amd-highlight-field w-full resize-none rounded-xl pl-3 pr-12 pt-2 pb-10 text-sm text-gray-900 dark:text-gray-100 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500"
         />
         {isStreaming ? (
           <button
             onClick={handleStop}
-            className="p-2.5 rounded-xl bg-red-900/60 text-red-400 hover:bg-red-800 transition-colors flex-shrink-0"
+            className="absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-950/70 dark:text-red-300 dark:hover:bg-red-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60"
             title="Stop"
+            aria-label="Stop response"
           >
-            <StopCircle size={20} />
+            <StopCircle size={18} />
           </button>
         ) : (
           <button
             onClick={handleSend}
             disabled={!value.trim()}
-            className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors flex-shrink-0"
+            className="amd-selection-highlight absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 transition-[filter,transform,opacity] hover:brightness-95 active:translate-y-px disabled:opacity-35 disabled:cursor-not-allowed dark:hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
             title="Send (Enter)"
+            aria-label="Send message"
           >
-            <Send size={20} />
+            <Send size={18} />
           </button>
         )}
       </div>

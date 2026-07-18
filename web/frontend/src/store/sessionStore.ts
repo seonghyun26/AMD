@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type {
+  AssistantActionInvocation,
   ChatMessage,
   MessageBlock,
   SimProgress,
@@ -16,6 +17,8 @@ export interface SessionSummary {
   work_dir: string;
   nickname: string;
   selected_molecule?: string;
+  created_at?: string;
+  updated_at?: string;
   run_status?: "standby" | "running" | "finished" | "failed" | "paused";
   started_at?: number;
   finished_at?: number;
@@ -33,7 +36,7 @@ interface SessionState {
   /** A prompt queued by a workspace shortcut (e.g. "Analyze", "Suggest CVs") to
    *  be auto-sent by the AI assistant panel. Consumed once by ChatInput. The
    *  optional title is shown as a header above the message in the chat. */
-  pendingPrompt: { text: string; title?: string } | null;
+  pendingPrompt: { text: string; title?: string; action?: AssistantActionInvocation } | null;
   /** Bumped after an avatar upload/removal to cache-bust <img> everywhere. */
   avatarVersion: number;
 
@@ -56,7 +59,7 @@ interface SessionState {
   persistMessages: (sessionId: string) => void;
   loadAssistant: (projectId: string | null) => Promise<void>;
   persistAssistant: (projectId: string | null) => void;
-  requestAssistant: (text: string, title?: string) => void;
+  requestAssistant: (text: string, title?: string, action?: AssistantActionInvocation) => void;
   consumePendingPrompt: () => void;
   clearAssistant: (projectId: string | null) => void;
   bumpAvatar: () => void;
@@ -229,7 +232,11 @@ export const useSessionStore = create<SessionState>((set) => ({
             ...m,
             blocks: m.blocks.map((b): MessageBlock => {
               if (b.kind === "tool_call" && b.tool_use_id === event.tool_use_id) {
-                return { ...b, result: event.result, status: "done" };
+                return {
+                  ...b,
+                  result: event.result,
+                  status: event.result.status === "error" ? "error" : "done",
+                };
               }
               return b;
             }),
@@ -327,7 +334,7 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   // Workspace shortcut buttons queue a prompt here; the assistant panel picks it
   // up (ChatInput) and auto-sends it, and page.tsx opens the panel.
-  requestAssistant: (text, title) => set({ pendingPrompt: { text, title } }),
+  requestAssistant: (text, title, action) => set({ pendingPrompt: { text, title, action } }),
   consumePendingPrompt: () => set({ pendingPrompt: null }),
 
   // Clear the current assistant conversation locally AND on the server (persist

@@ -1,4 +1,4 @@
-import type { SSEEvent } from "./types";
+import type { AssistantActionInvocation, SSEEvent } from "./types";
 import { getToken } from "./auth";
 
 /**
@@ -8,7 +8,9 @@ import { getToken } from "./auth";
 async function* streamSSE(
   url: string,
   message: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  action?: AssistantActionInvocation,
+  contextSessionId?: string
 ): AsyncGenerator<SSEEvent> {
   const token = getToken();
   const response = await fetch(url, {
@@ -19,7 +21,11 @@ async function* streamSSE(
       Accept: "text/event-stream",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      ...(action ? { action } : {}),
+      ...(contextSessionId ? { context_session_id: contextSessionId } : {}),
+    }),
   });
 
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -56,7 +62,13 @@ export function streamChat(sessionId: string, message: string, signal: AbortSign
 }
 
 /** Project-level (or general, when projectId is null) assistant stream. */
-export function streamAssistant(projectId: string | null, message: string, signal: AbortSignal) {
+export function streamAssistant(
+  projectId: string | null,
+  message: string,
+  signal: AbortSignal,
+  action?: AssistantActionInvocation,
+  contextSessionId?: string
+) {
   const url = projectId ? `/api/projects/${projectId}/stream` : `/api/assistant/stream`;
-  return streamSSE(url, message, signal);
+  return streamSSE(url, message, signal, action, contextSessionId);
 }
