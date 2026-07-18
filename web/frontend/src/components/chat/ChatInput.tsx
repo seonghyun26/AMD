@@ -25,23 +25,24 @@ type ContextAction = {
   action?: AssistantActionInvocation["name"];
 };
 
+const START_SIMULATION_ACTION: ContextAction = {
+  label: "Start simulation",
+  title: "Start simulation",
+  action: "start_simulation",
+  prompt: (nickname) =>
+    `Check the configuration and available storage for the "${nickname}" simulation, then start it only if there are no blocking problems.`,
+};
+
+const RUN_ANALYSIS_ACTION: ContextAction = {
+  label: "Run analysis",
+  title: "Run analysis",
+  action: "analyze_simulation",
+  prompt: (nickname) =>
+    `Run analysis for the completed "${nickname}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`,
+};
+
 const TAB_CONTEXT_ACTIONS: Record<string, ContextAction[]> = {
-  progress: [
-    {
-      label: "Start simulation",
-      title: "Start simulation",
-      action: "start_simulation",
-      prompt: (nickname) =>
-        `Check the configuration and available storage for the "${nickname}" simulation, then start it only if there are no blocking problems.`,
-    },
-    {
-      label: "Analyze results",
-      title: "Analyze results",
-      action: "analyze_simulation",
-      prompt: (nickname) =>
-        `Analyze the results of the "${nickname}" simulation: summarize the trajectory, energies and any collective variables, assess stability and convergence, and flag anything notable or wrong.`,
-    },
-  ],
+  progress: [],
   molecule: [
     {
       label: "Inspect system",
@@ -169,7 +170,16 @@ export default function ChatInput({
       .filter((s) => (s.nickname || "").toLowerCase().includes(q))
       .slice(0, 8);
   }, [mentionOpen, projectId, mentionQuery, sessions]);
-  const contextActions = contextSessionId ? TAB_CONTEXT_ACTIONS[workspaceTab] ?? [] : [];
+  const selectedRunStatus = sessions.find((session) => session.session_id === contextSessionId)?.run_status;
+  const contextActions = !contextSessionId
+    ? []
+    : workspaceTab === "progress"
+      ? selectedRunStatus === "finished"
+        ? [RUN_ANALYSIS_ACTION]
+        : selectedRunStatus === "running" || selectedRunStatus === "paused"
+          ? []
+          : [START_SIMULATION_ACTION]
+      : TAB_CONTEXT_ACTIONS[workspaceTab] ?? [];
 
   useEffect(() => {
     if (hi > matches.length - 1) setHi(0);
