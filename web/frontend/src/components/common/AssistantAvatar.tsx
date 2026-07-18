@@ -14,7 +14,7 @@ export default function AssistantAvatar({ size = 40 }: { size?: number }) {
       role="img"
     >
       <svg
-        className="h-full w-full drop-shadow-sm [--amd-agent-mark-accent-a:#22d3ee] [--amd-agent-mark-accent-b:#6366f1] [--amd-agent-mark-accent-c:#a78bfa] [--amd-agent-mark-face:#eef2ff] [--amd-agent-mark-ink:#312e81] dark:[--amd-agent-mark-accent-a:#67e8f9] dark:[--amd-agent-mark-accent-b:#818cf8] dark:[--amd-agent-mark-accent-c:#c4b5fd] dark:[--amd-agent-mark-face:#172554] dark:[--amd-agent-mark-ink:#e0f2fe]"
+        className="h-full w-full drop-shadow-sm [--amd-agent-mark-accent-a:#22d3ee] [--amd-agent-mark-accent-b:#6366f1] [--amd-agent-mark-accent-c:#a78bfa] [--amd-agent-mark-face:#eef2ff] [--amd-agent-mark-ink:#312e81] dark:[--amd-agent-mark-accent-a:#a5f3fc] dark:[--amd-agent-mark-accent-b:#a5b4fc] dark:[--amd-agent-mark-accent-c:#e9d5ff] dark:[--amd-agent-mark-face:#253a78] dark:[--amd-agent-mark-ink:#f8fafc]"
         viewBox="8 8 48 48"
         aria-hidden="true"
       >
