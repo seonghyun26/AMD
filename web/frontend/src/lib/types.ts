@@ -28,6 +28,7 @@ export type SSEEvent =
 export interface AssistantActionInvocation {
   name:
     | "analyze_simulation"
+    | "start_simulation"
     | "check_run_readiness"
     | "inspect_molecular_system"
     | "inspect_simulation_state"

@@ -28,6 +28,13 @@ type ContextAction = {
 const TAB_CONTEXT_ACTIONS: Record<string, ContextAction[]> = {
   progress: [
     {
+      label: "Start simulation",
+      title: "Start simulation",
+      action: "start_simulation",
+      prompt: (nickname) =>
+        `Check the configuration and available storage for the "${nickname}" simulation, then start it only if there are no blocking problems.`,
+    },
+    {
       label: "Analyze results",
       title: "Analyze results",
       action: "analyze_simulation",
