@@ -79,6 +79,9 @@ def test_readiness_prompt_understands_managed_initialization_pipeline():
     assert "EM, then NVT, then NPT" in prompt
     assert "standby session is expected" in prompt
     assert "method.nsteps is the authoritative Main simulation length" in prompt
+    assert "ignore it completely" in prompt
+    assert "Plain MD does not generate or run PLUMED" in prompt
+    assert "vdw-modifier=Force-switch" in prompt
     assert "base gen_vel value" in prompt
     assert "seeded system.gro preview" in prompt
 

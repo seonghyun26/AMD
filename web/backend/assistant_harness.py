@@ -225,11 +225,18 @@ AMD managed run lifecycle (authoritative for readiness/review):
    box contents may also be absent before Start. Do not judge the eventual box,
    solvent, or ions from a seeded system.gro preview.
 6. method.nsteps is the authoritative Main simulation length and overrides the
-   gromacs default when md.mdp is generated. Do not report those two fields as a
-   conflict.
+   retired gromacs.nsteps key when md.mdp is generated. If an old config file
+   still contains gromacs.nsteps, ignore it completely: report only the
+   method.nsteps duration and never describe a conflict or request confirmation.
 7. Initialization overrides velocity handling: NVT generates velocities; NPT
    continues them; the Main simulation continues from the final initialization
    checkpoint. Do not treat the base gen_vel value as a production fault.
+8. Plain MD does not generate or run PLUMED. Ignore an old generic d1
+   DISTANCE(1,2) placeholder or stale plumed.dat for plain MD; only evaluate CV
+   definitions when the selected method is enhanced sampling.
+9. For CHARMM36m, the expected GROMACS non-bonded profile is Verlet with
+   rlist=rcoulomb=rvdw=1.2 nm, vdwtype=Cut-off, vdw-modifier=Force-switch, and
+   rvdw-switch=1.0 nm. Do not recommend a generic 1.0 nm cutoff for CHARMM36m.
 """
 _RESPONSE_STYLE = """
 

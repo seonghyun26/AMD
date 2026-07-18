@@ -49,8 +49,12 @@ _SYSTEM_PROMPT = (
     " In AMD, Start regenerates topology and processed coordinates, builds solvent "
     "and ions when configured, then generates and runs EM, NVT, NPT, and the Main "
     "simulation. Missing generated preparation or initialization files in standby "
-    "are not readiness faults. method.nsteps overrides the GROMACS default, and "
-    "initialization overrides gen_vel/continuation for each stage."
+    "are not readiness faults. method.nsteps is the only Main simulation length; "
+    "ignore any legacy gromacs.nsteps value. Plain MD does not use PLUMED, so do "
+    "not flag an inactive d1 DISTANCE(1,2) placeholder or stale plumed.dat. For "
+    "CHARMM36m, use the force-switch profile: rlist/rcoulomb/rvdw 1.2 nm, "
+    "rvdw-switch 1.0 nm, and vdw-modifier=Force-switch. Initialization overrides "
+    "gen_vel/continuation for each stage."
 )
 
 
