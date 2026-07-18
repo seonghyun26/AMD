@@ -2,7 +2,7 @@
 
 from omegaconf import OmegaConf
 
-from md_agent.config.hydra_utils import generate_mdp_from_config
+from md_agent.config.hydra_utils import generate_mdp_from_config, normalize_runtime_config
 
 
 def _make_cfg(method_name: str = "metad"):
@@ -79,3 +79,17 @@ class TestGenerateMdp:
         content = open(out).read()
         nsteps_lines = [line for line in content.splitlines() if line.startswith("nsteps")]
         assert nsteps_lines == ["nsteps                         = 500000"]
+
+    def test_charmm36m_force_switch_profile_is_written(self, tmp_path):
+        cfg = _make_cfg("plain_md")
+        OmegaConf.update(cfg, "system.forcefield", "charmm36m", force_add=True)
+        assert normalize_runtime_config(cfg)
+        out = str(tmp_path / "md.mdp")
+        generate_mdp_from_config(cfg, out)
+        content = open(out).read()
+        assert "rlist                          = 1.2" in content
+        assert "rcoulomb                       = 1.2" in content
+        assert "vdwtype                        = Cut-off" in content
+        assert "vdw-modifier                   = Force-switch" in content
+        assert "rvdw-switch                    = 1.0" in content
+        assert "rvdw                           = 1.2" in content

@@ -7,12 +7,12 @@ from types import SimpleNamespace
 import pytest
 from omegaconf import OmegaConf
 
+from md_agent.config.hydra_utils import normalize_runtime_config
 from web.backend.routers import config as config_router
 from web.backend.routers.config import (
     ConfigUpdateRequest,
     _build_plumed_content,
     _persist_session_files,
-    _remove_legacy_gromacs_nsteps,
     _resolve_cvs,
 )
 
@@ -139,8 +139,22 @@ class TestConfigPersistence:
 
     def test_legacy_nsteps_is_kept_without_method_length(self):
         cfg = OmegaConf.create({"gromacs": {"nsteps": 123}})
-        _remove_legacy_gromacs_nsteps(cfg)
+        normalize_runtime_config(cfg)
         assert cfg.gromacs.nsteps == 123
+
+    def test_plain_md_placeholder_cv_is_removed(self):
+        cfg = OmegaConf.create(
+            {
+                "method": {"_target_name": "plain_md"},
+                "plumed": {
+                    "collective_variables": {
+                        "cvs": [{"name": "d1", "type": "DISTANCE", "atoms": [1, 2]}]
+                    }
+                },
+            }
+        )
+        assert normalize_runtime_config(cfg)
+        assert OmegaConf.select(cfg, "plumed.collective_variables.cvs") == []
 
 
 class TestBuildPlumedContent:

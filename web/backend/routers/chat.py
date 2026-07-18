@@ -159,7 +159,7 @@ def create_session_from_request(req: CreateSessionRequest, username: str) -> dic
     # hydra_system must be a valid conf/system/*.yaml name
     _HYDRA_SYSTEM_MAP: dict[str, str] = {
         "ala_dipeptide": "ala_dipeptide",
-        "chignolin": "protein",
+        "chignolin": "chignolin",
         "trp_cage": "protein",
         "bba": "protein",
         "villin": "protein",

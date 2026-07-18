@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from omegaconf import OmegaConf
 from pydantic import BaseModel
 
+from md_agent.config.hydra_utils import normalize_runtime_config
 from web.backend.session_manager import _repo_conf_dir, get_or_restore_session, get_session
 
 router = APIRouter()
@@ -41,20 +42,6 @@ class ConfigUpdateRequest(BaseModel):
     updates: dict  # flat or nested dict of overrides
 
 
-def _remove_legacy_gromacs_nsteps(cfg) -> None:
-    """Keep method.nsteps as the single source of truth for production length."""
-    if OmegaConf.select(cfg, "method.nsteps") is None:
-        return
-    gromacs = OmegaConf.select(cfg, "gromacs")
-    if gromacs is not None and "nsteps" in gromacs:
-        was_struct = OmegaConf.is_struct(gromacs)
-        OmegaConf.set_struct(gromacs, False)
-        try:
-            del gromacs["nsteps"]
-        finally:
-            OmegaConf.set_struct(gromacs, was_struct)
-
-
 def _replace_config_contents(target, source) -> None:
     """Replace a DictConfig in place so agent tool closures retain the object."""
     was_struct = OmegaConf.is_struct(target)
@@ -69,7 +56,7 @@ def _replace_config_contents(target, source) -> None:
 def _persist_session_files(session_id: str, session, cfg=None) -> dict:
     """Persist config.yaml, md.mdp, and session metadata for a session."""
     cfg = cfg if cfg is not None else session.agent.cfg
-    _remove_legacy_gromacs_nsteps(cfg)
+    normalize_runtime_config(cfg)
 
     work_dir = Path(session.work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -134,7 +121,7 @@ async def update_session_config(session_id: str, req: ConfigUpdateRequest):
         proposed = OmegaConf.create(OmegaConf.to_container(cfg, resolve=False))
         for key, value in req.updates.items():
             OmegaConf.update(proposed, key, value, merge=True, force_add=True)
-        _remove_legacy_gromacs_nsteps(proposed)
+        normalize_runtime_config(proposed)
         try:
             gdict = OmegaConf.to_container(
                 OmegaConf.select(proposed, "gromacs") or {}, resolve=True
