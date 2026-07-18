@@ -3527,7 +3527,7 @@ function MethodTab({
               title={m.long}
               className={`flex-1 flex items-center justify-center text-xs font-medium transition-colors ${
                 m.id === currentMethodId
-                  ? "bg-indigo-100/50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300"
+                  ? "amd-selection-highlight"
                   : "bg-gray-100/40 dark:bg-gray-800/40 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
               } ${i < METHOD_OPTIONS.length - 1 ? "border-r border-gray-300 dark:border-gray-700" : ""}`}
             >
