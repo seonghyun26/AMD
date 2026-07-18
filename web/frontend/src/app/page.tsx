@@ -11,6 +11,7 @@ import SessionSidebar from "@/components/sidebar/SessionSidebar";
 import MDWorkspace from "@/components/workspace/MDWorkspace";
 import ProjectHome from "@/components/projects/ProjectHome";
 import TopBar from "@/components/layout/TopBar";
+import AssistantAvatar from "@/components/common/AssistantAvatar";
 const ChatWindow = dynamic(() => import("@/components/chat/ChatWindow"), { ssr: false });
 const ChatInput = dynamic(() => import("@/components/chat/ChatInput"), { ssr: false });
 
@@ -157,16 +158,19 @@ export default function App() {
         {chatExpanded ? (
           <>
             <div className="px-4 py-3.5 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 flex items-center justify-between">
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">AI Assistant</h2>
-                {activeProject && (
-                  <p
-                    className="text-[10px] font-mono text-gray-400 dark:text-gray-600 mt-0.5 truncate"
-                    title="Attach in a terminal to watch the assistant work live"
-                  >
-                    tmux attach -t amd-{activeProject.project_id.replace(/^proj_/, "").replace(/[^A-Za-z0-9_-]/g, "") || "project"}
-                  </p>
-                )}
+              <div className="flex min-w-0 items-center gap-3">
+                <AssistantAvatar size={42} />
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">AI Assistant</h2>
+                  {activeProject && (
+                    <p
+                      className="text-[10px] font-mono text-gray-400 dark:text-gray-600 mt-0.5 truncate"
+                      title="Attach in a terminal to watch the assistant work live"
+                    >
+                      tmux attach -t amd-{activeProject.project_id.replace(/^proj_/, "").replace(/[^A-Za-z0-9_-]/g, "") || "project"}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button

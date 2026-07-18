@@ -5,7 +5,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage, ToolCallBlock } from "@/lib/types";
 import { useSessionStore } from "@/store/sessionStore";
-import AssistantAvatar from "@/components/common/AssistantAvatar";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolCallCard, { ToolCallGroupCard } from "./ToolCallCard";
 
@@ -72,9 +71,6 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className={`flex gap-3 px-4 py-3 ${isUser ? "justify-end" : "justify-start"}`}>
-      {/* Avatar */}
-      {!isUser && <AssistantAvatar />}
-
       {/* Content */}
       <div className={`max-w-[80%] min-w-0 space-y-1 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
         {message.blocks.map((block, i) => {

@@ -241,12 +241,12 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
           onClick={(e) => refreshMention(value, (e.target as HTMLTextAreaElement).selectionStart ?? value.length)}
           placeholder={projectId ? "Ask about this project's simulations…  (@ to mention one)" : "Ask the assistant…"}
           rows={3}
-          className="amd-highlight-field w-full resize-none rounded-xl pl-3 pr-12 pt-2 pb-10 text-sm text-gray-900 dark:text-gray-100 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500"
+          className="amd-highlight-field w-full resize-none rounded-xl py-2 pl-3 pr-12 text-sm text-gray-900 dark:text-gray-100 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500"
         />
         {isStreaming ? (
           <button
             onClick={handleStop}
-            className="absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-950/70 dark:text-red-300 dark:hover:bg-red-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60"
+            className="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border-0 bg-transparent text-red-500 transition-[filter,opacity] hover:brightness-110 dark:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60"
             title="Stop"
             aria-label="Stop response"
           >
@@ -256,7 +256,7 @@ export default function ChatInput({ projectId, contextSessionId, autoSend, onAut
           <button
             onClick={handleSend}
             disabled={!value.trim()}
-            className="absolute bottom-2.5 right-2.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border-0 bg-transparent transition-[filter,transform,opacity] hover:brightness-110 active:translate-y-px disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+            className="absolute right-2.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border-0 bg-transparent transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
             title="Send (Enter)"
             aria-label="Send message"
           >
