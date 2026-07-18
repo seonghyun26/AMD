@@ -51,9 +51,9 @@ lincs_iter: 1
 lincs_order: 4
 
 # Output frequencies (steps)
-nstxout: 10
-nstvout: 10
+nstxout: 1000
+nstvout: 1000
 nstfout: 0
-nstlog: 10
-nstxout_compressed: 10
-nstenergy: 10
+nstlog: 1000
+nstxout_compressed: 1000
+nstenergy: 1000

@@ -59,9 +59,9 @@ lincs_iter: 1
 lincs_order: 4
 
 # Output frequencies (steps)
-nstxout: 5000
-nstvout: 5000
+nstxout: 500000
+nstvout: 500000
 nstfout: 0
-nstlog: 1000
-nstxout_compressed: 10
-nstenergy: 1000         # keep aligned with wandb.log_interval_steps
+nstlog: 100000
+nstxout_compressed: 1000
+nstenergy: 100000

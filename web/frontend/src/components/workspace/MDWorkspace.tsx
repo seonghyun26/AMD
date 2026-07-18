@@ -1447,10 +1447,10 @@ function SimRunConfirmModal({
   const nsteps = Number(method.nsteps ?? 0);
   const dt     = Number(gromacs.dt    ?? 0.002); // ps per step
 
-  const freqXtc = Number(gromacs.nstxout_compressed ?? 10);
-  const freqTrr = Math.max(Number(gromacs.nstxout ?? 5000), Number(gromacs.nstvout ?? 5000));
-  const freqEdr = Number(gromacs.nstenergy ?? 1000);
-  const freqLog = Number(gromacs.nstlog    ?? 1000);
+  const freqXtc = Number(gromacs.nstxout_compressed ?? 1000);
+  const freqTrr = Math.max(Number(gromacs.nstxout ?? 500000), Number(gromacs.nstvout ?? 500000));
+  const freqEdr = Number(gromacs.nstenergy ?? 100000);
+  const freqLog = Number(gromacs.nstlog    ?? 100000);
 
   const plumedCfg = (cfg.plumed ?? {}) as Record<string, unknown>;
   const cvsCfg = (plumedCfg.collective_variables ?? {}) as Record<string, unknown>;
@@ -3085,7 +3085,7 @@ function AdvancedSection({
               <Field
                 label="nstxout"
                 type="number"
-                value={String(gromacs.nstxout ?? "5000")}
+                value={String(gromacs.nstxout ?? "500000")}
                 onChange={(v) => onChange("gromacs.nstxout", Number(v))}
                 onBlur={onSave}
                 hint="Coordinates to .trr"
@@ -3093,7 +3093,7 @@ function AdvancedSection({
               <Field
                 label="nstvout"
                 type="number"
-                value={String(gromacs.nstvout ?? "5000")}
+                value={String(gromacs.nstvout ?? "500000")}
                 onChange={(v) => onChange("gromacs.nstvout", Number(v))}
                 onBlur={onSave}
                 hint="Velocities to .trr"
@@ -3109,7 +3109,7 @@ function AdvancedSection({
               <Field
                 label="nstlog"
                 type="number"
-                value={String(gromacs.nstlog ?? "1000")}
+                value={String(gromacs.nstlog ?? "100000")}
                 onChange={(v) => onChange("gromacs.nstlog", Number(v))}
                 onBlur={onSave}
                 hint="Energy to .log"
@@ -3117,7 +3117,7 @@ function AdvancedSection({
               <Field
                 label="nstxout-compressed"
                 type="number"
-                value={String(gromacs.nstxout_compressed ?? "10")}
+                value={String(gromacs.nstxout_compressed ?? "1000")}
                 onChange={(v) => onChange("gromacs.nstxout_compressed", Number(v))}
                 onBlur={onSave}
                 hint="Coordinates to .xtc"
@@ -3125,7 +3125,7 @@ function AdvancedSection({
               <Field
                 label="nstenergy"
                 type="number"
-                value={String(gromacs.nstenergy ?? "1000")}
+                value={String(gromacs.nstenergy ?? "100000")}
                 onChange={(v) => onChange("gromacs.nstenergy", Number(v))}
                 onBlur={onSave}
                 hint="Energy to .edr"
