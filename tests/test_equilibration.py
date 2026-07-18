@@ -161,6 +161,33 @@ def test_configurable_nvt_length(tmp_path, _cfg, _patched):
     assert any(line.replace(" ", "").startswith("nsteps=10000") for line in nvt_mdp.splitlines())
 
 
+def test_tutorial_default_stage_lengths(tmp_path, _cfg, _patched):
+    gmx = _FakeGmx()
+    sim._equilibrate_and_run(
+        _FakeSession(),
+        gmx,
+        _cfg,
+        tmp_path,
+        "ionized.gro",
+        "topol.top",
+        None,
+        "0",
+        None,
+        "tip3p",
+        1000,
+    )
+
+    def nsteps(mdp_name: str) -> int:
+        for line in (tmp_path / mdp_name).read_text().splitlines():
+            if line.replace(" ", "").startswith("nsteps="):
+                return int(line.split("=", 1)[1].strip())
+        raise AssertionError(f"nsteps missing from {mdp_name}")
+
+    assert nsteps("em.mdp") == -1
+    assert nsteps("nvt.mdp") == 50000
+    assert nsteps("npt.mdp") == 50000
+
+
 def test_stage_failure_marks_failed(tmp_path, _cfg, _patched):
     gmx = _FakeGmx(fail_on="nvt.mdp")  # NVT grompp fails
     sim._equilibrate_and_run(

@@ -36,7 +36,7 @@ box_clearance: 1.5      # nm — minimum distance between molecule and box edge
 
 # Pre-production equilibration (EM → NVT → NPT); not MDP keys. NVT/NPT in ps.
 equilibrate: true
-equil_em_steps: 50000
+equil_em_steps: -1
 equil_nvt_ps: 100
 equil_npt_ps: 100
 

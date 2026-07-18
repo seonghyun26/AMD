@@ -32,9 +32,10 @@ box_clearance: 1.5      # nm — minimum distance between molecule and box edge
 
 # Pre-production equilibration (EM → NVT → [NPT]); not MDP keys — read by the
 # run pipeline. Set equilibrate:false to start production directly. NVT/NPT
-# durations are in ps; EM is a max step count (stops at emtol).
+# durations are in ps; EM runs until emtol is reached, matching the official
+# GROMACS introductory tutorial.
 equilibrate: true
-equil_em_steps: 50000
+equil_em_steps: -1
 equil_nvt_ps: 100
 equil_npt_ps: 100
 
