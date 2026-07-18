@@ -258,9 +258,42 @@ html .amd-popover-enter {
   margin-top: 34px;
 }
 
-.amd-popup-enter[data-popup-title] > :last-child,
-.amd-popover-enter[data-popup-title] > :last-child {
+.amd-popup-enter[data-popup-title] > :last-child:not(.amd-popup-tail-close),
+.amd-popover-enter[data-popup-title] > :last-child:not(.amd-popup-tail-close),
+.amd-popup-enter[data-popup-title] > :has(+ .amd-popup-tail-close),
+.amd-popover-enter[data-popup-title] > :has(+ .amd-popup-tail-close) {
   margin-bottom: 34px;
+}
+
+.amd-popup-tail-close {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  z-index: 40;
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--amd-popup-chrome-text);
+  cursor: pointer;
+  transition: color 140ms ease, filter 140ms ease, transform 140ms ease;
+}
+
+.amd-popup-tail-close:hover {
+  color: var(--amd-check-color);
+  filter: drop-shadow(0 0 5px var(--amd-highlight-focus-glow));
+  transform: translateX(-50%) scale(1.08);
+}
+
+.amd-popup-tail-close:focus-visible {
+  outline: 2px solid var(--amd-check-color);
+  outline-offset: -2px;
 }
 
 /* PopupPresence retains the shell while this exact reverse motion completes. */
@@ -363,6 +396,10 @@ html .amd-popover-enter {
     transform var(--amd-motion-fast) var(--amd-ease-out);
 }
 
+.amd-new-simulation-button {
+  border-width: 2px;
+}
+
 .amd-user-message {
   background: var(--amd-user-message-bg);
   color: var(--amd-user-message-text);
@@ -382,9 +419,9 @@ html .amd-popover-enter {
 }
 
 .amd-primary-button:hover:not(:disabled) {
-  background:
-    linear-gradient(var(--amd-control-surface-hover), var(--amd-control-surface-hover)) padding-box,
-    var(--amd-brand-gradient) border-box;
+  background: var(--amd-highlight-border-gradient) border-box;
+  color: #0f172a;
+  box-shadow: 0 8px 20px var(--amd-highlight-focus-glow);
   transform: translateY(-1px);
 }
 

@@ -7,7 +7,6 @@ import {
   Download,
   Search,
   Trash2,
-  X,
   Settings,
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -16,6 +15,7 @@ import { useTheme } from "@/lib/theme";
 import { UI_COLORS, colorWithAlpha } from "@/lib/colors";
 import { PLOT_CONFIG, plotAxis, plotLayout } from "@/lib/plotTheme";
 import PopupPresence from "@/components/ui/PopupPresence";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -102,11 +102,6 @@ function SettingsDropdown({
 }) {
   return (
     <div data-popup-title="Plot settings" className="amd-popover-enter fixed z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs" style={{ transform: "translateY(-100%) translateY(-8px)" }}>
-      <div className="flex items-center justify-end px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 rounded-t-xl">
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
-          <X size={12} />
-        </button>
-      </div>
       <div className="p-3 space-y-3">
         <div className="flex items-center gap-2">
           <span className="w-20 text-gray-500 dark:text-gray-400 flex-shrink-0">Colormap</span>
@@ -135,6 +130,7 @@ function SettingsDropdown({
           </>
         )}
       </div>
+      <PopupTailClose onClick={onClose} label="Close plot settings" />
     </div>
   );
 }
@@ -518,15 +514,12 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
                     </PopupPresence>
                   </div>
                 )}
-                <button onClick={() => setExpanded(false)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                  <X size={14} />
-                </button>
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
               {renderPlot(false)}
             </div>
+            <PopupTailClose onClick={() => setExpanded(false)} label="Close expanded plot" />
           </div>
         </div>
       </PopupPresence>
@@ -539,15 +532,12 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
               The <span className="text-gray-700 dark:text-gray-300">{headerLabel(config.cvs)}</span> plot will be removed.
             </p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirmDelete(false)}
-                className="px-3 py-1.5 rounded-lg text-xs border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                Cancel
-              </button>
               <button onClick={() => { setConfirmDelete(false); onDelete(); }}
                 className="px-3 py-1.5 rounded-lg text-xs border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">
                 Remove
               </button>
             </div>
+            <PopupTailClose onClick={() => setConfirmDelete(false)} label="Cancel plot removal" />
           </div>
         </div>
       </PopupPresence>

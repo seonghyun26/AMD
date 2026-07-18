@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, Loader2, Plus, Trash2, MousePointer2, ChevronDown } from "lucide-react";
+import { Loader2, Plus, Trash2, MousePointer2, ChevronDown } from "lucide-react";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { getFileContent, listFiles } from "@/lib/api";
 import { CV_PALETTE, viewerBackground } from "@/lib/colors";
 import { useTheme } from "@/lib/theme";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 
 export interface AtomInfo {
   index: number;   // 1-based
@@ -327,13 +328,6 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
         style={{ width: "min(1100px, 95vw)", height: "min(680px, 90vh)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-end px-5 py-3 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-            <X size={16} />
-          </button>
-        </div>
-
         {/* Body: two columns */}
         <div className="flex-1 flex min-h-0">
           {/* Left: NGL viewer */}
@@ -480,6 +474,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
             </div>
           </div>
         </div>
+        <PopupTailClose onClick={onClose} label="Close custom CV analysis" />
       </div>
     </div>
   );

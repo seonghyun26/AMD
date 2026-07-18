@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  X, Play, StopCircle, ChevronDown, ChevronRight, Loader2,
+  Play, StopCircle, ChevronDown, ChevronRight, Loader2,
   Search, FileText, Download, Brain, Database, Save, Settings,
   PenTool, FolderOpen, BarChart3, Mountain, Zap, Map, Microscope,
   Dna, RefreshCw, Ruler, TriangleRight, Wrench,
@@ -10,6 +10,7 @@ import {
 import { streamAgent, type AgentType } from "@/lib/agentStream";
 import { fetchPdb, getFileContent } from "@/lib/api";
 import type { SSEEvent, ToolCallBlock, ThinkingBlock, TextBlock, ErrorBlock } from "@/lib/types";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -281,12 +282,6 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-500">{config.description}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            <X size={15} />
-          </button>
         </div>
 
         {/* Input row */}
@@ -348,6 +343,7 @@ export default function AgentModal({ sessionId, agentType, onClose, onPdbLoaded 
           ))}
           <div ref={bottomRef} />
         </div>
+        <PopupTailClose onClick={onClose} label={`Close ${config.title}`} />
       </div>
     </div>
   );

@@ -8,13 +8,14 @@ import { logout, getUsername } from "@/lib/auth";
 import { updateNickname, restoreSession, deleteSession, getApiKeys, setApiKey, verifyApiKey, getSessionRunStatus, getServerStatus, uploadAvatar, deleteAvatar, type ServerStatus, type GpuInfo } from "@/lib/api";
 import UserAvatar from "@/components/common/UserAvatar";
 import PopupPresence from "@/components/ui/PopupPresence";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/theme";
 
 
 interface Props {
   onNewSession: () => void;
-  onSelectSession?: (id: string) => void;
+  onSelectSession?: (id: string | null) => void;
   onSessionDeleted?: (id: string) => void;
   /** Desktop-only: render as a thin collapsed strip. */
   collapsed?: boolean;
@@ -180,7 +181,7 @@ function SessionItem({
   };
 
   return (
-    <>
+    <div className="relative">
       {/* Delete confirmation modal */}
       <PopupPresence show={confirming}>
         <div
@@ -205,12 +206,6 @@ function SessionItem({
             </div>
             <div className="flex gap-2 justify-end">
               <button
-                onClick={cancelConfirm}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm transition-colors"
-              >
-                <X size={13} /> Cancel
-              </button>
-              <button
                 onClick={confirmDelete}
                 disabled={deleting}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
@@ -218,6 +213,7 @@ function SessionItem({
                 <Check size={13} /> {deleting ? "Deleting…" : "Delete"}
               </button>
             </div>
+            <PopupTailClose onClick={() => setConfirming(false)} label="Cancel simulation deletion" />
           </div>
         </div>
       </PopupPresence>
@@ -243,14 +239,6 @@ function SessionItem({
                 {s.run_status || "standby"}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setInfoOpen(false)}
-              className="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-              aria-label="Close simulation information"
-            >
-              <X size={13} />
-            </button>
           </div>
 
           <dl className="space-y-2.5 text-xs">
@@ -277,6 +265,7 @@ function SessionItem({
               <dd className="break-all font-mono text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">{s.work_dir}</dd>
             </div>
           </dl>
+          <PopupTailClose onClick={() => setInfoOpen(false)} label="Close simulation information" />
         </div>
       </PopupPresence>
 
@@ -374,7 +363,7 @@ function SessionItem({
         </div>
       )}
     </div>
-    </>
+    </div>
   );
 }
 
@@ -589,18 +578,6 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div data-popup-title="Settings" className="amd-popup-enter relative w-[520px] max-h-[90vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800">
-              <Settings size={15} className="text-gray-500 dark:text-gray-400" />
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-            <X size={15} />
-          </button>
-        </div>
-
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6" style={{ scrollbarWidth: "thin" }}>
 
           {/* ── Account ── */}
@@ -757,6 +734,7 @@ export function SettingsModal({ username, onClose }: { username: string; onClose
           </div>
 
         </div>
+        <PopupTailClose onClick={onClose} label="Close settings" />
       </div>
     </div>
   );
@@ -861,9 +839,6 @@ export function ServerStatusModal({ onClose }: { onClose: () => void }) {
             >
               <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
             </button>
-            <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-              <X size={14} />
-            </button>
           </div>
         </div>
 
@@ -961,6 +936,7 @@ export function ServerStatusModal({ onClose }: { onClose: () => void }) {
         <div className="px-5 py-2.5 border-t border-gray-100 dark:border-gray-800 flex-shrink-0">
           <p className="text-xs text-gray-400 dark:text-gray-600 text-center">Auto-refreshes every 5 seconds</p>
         </div>
+        <PopupTailClose onClick={onClose} label="Close server status" />
       </div>
     </div>
   );
@@ -1024,6 +1000,7 @@ function ProfileSection({ username, onLogout }: { username: string; onLogout: ()
             <LogOut size={15} />
             Sign out
           </button>
+          <PopupTailClose onClick={() => setOpen(false)} label="Close profile menu" />
         </div>
       </PopupPresence>
 
@@ -1052,7 +1029,7 @@ function ProjectItem({
   const [deleting, setDeleting] = useState(false);
 
   return (
-    <>
+    <div className="relative">
       <PopupPresence show={confirming}>
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
@@ -1076,12 +1053,6 @@ function ProjectItem({
             </div>
             <div className="flex gap-2 justify-end">
               <button
-                onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm transition-colors"
-              >
-                <X size={13} /> Cancel
-              </button>
-              <button
                 onClick={async (e) => { e.stopPropagation(); setDeleting(true); await onDeleted(); }}
                 disabled={deleting}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
@@ -1089,6 +1060,7 @@ function ProjectItem({
                 <Check size={13} /> {deleting ? "Deleting…" : "Delete"}
               </button>
             </div>
+            <PopupTailClose onClick={() => setConfirming(false)} label="Cancel project deletion" />
           </div>
         </div>
       </PopupPresence>
@@ -1111,14 +1083,14 @@ function ProjectItem({
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
 // ── Main sidebar ───────────────────────────────────────────────────────
 
 export default function SessionSidebar({ onNewSession, onSelectSession, onSessionDeleted, collapsed, onToggleCollapse }: Props) {
-  const { sessions, sessionsLoading, sessionId, switchSession, updateSessionNickname, removeSession, setSessionRunStatus } =
+  const { sessions, sessionsLoading, sessionId, switchSession, clearSession, updateSessionNickname, removeSession, setSessionRunStatus } =
     useSessionStore();
 
   // Collapsed strip — a thin rail that expands the panel when clicked.
@@ -1159,10 +1131,10 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
       <div className="px-3 pb-2.5 flex-shrink-0">
         <button
           onClick={onNewSession}
-          className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
+          className="amd-primary-button amd-new-simulation-button h-[46px] w-full flex items-center justify-center gap-2 px-3 rounded-lg text-xs font-medium"
         >
           <Plus size={12} />
-          <span className="text-xs font-medium">New Simulation</span>
+          <span>New Simulation</span>
         </button>
       </div>
 
@@ -1194,7 +1166,15 @@ export default function SessionSidebar({ onNewSession, onSelectSession, onSessio
                 key={s.session_id}
                 s={s}
                 isActive={s.session_id === sessionId}
-                onSelect={() => { switchSession(s.session_id, s.work_dir); onSelectSession?.(s.session_id); }}
+                onSelect={() => {
+                  if (s.session_id === sessionId) {
+                    clearSession();
+                    onSelectSession?.(null);
+                    return;
+                  }
+                  switchSession(s.session_id, s.work_dir);
+                  onSelectSession?.(s.session_id);
+                }}
                 onSaved={(nick) => updateSessionNickname(s.session_id, nick)}
                 onDeleted={() => { removeSession(s.session_id); onSessionDeleted?.(s.session_id); }}
                 onRunStatusRead={(rs) => setSessionRunStatus(s.session_id, rs as "standby" | "running" | "finished" | "failed")}

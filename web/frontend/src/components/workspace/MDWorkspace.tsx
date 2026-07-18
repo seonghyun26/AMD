@@ -29,7 +29,6 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
-  X,
   Archive,
   RotateCcw,
   Lock,
@@ -51,6 +50,7 @@ const InlineCVPicker = dynamic(() => import("@/components/viz/InlineCVPicker"), 
 const CustomCVResultCard = dynamic(() => import("@/components/viz/CustomCVResultCard"), { ssr: false });
 import FileUpload from "@/components/files/FileUpload";
 import PopupPresence from "@/components/ui/PopupPresence";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 import { useTheme } from "@/lib/theme";
 import { UI_COLORS, colorWithAlpha } from "@/lib/colors";
 import { PLOT_COLORS, PLOT_CONFIG, plotAxis, plotLayout } from "@/lib/plotTheme";
@@ -155,12 +155,6 @@ function FilePreviewModal({
               <Download size={12} />
               Download
             </a>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            >
-              <X size={15} />
-            </button>
           </div>
         </div>
 
@@ -189,6 +183,7 @@ function FilePreviewModal({
             </pre>
           )}
         </div>
+        <PopupTailClose onClick={onClose} label="Close file preview" />
       </div>
     </div>
   );
@@ -218,18 +213,13 @@ function DeleteConfirmPopup({
         </p>
         <div className="flex gap-2 justify-end">
           <button
-            onClick={onCancel}
-            className="px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
             onClick={onConfirm}
             className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-900/60 hover:bg-red-100 dark:hover:bg-red-800/70 border border-red-300/60 dark:border-red-700/60 text-red-600 dark:text-red-300 hover:text-red-700 dark:hover:text-red-100 transition-colors"
           >
             Move to archive
           </button>
         </div>
+        <PopupTailClose onClick={onCancel} label="Cancel archive action" />
       </div>
     </div>
   );
@@ -606,14 +596,12 @@ function ResultCard({
                 <button onClick={handleRefresh} title="Refresh" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
                 </button>
-                <button onClick={() => setExpanded(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                  <X size={14} />
-                </button>
               </div>
               <div className="absolute inset-0 overflow-hidden">
                 <EnergyCardContent sessionId={sessionId} type={card.type as EnergyCardType} compact={false} refreshKey={refreshKey} maxPoints={50000} />
               </div>
             </div>
+            <PopupTailClose onClick={() => setExpanded(false)} label={`Close ${label} plot`} />
           </div>
         </div>
       </PopupPresence>
@@ -632,18 +620,13 @@ function ResultCard({
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">{label}</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
               <button
-                onClick={() => setConfirmDelete(false)}
-                className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
                 onClick={() => { setConfirmDelete(false); onDelete(); }}
                 className="px-3 py-1.5 rounded-lg text-xs border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
               >
                 Remove
               </button>
             </div>
+            <PopupTailClose onClick={() => setConfirmDelete(false)} label="Cancel plot removal" />
           </div>
         </div>
       </PopupPresence>
@@ -737,11 +720,6 @@ function RamachandranExpandedModal({
               </button>
               <PopupPresence show={settingsOpen} duration={400}>
                 <div data-popup-title="Plot settings" className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-end px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                    <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
-                      <X size={12} />
-                    </button>
-                  </div>
                   <div className="p-3 space-y-3">
                     <div className="flex items-center gap-2">
                       <span className="w-20 text-gray-400 flex-shrink-0">DPI</span>
@@ -780,15 +758,10 @@ function RamachandranExpandedModal({
                       </button>
                     </div>
                   </div>
+                  <PopupTailClose onClick={() => setSettingsOpen(false)} label="Close plot settings" />
                 </div>
               </PopupPresence>
             </div>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            >
-              <X size={14} />
-            </button>
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center p-4">
@@ -813,6 +786,7 @@ function RamachandranExpandedModal({
             />
           )}
         </div>
+        <PopupTailClose onClick={onClose} label="Close Ramachandran plot" />
       </div>
     </div>
   );
@@ -947,11 +921,6 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
 
               <PopupPresence show={settingsOpen} duration={400}>
                 <div data-popup-title="Plot settings" className="amd-popover-enter absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs overflow-hidden">
-                  <div className="flex items-center justify-end px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
-                    <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200 transition-colors">
-                      <X size={12} />
-                    </button>
-                  </div>
                   <div className="p-3 space-y-3">
                     {/* DPI */}
                     <div className="flex items-center gap-2">
@@ -1010,6 +979,7 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
                       </button>
                     </div>
                   </div>
+                  <PopupTailClose onClick={() => setSettingsOpen(false)} label="Close plot settings" />
                 </div>
               </PopupPresence>
             </div>
@@ -1062,9 +1032,9 @@ function RamachandranResultCard({ sessionId, onDelete }: { sessionId: string; on
           <div data-popup-title="Remove plot" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">Ramachandran</span> plot will be removed from the results panel.</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
               <button onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-3 py-1.5 rounded-lg text-xs border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">Remove</button>
             </div>
+            <PopupTailClose onClick={() => setConfirmDelete(false)} label="Cancel plot removal" />
           </div>
         </div>
       </PopupPresence>
@@ -1176,12 +1146,10 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
                 <button onClick={handleRefresh} title="Refresh" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   <RotateCcw size={12} className={spinning ? "animate-spin" : ""} />
                 </button>
-                <button onClick={() => setExpanded(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                  <X size={14} />
-                </button>
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">{renderPlot(false)}</div>
+            <PopupTailClose onClick={() => setExpanded(false)} label="Close MLCV plot" />
           </div>
         </div>
       </PopupPresence>
@@ -1191,9 +1159,9 @@ function MLCVResultCard({ sessionId, onDelete }: { sessionId: string; onDelete: 
           <div data-popup-title="Remove plot" className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-xs text-gray-500 mb-4">The <span className="text-gray-700 dark:text-gray-300">MLCV</span> plot will be removed.</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
               <button onClick={() => { setConfirmDelete(false); onDelete(); }} className="px-3 py-1.5 rounded-lg text-xs border border-red-300/60 dark:border-red-800/60 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">Remove</button>
             </div>
+            <PopupTailClose onClick={() => setConfirmDelete(false)} label="Cancel plot removal" />
           </div>
         </div>
       </PopupPresence>
@@ -1375,6 +1343,7 @@ function AddPlotModal({
         >
           Run Analysis
         </button>
+        <PopupTailClose onClick={onClose} label="Close analysis picker" />
       </div>
     </div>
   );
@@ -1510,9 +1479,6 @@ function SimRunConfirmModal({
           <div>
             <p className="text-xs text-gray-500 mt-0.5">Total: {simLabel} · {nsteps.toLocaleString()} steps</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors">
-            <X size={16} />
-          </button>
         </div>
 
         {/* Logging table */}
@@ -1568,6 +1534,7 @@ function SimRunConfirmModal({
             Run
           </button>
         </div>
+        <PopupTailClose onClick={onClose} label="Close simulation summary" />
       </div>
     </div>
   );
@@ -4085,12 +4052,6 @@ function MethodTab({
                 >
                   Generate
                 </button>
-                <button
-                  onClick={() => setPlumedPopupOpen(false)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <X size={14} />
-                </button>
               </div>
             </div>
             {/* Body */}
@@ -4115,6 +4076,7 @@ function MethodTab({
                 <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-3">{plumedMessage}</p>
               )}
             </div>
+            <PopupTailClose onClick={() => setPlumedPopupOpen(false)} label="Close PLUMED input" />
           </div>
         </div>
       </PopupPresence>
@@ -4710,23 +4672,18 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
       );
     }
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 h-full gap-6 px-8">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center">
-            <FlaskConical size={28} className="text-gray-400 dark:text-gray-600" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No simulation selected</p>
-            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Select a simulation from the sidebar or create a new one to get started.</p>
-          </div>
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 h-full gap-4 px-8 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center">
+          <FlaskConical size={28} className="text-gray-400 dark:text-gray-600" />
         </div>
         <button
           onClick={onNewSession}
-          className="amd-primary-button flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium"
+          className="amd-primary-button amd-new-simulation-button flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium"
         >
           <Plus size={14} />
           New Simulation
         </button>
+        <p className="text-xs text-gray-400 dark:text-gray-600">Select a simulation from the list or start a new one.</p>
       </div>
     );
   }
@@ -4880,18 +4837,13 @@ export default function MDWorkspace({ sessionId, showNewForm, onSessionCreated, 
             </p>
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => setPauseConfirmOpen(false)}
-                className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                Cancel
-              </button>
-              <button
                 onClick={handleConfirmPause}
                 className="px-4 py-2 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors font-medium"
               >
                 Pause Simulation
               </button>
             </div>
+            <PopupTailClose onClick={() => setPauseConfirmOpen(false)} label="Cancel simulation pause" />
           </div>
         </div>
       </PopupPresence>

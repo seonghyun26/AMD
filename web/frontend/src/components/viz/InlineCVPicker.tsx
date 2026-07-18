@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2, MousePointer2, ChevronDown, Zap, X } from "lucide-react";
+import { Loader2, Plus, Trash2, MousePointer2, ChevronDown, Zap } from "lucide-react";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { getFileContent, listFiles, getMacroCvs } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { CV_PALETTE, viewerBackground } from "@/lib/colors";
 import PopupPresence from "@/components/ui/PopupPresence";
+import PopupTailClose from "@/components/ui/PopupTailClose";
 
 export interface AtomInfo {
   index: number;   // 1-based
@@ -605,11 +606,6 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
           {/* Macro popup */}
           <PopupPresence show={macroOpen} duration={400}>
             <div data-popup-title="CV macros" className="amd-popover-enter absolute bottom-full right-0 mb-1.5 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-30 overflow-hidden">
-              <div className="flex items-center justify-end px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-                <button onClick={() => setMacroOpen(false)} className="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                  <X size={10} />
-                </button>
-              </div>
               <div className="p-1.5 space-y-0.5">
                 {MACRO_OPTIONS.map((m) => (
                   <button
@@ -630,6 +626,7 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
                   </button>
                 ))}
               </div>
+              <PopupTailClose onClick={() => setMacroOpen(false)} label="Close CV macros" />
             </div>
           </PopupPresence>
         </div>

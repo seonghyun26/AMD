@@ -69,7 +69,7 @@ export default function App() {
     document.addEventListener("mouseup", onUp);
   };
 
-  const { fetchSimulations, loadAssistant, clearAssistant, messages, isStreaming } = useSessionStore();
+  const { fetchSimulations, loadAssistant, clearAssistant, clearSession, messages, isStreaming } = useSessionStore();
   const pendingPrompt = useSessionStore((s) => s.pendingPrompt);
   const [confirmClear, setConfirmClear] = useState(false);
   const { projects, activeProjectId, setActiveProject } = useProjectStore();
@@ -122,10 +122,12 @@ export default function App() {
     if (activeProjectId) fetchSimulations(activeProjectId);
   };
   const handleNewSession = () => {
+    clearSession();
     setShowNewSession(true);
     setSessionId(null);
   };
   const openProject = (id: string) => {
+    clearSession();
     setActiveProject(id);
     setSessionId(null);
     setShowNewSession(false);

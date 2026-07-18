@@ -43,6 +43,7 @@ interface SessionState {
   // Actions
   setSession: (id: string, config: SessionConfig) => void;
   switchSession: (id: string, workDir: string) => void;
+  clearSession: () => void;
   fetchSessions: () => Promise<void>;
   fetchSimulations: (projectId: string) => Promise<void>;
   addSession: (s: SessionSummary) => void;
@@ -97,6 +98,9 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   switchSession: (id, workDir) =>
     set({ sessionId: id, config: { method: "", system: "", gromacs: "", plumed_cvs: "", workDir }, simProgress: null }),
+
+  clearSession: () =>
+    set({ sessionId: null, config: null, simProgress: null }),
 
   fetchSessions: async () => {
     try {
