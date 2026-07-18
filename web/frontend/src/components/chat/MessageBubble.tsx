@@ -3,13 +3,30 @@
 import { useMemo, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, ToolCallBlock } from "@/lib/types";
 import { useSessionStore } from "@/store/sessionStore";
-import UserAvatar from "@/components/common/UserAvatar";
+import AssistantAvatar from "@/components/common/AssistantAvatar";
 import ThinkingBlock from "./ThinkingBlock";
-import ToolCallCard from "./ToolCallCard";
+import ToolCallCard, { ToolCallGroupCard } from "./ToolCallCard";
 
-/** Underline `@simulation` mentions in a sent user message. Matches against the
+const BACKGROUND_TOOL_NAMES = new Set([
+  "read_shell",
+  "command_execution",
+  "exec_command",
+  "write_stdin",
+  "wait",
+  "job",
+  "jobs",
+  "job_start",
+  "job_status",
+  "wait_job",
+]);
+
+function isBackgroundTool(block: ToolCallBlock): boolean {
+  return BACKGROUND_TOOL_NAMES.has(block.tool_name) || /(?:^|[._-])jobs?(?:$|[._-])/.test(block.tool_name);
+}
+
+/** Highlight `@simulation` mentions in a sent user message. Matches against the
  *  project's known simulation names (longest first) so names with spaces work. */
 function renderMentions(text: string, names: string[]): ReactNode {
   if (!text.includes("@") || names.length === 0) return text;
@@ -25,7 +42,7 @@ function renderMentions(text: string, names: string[]): ReactNode {
       if (hit) {
         flush();
         out.push(
-          <span key={i} className="underline decoration-white/60 underline-offset-2 font-medium">
+          <span key={i} className="amd-user-message-mention">
             @{hit}
           </span>,
         );
@@ -44,17 +61,19 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const sessions = useSessionStore((s) => s.sessions);
   const names = useMemo(() => sessions.map((s) => s.nickname).filter(Boolean), [sessions]);
+  const backgroundTools = useMemo(
+    () => message.blocks.filter(
+      (block): block is ToolCallBlock => block.kind === "tool_call" && isBackgroundTool(block),
+    ),
+    [message.blocks],
+  );
+  const groupedBackground = backgroundTools.length > 1;
+  const firstBackgroundId = backgroundTools[0]?.tool_use_id;
 
   return (
-    <div className={`flex gap-3 px-4 py-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+    <div className={`flex gap-3 px-4 py-3 ${isUser ? "justify-end" : "justify-start"}`}>
       {/* Avatar */}
-      {isUser ? (
-        <UserAvatar size={32} fallback="icon" className="rounded-full bg-blue-600 text-white text-xs font-bold" />
-      ) : (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gradient-to-br from-orange-400 to-rose-500">
-          AI
-        </div>
-      )}
+      {!isUser && <AssistantAvatar />}
 
       {/* Content */}
       <div className={`max-w-[80%] min-w-0 space-y-1 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
@@ -63,23 +82,23 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
             return (
               <div
                 key={i}
-                className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words ${
+                className={`px-4 py-2.5 text-sm leading-relaxed break-words ${
                   isUser
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    ? "amd-user-message rounded-xl"
+                    : "rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 }`}
               >
                 {isUser ? (
                   <div>
                     {block.title && (
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-100/90 mb-1 pb-1 border-b border-white/20">
+                      <div className="amd-user-message-title text-[11px] font-semibold uppercase tracking-wide mb-1 pb-1 border-b">
                         {block.title}
                       </div>
                     )}
                     <p className="whitespace-pre-wrap break-words">{renderMentions(block.content, names)}</p>
                   </div>
                 ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:whitespace-pre-wrap [&_pre]:break-all prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-orange-600 dark:prose-code:text-orange-400">
+                  <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:whitespace-pre-wrap [&_pre]:break-all prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-indigo-600 dark:prose-code:text-cyan-300">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {block.content}
                     </ReactMarkdown>
@@ -92,6 +111,10 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
             return <ThinkingBlock key={i} block={block} />;
           }
           if (block.kind === "tool_call") {
+            if (groupedBackground && isBackgroundTool(block)) {
+              if (block.tool_use_id !== firstBackgroundId) return null;
+              return <ToolCallGroupCard key={`activity-${message.id}`} blocks={backgroundTools} />;
+            }
             return <ToolCallCard key={block.tool_use_id} block={block} />;
           }
           if (block.kind === "error") {

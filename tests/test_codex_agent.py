@@ -161,3 +161,62 @@ def test_stream_codex_translates_events_and_sends_prompt_over_stdin(monkeypatch,
     assert "Check md.log" not in invocation["args"]
     assert b"Check md.log" in process.stdin.data
     assert process.stdin.closed is True
+
+
+def test_stream_codex_hides_intermediate_narration_and_keeps_final_answer(
+    monkeypatch, tmp_path: Path
+):
+    process = _FakeProcess()
+    events = [
+        {
+            "type": "item.completed",
+            "item": {"id": "msg_1", "type": "agent_message", "text": "I'll inspect files."},
+        },
+        {
+            "type": "item.started",
+            "item": {
+                "id": "cmd_1",
+                "type": "command_execution",
+                "command": "rg -n nsteps md.mdp",
+                "status": "in_progress",
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "cmd_1",
+                "type": "command_execution",
+                "status": "completed",
+                "aggregated_output": "nsteps = 500000",
+                "exit_code": 0,
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "msg_2",
+                "type": "agent_message",
+                "text": "1. **Run length** — Too short. **Suggested fix:** increase nsteps.",
+            },
+        },
+        {"type": "turn.completed", "usage": {}},
+    ]
+    process.stdout = _FakeReader([f"{json.dumps(event)}\n".encode() for event in events])
+
+    async def fake_create_subprocess_exec(*_args, **_kwargs):
+        return process
+
+    monkeypatch.setattr(codex_agent, "_codex_executable", lambda: "/usr/bin/codex")
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    async def collect():
+        return [event async for event in codex_agent.stream_codex(str(tmp_path), "Review config")]
+
+    streamed = asyncio.run(collect())
+
+    assert all(event.get("text") != "I'll inspect files." for event in streamed)
+    assert streamed[-2] == {
+        "type": "text_delta",
+        "text": "1. **Run length** — Too short. **Suggested fix:** increase nsteps.",
+    }
+    assert streamed[-1] == {"type": "agent_done", "final_text": ""}

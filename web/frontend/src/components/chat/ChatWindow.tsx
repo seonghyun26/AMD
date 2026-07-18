@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSessionStore } from "@/store/sessionStore";
 import MessageBubble from "./MessageBubble";
 import { ChevronDown, Loader2 } from "lucide-react";
+import AssistantAvatar from "@/components/common/AssistantAvatar";
 
 export default function ChatWindow() {
   const messages = useSessionStore((s) => s.messages);
@@ -63,9 +64,7 @@ export default function ChatWindow() {
 
         {isStreaming && (
           <div className="flex gap-3 px-4 py-3">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-orange-400 to-rose-500 text-white text-xs font-bold flex-shrink-0">
-              AI
-            </div>
+            <AssistantAvatar />
             <div className="flex items-center gap-2 text-gray-400">
               <Loader2 size={14} className="animate-spin" />
               <span className="text-sm">Thinking…</span>
