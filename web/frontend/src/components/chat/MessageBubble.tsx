@@ -94,7 +94,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
                     <p className="whitespace-pre-wrap break-words">{renderMentions(block.content, names)}</p>
                   </div>
                 ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:whitespace-pre-wrap [&_pre]:break-all prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-indigo-600 dark:prose-code:text-cyan-300">
+                  <div className="prose prose-sm dark:prose-invert max-w-none [&_p]:my-3 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_pre]:whitespace-pre-wrap [&_pre]:break-all prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-code:text-indigo-600 dark:prose-code:text-cyan-300">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {block.content}
                     </ReactMarkdown>
