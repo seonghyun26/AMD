@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { getColvar } from "@/lib/api";
 import { RefreshCw } from "lucide-react";
 import dynamic from "next/dynamic";
+import { useTheme } from "@/lib/theme";
+import { PLOT_COLORS, PLOT_CONFIG, plotLayout } from "@/lib/plotTheme";
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 interface Props {
@@ -11,6 +13,8 @@ interface Props {
 }
 
 export default function ColvarPlot({ sessionId }: Props) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [data, setData] = useState<Record<string, number[]> | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -40,13 +44,13 @@ export default function ColvarPlot({ sessionId }: Props) {
   const xData = data[timeKey] ?? [];
   const cvKeys = Object.keys(data).filter((k) => k !== timeKey && k !== "metad.bias");
 
-  const traces: Plotly.Data[] = cvKeys.map((k) => ({
+  const traces: Plotly.Data[] = cvKeys.map((k, index) => ({
     type: "scatter",
     mode: "lines",
     x: xData,
     y: data[k],
     name: k,
-    line: { width: 1.5 },
+    line: { width: 1.8, color: PLOT_COLORS[index % PLOT_COLORS.length] },
   }));
 
   return (
@@ -60,17 +64,14 @@ export default function ColvarPlot({ sessionId }: Props) {
       <Plot
         data={traces}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        layout={{
-          xaxis: { title: "Time (ps)" as any, zeroline: false },
-          yaxis: { zeroline: false },
+        layout={plotLayout(isDark, {
+          xaxis: { title: "Time (ps)" as any },
           showlegend: true,
-          legend: { font: { size: 10 } },
+          legend: { font: { size: 10 }, orientation: "h", y: 1.08 },
           margin: { t: 10, l: 50, r: 10, b: 40 },
-          paper_bgcolor: "transparent",
-          plot_bgcolor: "transparent",
           height: 220,
-        }}
-        config={{ responsive: true, displayModeBar: false }}
+        })}
+        config={PLOT_CONFIG}
         style={{ width: "100%" }}
       />
     </div>

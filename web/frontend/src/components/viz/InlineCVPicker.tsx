@@ -5,7 +5,7 @@ import { Loader2, Plus, Trash2, MousePointer2, ChevronDown, Zap, X } from "lucid
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { getFileContent, listFiles, getMacroCvs } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
-import { CV_PALETTE } from "@/lib/colors";
+import { CV_PALETTE, viewerBackground } from "@/lib/colors";
 
 export interface AtomInfo {
   index: number;   // 1-based
@@ -223,7 +223,7 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
     containerRef.current.innerHTML = "";
 
     suppressNglDeprecationWarnings();
-    const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
+    const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: viewerBackground(theme) });
     stageRef.current = stage;
 
     const ro = new ResizeObserver(() => stage.handleResize());
@@ -272,7 +272,7 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
   }, []);
 
   useEffect(() => {
-    stageRef.current?.setParameters({ backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
+    stageRef.current?.setParameters({ backgroundColor: viewerBackground(theme) });
   }, [theme]);
 
   const handleAtomPicked = useCallback((info: AtomInfo) => {
@@ -603,7 +603,7 @@ export default function InlineCVPicker({ sessionId, cvs, onChange }: Props) {
 
           {/* Macro popup */}
           {macroOpen && (
-            <div className="absolute bottom-full right-0 mb-1.5 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-30 overflow-hidden">
+            <div className="amd-popover-enter absolute bottom-full right-0 mb-1.5 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-30 overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
                 <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">CV Macros</span>
                 <button onClick={() => setMacroOpen(false)} className="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">

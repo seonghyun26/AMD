@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Loader2, Plus, Trash2, MousePointer2, ChevronDown } from "lucide-react";
 import { suppressNglDeprecationWarnings } from "@/lib/ngl";
 import { getFileContent, listFiles } from "@/lib/api";
-import { CV_PALETTE } from "@/lib/colors";
+import { CV_PALETTE, viewerBackground } from "@/lib/colors";
 import { useTheme } from "@/lib/theme";
 
 export interface AtomInfo {
@@ -157,7 +157,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
     containerRef.current.innerHTML = "";
 
     suppressNglDeprecationWarnings();
-    const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: theme === "dark" ? "#111827" : "#ffffff" });
+    const stage = new window.NGL.Stage(containerRef.current, { backgroundColor: viewerBackground(theme) });
     stageRef.current = stage;
 
     const ro = new ResizeObserver(() => stage.handleResize());
@@ -322,7 +322,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col overflow-hidden"
+        className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col overflow-hidden"
         style={{ width: "min(1100px, 95vw)", height: "min(680px, 90vh)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -473,7 +473,7 @@ export default function CVSetupModal({ sessionId, onConfirm, onClose }: Props) {
               <button
                 onClick={handleConfirm}
                 disabled={!isComplete}
-                className="w-full py-2.5 rounded-xl text-xs font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                className="amd-primary-button w-full py-2.5 rounded-xl text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Compute & Add to Results
               </button>

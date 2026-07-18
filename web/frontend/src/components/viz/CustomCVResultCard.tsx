@@ -13,6 +13,8 @@ import {
 import dynamic from "next/dynamic";
 import { computeCustomCV, type CVDefinition, type CustomCVConfig } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
+import { UI_COLORS, colorWithAlpha } from "@/lib/colors";
+import { PLOT_CONFIG, plotAxis, plotLayout } from "@/lib/plotTheme";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -41,26 +43,9 @@ function unitLabel(cv: CVDefinition): string {
 
 // ── Plotly layout helpers ────────────────────────────────────────────
 
-function axisStyle(isDark: boolean) {
-  return {
-    gridcolor: isDark ? "#1f2937" : "#e5e7eb",
-    zerolinecolor: isDark ? "#374151" : "#d1d5db",
-    tickfont: { size: 9, color: isDark ? "#9ca3af" : "#6b7280" },
-  };
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function themedLayout(isDark: boolean, overrides: Record<string, any> = {}): Record<string, any> {
-  const axis = axisStyle(isDark);
-  return {
-    paper_bgcolor: "transparent",
-    plot_bgcolor: isDark ? "transparent" : "rgba(249,250,251,0.8)",
-    font: { color: isDark ? "#9ca3af" : "#374151", size: 10 },
-    margin: { l: 48, r: 12, t: 8, b: 40 },
-    xaxis: { ...axis },
-    yaxis: { ...axis },
-    ...overrides,
-  };
+  return plotLayout(isDark, overrides as Partial<Plotly.Layout>) as Record<string, any>;
 }
 
 // ── Settings panel (matches Ramachandran settings pattern) ──────────
@@ -115,7 +100,7 @@ function SettingsDropdown({
   showDensity?: boolean;
 }) {
   return (
-    <div className="fixed z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs" style={{ transform: "translateY(-100%) translateY(-8px)" }}>
+    <div className="amd-popover-enter fixed z-50 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl text-xs" style={{ transform: "translateY(-100%) translateY(-8px)" }}>
       <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 rounded-t-xl">
         <span className="font-semibold text-gray-700 dark:text-gray-200">Plot Settings</span>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 transition-colors">
@@ -183,7 +168,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const numCVs = config.cvs.length;
-  const accentColor = numCVs === 1 ? "#f59e0b" : numCVs === 2 ? "#06b6d4" : "#a78bfa";
+  const accentColor = numCVs === 1 ? UI_COLORS.status.warning : numCVs === 2 ? UI_COLORS.brand.science : UI_COLORS.brand.accent;
 
   // Persist density settings to localStorage
   useEffect(() => { saveDensitySettings(densitySettings); }, [densitySettings]);
@@ -283,7 +268,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       const cv = config.cvs[0];
       const yVals = data[labels[0]] as number[];
       if (!yVals) return null;
-      const ax = axisStyle(isDark);
+      const ax = plotAxis(isDark, { compact, accent: UI_COLORS.status.warning });
       return {
         traces: [{
           type: "scatter" as const,
@@ -291,8 +276,8 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
           x: timePsRaw,
           y: yVals,
           fill: "tozeroy" as const,
-          fillcolor: "rgba(245,158,11,0.10)",
-          line: { color: "#f59e0b", width: compact ? 1.5 : 2, shape: "spline" as const },
+          fillcolor: colorWithAlpha(UI_COLORS.status.warning, 0.10),
+          line: { color: UI_COLORS.status.warning, width: compact ? 1.5 : 2, shape: "spline" as const },
           hovertemplate: `%{x:.1f} ps<br>%{y:.3f} ${unitLabel(cv)}<extra></extra>`,
         }],
         layout: themedLayout(isDark, {
@@ -308,8 +293,8 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       const xVals = data[labels[0]] as number[];
       const yVals = data[labels[1]] as number[];
       if (!xVals || !yVals) return null;
-      const ax2 = axisStyle(isDark);
-      const titleColor = isDark ? "#6b7280" : "#9ca3af";
+      const ax2 = plotAxis(isDark, { compact });
+      const titleColor = isDark ? UI_COLORS.neutral[500] : UI_COLORS.neutral[400];
       return {
         traces: [{
           type: "histogram2d" as const,
@@ -409,7 +394,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       <Plot
         data={plotData.traces as Plotly.Data[]}
         layout={{ ...(plotData.layout as unknown as Plotly.Layout), autosize: true }}
-        config={{ displayModeBar: !compact, responsive: true, scrollZoom: !compact }}
+        config={{ ...PLOT_CONFIG, displayModeBar: !compact, scrollZoom: !compact }}
         useResizeHandler
         style={{ width: "100%", height: "100%" }}
       />
@@ -492,7 +477,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
           onClick={() => setExpanded(false)}
         >
           <div
-            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border"
+            className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border"
             style={{ width: expandedWidth, height: expandedHeight, borderColor: `${accentColor}40` }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -554,7 +539,7 @@ export default function CustomCVResultCard({ sessionId, config, onDelete }: Prop
       {/* ── Delete confirmation ──────────────────────────────────────── */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
+          <div className="amd-popup-enter bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Remove plot?</p>
             <p className="text-xs text-gray-500 mb-4">
               The <span className="text-gray-700 dark:text-gray-300">{headerLabel(config.cvs)}</span> plot will be removed.
