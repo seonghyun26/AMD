@@ -1465,73 +1465,62 @@ function SimRunConfirmModal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={onClose}>
-      <div
-        data-popup-title="Start simulation"
-        className="amd-popup-enter bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-          <div>
-            <p className="text-xs text-gray-500 mt-0.5">Total: {simLabel} · {nsteps.toLocaleString()} steps</p>
-          </div>
-        </div>
+    <div className="amd-mention-list-enter absolute bottom-full left-4 right-4 z-50 mb-2 max-h-[min(32rem,calc(100vh-6rem))] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-800">
+        <p className="text-xs text-gray-500 dark:text-gray-400">Total: {simLabel} · {nsteps.toLocaleString()} steps</p>
+      </div>
 
-        {/* Logging table */}
-        <div className="px-5 py-4">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">Output logging</p>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400">
-                  <th className="text-left px-3 py-2 font-medium">File</th>
-                  <th className="text-right px-3 py-2 font-medium">Every</th>
-                  <th className="text-right px-3 py-2 font-medium">Frames</th>
-                  <th className="text-right px-3 py-2 font-medium">Est. size</th>
+      {/* Logging table */}
+      <div className="px-5 py-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Output logging</p>
+        <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400">
+                <th className="px-3 py-2 text-left font-medium">File</th>
+                <th className="px-3 py-2 text-right font-medium">Every</th>
+                <th className="px-3 py-2 text-right font-medium">Frames</th>
+                <th className="px-3 py-2 text-right font-medium">Est. size</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60">
+              {rows.map((row) => (
+                <tr key={row.ext} className="text-gray-700 dark:text-gray-300">
+                  <td className="px-3 py-2">
+                    <span className="font-mono text-[11px] text-blue-500 dark:text-blue-400">{["colvar","hills","kernels"].includes(row.ext) ? row.ext.toUpperCase() : `.${row.ext}`}</span>
+                    <span className="ml-2 text-gray-400 dark:text-gray-500">{row.label.split("(")[1]?.replace(")", "") ?? ""}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">
+                    {row.freq > 0 ? `${row.freq.toLocaleString()} steps` : <span className="text-gray-300 dark:text-gray-600">off</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">
+                    {row.frames > 0 ? row.frames.toLocaleString() : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">{row.sizeLabel}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60">
-                {rows.map((row) => (
-                  <tr key={row.ext} className="text-gray-700 dark:text-gray-300">
-                    <td className="px-3 py-2">
-                      <span className="font-mono text-[11px] text-blue-500 dark:text-blue-400">{["colvar","hills","kernels"].includes(row.ext) ? row.ext.toUpperCase() : `.${row.ext}`}</span>
-                      <span className="ml-2 text-gray-400 dark:text-gray-500">{row.label.split("(")[1]?.replace(")", "") ?? ""}</span>
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">
-                      {row.freq > 0 ? `${row.freq.toLocaleString()} steps` : <span className="text-gray-300 dark:text-gray-600">off</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">
-                      {row.frames > 0 ? row.frames.toLocaleString() : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-500 dark:text-gray-400">{row.sizeLabel}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-2 text-xs text-gray-400 dark:text-gray-600 leading-relaxed">
-            Size estimates are approximate and may vary with solvent and settings.
-          </p>
+              ))}
+            </tbody>
+          </table>
         </div>
+        <p className="mt-2 text-xs leading-relaxed text-gray-400 dark:text-gray-600">
+          Size estimates are approximate and may vary with solvent and settings.
+        </p>
+      </div>
 
-        {/* Footer buttons */}
-        <div className="flex gap-3 justify-end px-5 pb-5">
-          <button
-            onClick={onEdit}
-            className="px-4 py-2 text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors font-medium"
-          >
-            Edit Settings
-          </button>
-          <button
-            onClick={onRun}
-            className="amd-primary-button px-5 py-2 text-xs font-semibold rounded-lg flex items-center gap-1.5"
-          >
-            <Play size={12} fill="currentColor" />
-            Run
-          </button>
-        </div>
-        <PopupTailClose onClick={onClose} label="Close simulation summary" />
+      <div className="flex justify-end gap-3 border-t border-gray-100 px-5 py-3 dark:border-gray-800">
+        <button
+          onClick={onEdit}
+          className="rounded-lg bg-gray-100 px-4 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+        >
+          Edit Settings
+        </button>
+        <button
+          onClick={onRun}
+          className="amd-primary-button flex items-center gap-1.5 rounded-lg px-5 py-2 text-xs font-semibold"
+        >
+          <Play size={12} fill="currentColor" />
+          Run
+        </button>
       </div>
     </div>
   );
@@ -1754,6 +1743,8 @@ function ProgressTab({
   exitCode,
   totalSteps,
   timestepPs,
+  nvtEquilibrationPs,
+  nptEquilibrationPs,
   runStartedAt,
   runFinishedAt,
   resultCards,
@@ -1769,6 +1760,8 @@ function ProgressTab({
   exitCode: number | null;
   totalSteps: number;
   timestepPs: number;
+  nvtEquilibrationPs: number;
+  nptEquilibrationPs: number;
   runStartedAt: number | null;
   runFinishedAt?: number | null;
   resultCards: ResultCardDef[];
@@ -1830,17 +1823,23 @@ function ProgressTab({
     const tickNow = () => setNowMs(Date.now());
     const intervalNow = isActiveRun ? setInterval(tickNow, 1000) : null;
 
+    const logFiles = stage === "nvt"
+      ? ["nvt.log"]
+      : stage === "npt"
+        ? ["npt.log"]
+        : ["simulation/md.log", "md.log"];
+
     const pollProgress = async () => {
       try {
-        const primary = await getProgress(sessionId, "simulation/md.log");
-        if (cancelled) return;
-        if (primary.available && primary.progress) {
-          setLiveProgress(normalizeProgress(primary.progress));
-          return;
+        for (const logFile of logFiles) {
+          const result = await getProgress(sessionId, logFile);
+          if (cancelled) return;
+          if (result.available && result.progress) {
+            setLiveProgress(normalizeProgress(result.progress));
+            return;
+          }
         }
-        const fallback = await getProgress(sessionId, "md.log");
-        if (cancelled) return;
-        setLiveProgress(fallback.available ? normalizeProgress(fallback.progress) : null);
+        setLiveProgress(null);
       } catch {
         if (!cancelled) setLiveProgress(null);
       }
@@ -1853,7 +1852,7 @@ function ProgressTab({
       if (intervalNow) clearInterval(intervalNow);
       if (intervalProgress) clearInterval(intervalProgress);
     };
-  }, [sessionId, runStatus]);
+  }, [sessionId, runStatus, stage]);
 
   // Only use file lists that were fetched for the current session — memoized to avoid
   // rebuilding on every 1-second nowMs tick during running simulations.
@@ -1883,13 +1882,29 @@ function ProgressTab({
   const [prodStartMs, setProdStartMs] = useState<number | null>(null);
   useEffect(() => { setProdStartMs(null); }, [sessionId]);
   useEffect(() => {
-    if (runStatus === "running" && liveProgress != null) setProdStartMs((p) => p ?? Date.now());
-    else if (runStatus === "standby") setProdStartMs(null);
-  }, [runStatus, liveProgress]);
+    if (runStatus === "running" && stage === "production" && liveProgress != null) {
+      setProdStartMs((p) => p ?? Date.now());
+    } else if (runStatus === "standby" || stage === "nvt" || stage === "npt" || stage === "minimizing") {
+      setProdStartMs(null);
+    }
+  }, [runStatus, stage, liveProgress]);
 
+  // Pre-production equilibration (EM/NVT/NPT) — surfaced distinctly from the
+  // production run so the progress bar/steps aren't misread as production yet.
+  const STAGE_LABEL: Record<string, string> = {
+    minimizing: "Minimizing",
+    nvt: "NVT equilibration",
+    npt: "NPT equilibration",
+  };
+  const equilStage = runStatus === "running" && stage && stage !== "production" ? stage : null;
+  const safeTimestepPs = Number.isFinite(timestepPs) && timestepPs > 0 ? timestepPs : 0.002;
   const targetSteps = Number.isFinite(totalSteps) && totalSteps > 0 ? totalSteps : 0;
-  const pctRaw = targetSteps > 0 && liveProgress
-    ? Math.max(0, Math.min(100, (liveProgress.step / targetSteps) * 100))
+  const nvtSteps = Math.max(1, Math.round((Number.isFinite(nvtEquilibrationPs) ? nvtEquilibrationPs : 100) / safeTimestepPs));
+  const nptSteps = Math.max(1, Math.round((Number.isFinite(nptEquilibrationPs) ? nptEquilibrationPs : 100) / safeTimestepPs));
+  const stageTargetSteps = equilStage === "nvt" ? nvtSteps : equilStage === "npt" ? nptSteps : 0;
+  const progressTargetSteps = stageTargetSteps || targetSteps;
+  const pctRaw = progressTargetSteps > 0 && liveProgress
+    ? Math.max(0, Math.min(100, (liveProgress.step / progressTargetSteps) * 100))
     : 0;
   const pct = runStatus === "finished" ? 100 : pctRaw;
   // Only use the live `nowMs` ticker while the sim is actively running.
@@ -1904,8 +1919,7 @@ function ProgressTab({
         : null;
   const elapsedLabel = elapsedMs !== null ? formatElapsed(elapsedMs) : "—";
   const simNs = liveProgress ? liveProgress.time_ps / 1000 : 0;
-  const totalSimPs = totalSteps * timestepPs;
-  const totalSimNs = totalSimPs / 1000;
+  const displayTimeTargetNs = (stageTargetSteps || targetSteps) * safeTimestepPs / 1000;
   // Prefer GROMACS's own reported ns/day (written to the log at run end); while
   // running, derive it from PRODUCTION wall time (since md.log first appeared),
   // not the total elapsed which includes equilibration.
@@ -1919,15 +1933,6 @@ function ProgressTab({
       : prodElapsedMs != null && prodElapsedMs > 1000 && simNs > 0
         ? (simNs * 86400000) / prodElapsedMs
         : null;
-  // Pre-production equilibration (EM/NVT/NPT) — surfaced distinctly from the
-  // production run so the progress bar/steps aren't misread as production yet.
-  const STAGE_LABEL: Record<string, string> = {
-    minimizing: "Minimizing",
-    nvt: "NVT equilibration",
-    npt: "NPT equilibration",
-  };
-  const equilStage = runStatus === "running" && stage && stage !== "production" ? stage : null;
-
   // Stage-order overview: EM → NVT → [NPT] → Main simulation.
   const orderSteps: { key: string; label: string }[] = equilibrate
     ? [
@@ -1977,13 +1982,13 @@ function ProgressTab({
                 <Fragment key={s.key}>
                   {i > 0 && <ChevronRight size={12} className="text-gray-300 dark:text-gray-700 flex-shrink-0" />}
                   <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${
+                    className={`inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                       failed
                         ? "border-red-500/80 bg-red-500 text-white shadow-sm shadow-red-500/20 dark:bg-red-500/90"
                         : done
                           ? "border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700/70 dark:bg-blue-950/60 dark:text-blue-100"
                           : active
-                            ? "border-transparent bg-gradient-to-r from-cyan-500 to-indigo-500 text-white shadow-sm shadow-cyan-500/25 ring-1 ring-white/20"
+                            ? "amd-active-tab"
                             : "border-slate-200 bg-white/70 text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400"
                     }`}
                   >
@@ -2009,9 +2014,9 @@ function ProgressTab({
             <p className="text-sm font-mono text-gray-800 dark:text-gray-200">{elapsedLabel}</p>
           </div>
           <div className="bg-gray-50/70 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-800 rounded-lg p-2">
-            <p className="text-xs text-gray-500 uppercase tracking-wider">Sim Time</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">{equilStage ? "Stage Time" : "Sim Time"}</p>
             <p className="text-sm font-mono text-gray-800 dark:text-gray-200">
-              {simNs.toFixed(3)}{totalSimNs > 0 ? ` / ${totalSimNs.toFixed(1)} ns` : " ns"}
+              {simNs.toFixed(3)}{displayTimeTargetNs > 0 ? ` / ${displayTimeTargetNs.toFixed(1)} ns` : " ns"}
             </p>
           </div>
           <div className="bg-gray-50/70 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-800 rounded-lg p-2">
@@ -2026,16 +2031,21 @@ function ProgressTab({
             <span>
               {runStatus === "finished"
                 ? `${targetSteps.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
-                : equilStage
-                  ? `${STAGE_LABEL[equilStage] ?? "Equilibrating"}…`
+                : equilStage && liveProgress
+                  ? `${STAGE_LABEL[equilStage] ?? "Equilibrating"}: ${liveProgress.step.toLocaleString()} / ${progressTargetSteps.toLocaleString()} steps`
+                  : equilStage
+                    ? `Waiting for ${equilStage}.log...`
                   : liveProgress
                     ? `${liveProgress.step.toLocaleString()} / ${targetSteps.toLocaleString()} steps`
                     : "Waiting for md.log..."}
             </span>
-            <span>{(runStatus === "finished" || (liveProgress && targetSteps > 0)) ? `${pct.toFixed(1)}%` : "0.0%"}</span>
+            <span>{(runStatus === "finished" || (liveProgress && progressTargetSteps > 0)) ? `${pct.toFixed(1)}%` : "0.0%"}</span>
           </div>
           <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${equilStage ? "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500" : "bg-emerald-500"}`}
+              style={{ width: `${pct}%` }}
+            />
           </div>
         </div>
       </Section>
@@ -2091,7 +2101,7 @@ function ProgressTab({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setAddPlotOpen(true)}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-indigo-400 hover:bg-indigo-900/30 transition-colors font-medium"
+              className="amd-active-tab flex items-center gap-1 rounded-md border-2 px-2 py-1 text-xs font-medium transition-shadow hover:shadow-md"
             >
               <Plus size={12} />
               Add
@@ -2104,7 +2114,7 @@ function ProgressTab({
           {resultCards.length === 0 ? (
             <button
               onClick={() => setAddPlotOpen(true)}
-              className="w-full rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/30 dark:bg-gray-900/30 hover:bg-gray-200/40 dark:hover:bg-gray-800/40 hover:border-gray-400 dark:hover:border-gray-600 transition-colors flex items-center justify-center gap-2 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400"
+              className="amd-active-tab flex w-full items-center justify-center gap-2 rounded-lg border-2 text-xs transition-shadow hover:shadow-md"
               style={{ height: "300px" }}
             >
               <Plus size={16} />
@@ -2123,7 +2133,7 @@ function ProgressTab({
               {/* Add button */}
               <button
                 onClick={() => setAddPlotOpen(true)}
-                className="flex-shrink-0 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/30 dark:bg-gray-900/30 hover:bg-gray-200/40 dark:hover:bg-gray-800/40 hover:border-gray-400 dark:hover:border-gray-600 transition-colors flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400"
+                className="amd-active-tab flex flex-shrink-0 flex-col items-center justify-center gap-2 rounded-xl border-2 text-xs transition-shadow hover:shadow-md"
                 style={{ width: "120px", height: "300px" }}
               >
                 <Plus size={18} />
@@ -4632,6 +4642,8 @@ export default function MDWorkspace({
             exitCode={simExitCode}
             totalSteps={Number(((cfg.method as Record<string, unknown> | undefined)?.nsteps ?? 0))}
             timestepPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.dt ?? 0.002))}
+            nvtEquilibrationPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.equil_nvt_ps ?? 100))}
+            nptEquilibrationPs={Number(((cfg.gromacs as Record<string, unknown> | undefined)?.equil_npt_ps ?? 100))}
             runStartedAt={simStartedAt}
             runFinishedAt={simFinishedAt}
             resultCards={resultCards}
@@ -4685,10 +4697,10 @@ export default function MDWorkspace({
       </div>
 
       {/* Simulation action button */}
-      <div className="flex-shrink-0 px-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 h-[72px] flex items-center w-full">
+      <div className="relative flex h-[72px] w-full flex-shrink-0 items-center border-t border-gray-200 bg-gray-50/50 px-4 dark:border-gray-800 dark:bg-gray-900/50">
         {actionState === "standby" && (
           <button
-            onClick={() => setShowRunConfirm(true)}
+            onClick={() => setShowRunConfirm((open) => !open)}
             className="amd-primary-button w-full flex items-center justify-center gap-2 py-3 font-semibold rounded-xl text-sm"
           >
             <Play size={16} fill="currentColor" />
@@ -4746,17 +4758,15 @@ export default function MDWorkspace({
             </div>
           </div>
         )}
+        {showRunConfirm && actionState === "standby" && (
+          <SimRunConfirmModal
+            cfg={cfg}
+            onEdit={() => { setShowRunConfirm(false); setActiveTab("gromacs"); }}
+            onRun={() => { setShowRunConfirm(false); handleStartMD(); }}
+            onClose={() => setShowRunConfirm(false)}
+          />
+        )}
       </div>
-
-      {/* Simulation run confirmation dialog */}
-      <PopupPresence show={showRunConfirm}>
-        <SimRunConfirmModal
-          cfg={cfg}
-          onEdit={() => { setShowRunConfirm(false); setActiveTab("gromacs"); }}
-          onRun={() => { setShowRunConfirm(false); handleStartMD(); }}
-          onClose={() => setShowRunConfirm(false)}
-        />
-      </PopupPresence>
 
       {/* Pause confirmation dialog */}
       <PopupPresence show={pauseConfirmOpen}>
